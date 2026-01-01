@@ -9,12 +9,11 @@ jobs:
   build-firmware:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         environment:
           - ESP32S3
           - ESP32S3SuperMini
-          - ESP32C3
-          - PhobosLT
     
     steps:
       - name: Checkout code
@@ -157,8 +156,6 @@ jobs:
           files: |
             all-boards/FPVGate-${{ github.ref_name }}-ESP32S3.zip
             all-boards/FPVGate-${{ github.ref_name }}-ESP32S3SuperMini.zip
-            all-boards/FPVGate-${{ github.ref_name }}-ESP32C3.zip
-            all-boards/FPVGate-${{ github.ref_name }}-PhobosLT.zip
             FPVGate-${{ github.ref_name }}-AllBoards.zip
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}

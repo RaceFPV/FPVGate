@@ -12,12 +12,11 @@ jobs:
   build-firmware:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         environment:
           - ESP32S3
           - ESP32S3SuperMini
-          - ESP32C3
-          - PhobosLT
     
     steps:
       - name: Checkout code
