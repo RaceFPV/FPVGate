@@ -20,6 +20,17 @@ Project creator and lead developer
 **GitHub:** https://github.com/ramiss/FPVGate  
 **Integrated:** December 2024
 
+### Licardo (@albert-fit)
+**Contributions:**
+- Internationalization (i18n) system implementation
+- Multi-language support (English, French, Spanish, German, Simplified Chinese)
+- Language selector UI integration
+- Translation framework with dynamic locale loading
+- Enhanced accessibility for international users
+
+**GitHub:** https://github.com/albert-fit  
+**Integrated:** January 2026
+
 ---
 
 ## How to Contribute
@@ -58,4 +69,4 @@ FPVGate by Louis Hitchcock
 https://github.com/LouisHitchcock/FPVGate
 ```
 
-Licensed under MIT License - see LICENSE file for details
+Licensed under CC BY-NC-SA 4.0 - see LICENSE file for details
