@@ -20,7 +20,7 @@ Project creator and lead developer
 **GitHub:** https://github.com/ramiss/FPVGate  
 **Integrated:** December 2024
 
-### Licardo (@albert-fit)
+### Licardo (@L1cardo)
 **Contributions:**
 - Internationalization (i18n) system implementation
 - Multi-language support (English, French, Spanish, German, Simplified Chinese)
@@ -28,7 +28,7 @@ Project creator and lead developer
 - Translation framework with dynamic locale loading
 - Enhanced accessibility for international users
 
-**GitHub:** https://github.com/albert-fit  
+**GitHub:** https://github.com/L1cardo  
 **Integrated:** January 2026
 
 ---
