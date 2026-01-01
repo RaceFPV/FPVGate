@@ -1,0 +1,166 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment:
+          - ESP32S3
+          - ESP32S3SuperMini
+          - ESP32C3
+          - PhobosLT
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+      
+      - name: Install PlatformIO
+        run: |
+          pip install platformio
+          pio upgrade
+      
+      - name: Build firmware (${{ matrix.environment }})
+        run: pio run -e ${{ matrix.environment }}
+      
+      - name: Build filesystem (${{ matrix.environment }})
+        run: pio run -e ${{ matrix.environment }} -t buildfs
+        continue-on-error: true
+      
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p release-artifacts/${{ matrix.environment }}
+          
+          # Copy firmware binary
+          if [ -f .pio/build/${{ matrix.environment }}/firmware.bin ]; then
+            cp .pio/build/${{ matrix.environment }}/firmware.bin \
+               release-artifacts/${{ matrix.environment }}/firmware.bin
+          fi
+          
+          # Copy filesystem binary
+          if [ -f .pio/build/${{ matrix.environment }}/littlefs.bin ]; then
+            cp .pio/build/${{ matrix.environment }}/littlefs.bin \
+               release-artifacts/${{ matrix.environment }}/littlefs.bin
+          fi
+          
+          # Copy bootloader
+          if [ -f ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/bin/bootloader_dio_80m.bin ]; then
+            cp ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/bin/bootloader_dio_80m.bin \
+               release-artifacts/${{ matrix.environment }}/bootloader.bin
+          elif [ -f ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/bin/bootloader_dio_40m.bin ]; then
+            cp ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/bin/bootloader_dio_40m.bin \
+               release-artifacts/${{ matrix.environment }}/bootloader.bin
+          elif [ -f ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin ]; then
+            cp ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin \
+               release-artifacts/${{ matrix.environment }}/bootloader.bin
+          fi
+          
+          # Copy partition table
+          if [ -f .pio/build/${{ matrix.environment }}/partitions.bin ]; then
+            cp .pio/build/${{ matrix.environment }}/partitions.bin \
+               release-artifacts/${{ matrix.environment }}/partitions.bin
+          fi
+          
+          # Create flash instructions
+          cat > release-artifacts/${{ matrix.environment }}/FLASH_INSTRUCTIONS.txt << 'EOF'
+          Flash using esptool:
+          
+          esptool.py --chip auto --port COM3 write_flash -z \
+            0x0 bootloader.bin \
+            0x8000 partitions.bin \
+            0x10000 firmware.bin \
+            0x410000 littlefs.bin
+          
+          Or use PlatformIO:
+          pio run -e ${{ matrix.environment }} -t upload
+          pio run -e ${{ matrix.environment }} -t uploadfs
+          EOF
+          
+          # Create individual board ZIP
+          cd release-artifacts
+          zip -r FPVGate-${{ github.ref_name }}-${{ matrix.environment }}.zip ${{ matrix.environment }}
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FPVGate-${{ github.ref_name }}-${{ matrix.environment }}
+          path: release-artifacts/FPVGate-${{ github.ref_name }}-${{ matrix.environment }}.zip
+          retention-days: 90
+
+  create-release:
+    needs: build-firmware
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      
+      - name: Create unified release package
+        run: |
+          mkdir -p all-boards
+          cd release-artifacts
+          for dir in */; do
+            cp "$dir"*.zip ../all-boards/
+          done
+          cd ../all-boards
+          zip -r ../FPVGate-${{ github.ref_name }}-AllBoards.zip .
+      
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Extract section for this version from CHANGELOG.md
+            VERSION="${{ github.ref_name }}"
+            sed -n "/## \[${VERSION#v}\]/,/## \[/p" CHANGELOG.md | sed '$d' > release-notes.md
+            
+            # If extraction failed, provide default notes
+            if [ ! -s release-notes.md ]; then
+              echo "Release ${{ github.ref_name }}" > release-notes.md
+              echo "" >> release-notes.md
+              echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full details." >> release-notes.md
+            fi
+          else
+            echo "Release ${{ github.ref_name }}" > release-notes.md
+          fi
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: |
+            all-boards/FPVGate-${{ github.ref_name }}-ESP32S3.zip
+            all-boards/FPVGate-${{ github.ref_name }}-ESP32S3SuperMini.zip
+            all-boards/FPVGate-${{ github.ref_name }}-ESP32C3.zip
+            all-boards/FPVGate-${{ github.ref_name }}-PhobosLT.zip
+            FPVGate-${{ github.ref_name }}-AllBoards.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

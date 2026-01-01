@@ -1,0 +1,45 @@
+firmware:
+  - changed-files:
+    - any-glob-to-any-file: 
+      - 'src/**'
+      - 'lib/**'
+      - 'platformio.ini'
+      - 'targets/**'
+
+web-ui:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'data/**/*.html'
+      - 'data/**/*.css'
+      - 'data/**/*.js'
+      - 'electron/**'
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*.md'
+      - 'docs/**'
+
+hardware:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'PCB/**'
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**'
+
+audio:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'data/audio/**'
+      - 'sd_assets/**'
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'platformio.ini'
+      - 'requirements.txt'
+      - 'package.json'
+      - 'package-lock.json'
