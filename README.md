@@ -301,12 +301,6 @@ FPVGate is a heavily modified fork of [PhobosLT](https://github.com/phobos-/Phob
 Portions of the timing logic are inspired by [RotorHazard](https://github.com/RotorHazard/RotorHazard).
 
 ### Contributors
-
-Special thanks to **Richard Amiss** (@ramiss) for contributing:
-- Digital FPV band support (DJI, HDZero, WalkSnail)
-- Improved lap timer detection algorithm
-- Frequency changing bug fixes
-
 See [CONTRIBUTORS.md](CONTRIBUTORS.md) for full contributor list.
 
 ---
