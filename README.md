@@ -2,7 +2,7 @@
 
 **Personal FPV Lap Timer for ESP32-S3**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
 [![GitHub release](https://img.shields.io/github/v/release/LouisHitchcock/FPVGate)](https://github.com/LouisHitchcock/FPVGate/releases)
 
@@ -79,7 +79,7 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 - Comprehensive self-test diagnostics (19 tests)
 - OTA firmware updates
 - Transport abstraction layer
-- Open source (MIT License)
+- Open source (CC BY-NC-SA 4.0)
 
 **Supported Bands:**
 
@@ -209,7 +209,7 @@ Exit  ├/──────────\─
 
 **Current Version:** v1.5.0
 **Platform:** ESP32-S3
-**License:** MIT  
+**License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
 
 ### Recent Updates
@@ -282,7 +282,11 @@ See [CONTRIBUTORS.md](CONTRIBUTORS.md) for full contributor list.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+
+You are free to share and adapt this work for non-commercial purposes, as long as you provide attribution and distribute any modifications under the same license.
+
+See the [LICENSE](LICENSE) file for full details or visit https://creativecommons.org/licenses/by-nc-sa/4.0/
 
 ---
 
