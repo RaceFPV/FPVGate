@@ -1,6 +1,6 @@
 # FPVGate
 
-**Personal FPV Lap Timer for ESP32-S3 / ESP32-S3 Super Mini**
+**Personal FPV Lap Timer for [ESP32-S3](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html) / [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)**
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
@@ -104,7 +104,7 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 
 | Component | Required | Notes |
 |-----------|----------|-------|
-| **ESP32-S3-DevKitC-1** or **ESP32-S3 Super Mini** | Yes | Main controller (both supported) |
+| **[ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)** or **[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)** | Yes | Main controller (both supported) |
 | **RX5808 Module** | Yes | 5.8GHz receiver ([SPI mod required](https://sheaivey.github.io/rx5808-pro-diversity/docs/rx5808-spi-mod.html)) |
 | **MicroSD Card** | Yes | FAT32, 1GB+ for audio storage |
 | **5V Power Supply** | Yes | 18650 battery + regulator |
@@ -113,7 +113,7 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 
 ### 2. Basic Wiring
 
-**ESP32-S3 DevKitC-1:**
+**[ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html):**
 ```
 ESP32-S3        RX5808           SD Card
 GPIO4    ────── RSSI             
@@ -128,7 +128,7 @@ GND      ────── GND
 5V       ────── +5V
 ```
 
-**ESP32-S3 Super Mini:**
+**[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/):**
 ```
 ESP32-S3        RX5808           SD Card
 GPIO3    ────── RSSI             
@@ -234,14 +234,14 @@ Exit  ├/──────────\─
 ## Project Status
 
 **Current Version:** v1.5.1-dev
-**Platform:** ESP32-S3 DevKitC-1, ESP32-S3 Super Mini
+**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)
 **License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
 
 ### Recent Updates
 
 **v1.5.1-dev (In Development)**
-- ESP32-S3 Super Mini support (4MB flash variant)
+- [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/) support (4MB flash variant)
 - Compact form factor with optimized pin mappings
 - Dual board support (DevKitC-1 and Super Mini)
 

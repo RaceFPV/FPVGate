@@ -24,7 +24,8 @@ Complete guide to building, flashing, and configuring your FPVGate lap timer.
 
 | Component | Specs | Purchase Links | Approx. Cost |
 |-----------|-------|----------------|--------------|
-| **ESP32-S3-DevKitC-1** | USB-C, 8MB Flash | [Espressif](https://www.espressif.com/en/products/devkits) | $10-15 |
+| **[ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)** | USB-C, 8MB Flash | [Espressif](https://www.espressif.com/en/products/devkits) | $10-15 |
+| **[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)** | USB-C, 4MB Flash, Compact | [ESPBoards](https://www.espboards.dev/store/), [AliExpress](https://www.aliexpress.com) | $5-8 |
 | **RX5808 Module** | 5.8GHz receiver with SPI mod | [Banggood](https://www.banggood.com) | $5-8 |
 | **MicroSD Card** | FAT32, 1GB+, Class 10 | Any retailer | $3-5 |
 | **MicroSD Card Module** | SPI interface | Amazon/eBay | $2-3 |
@@ -69,6 +70,7 @@ The RX5808 must be modified for SPI control. Follow this guide:
 
 #### RX5808 Connection
 
+**[ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html) (8MB Flash):**
 ```
 ESP32-S3        RX5808 Module
 -----------------------------
@@ -80,13 +82,27 @@ GND      ------ GND
 5V (VBUS)------ +5V
 ```
 
+**[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/) (4MB Flash):**
+```
+ESP32-S3        RX5808 Module
+-----------------------------
+GPIO3    ------ RSSI (analog output)
+GPIO6    ------ CH1 / DATA
+GPIO7    ------ CH2 / SELECT
+GPIO4    ------ CH3 / CLOCK
+GND      ------ GND
+5V (VBUS)------ +5V
+```
+
 ** Important Notes:**
-- **GPIO4** for RSSI - Do NOT use GPIO3 (strapping pin, will prevent flashing)
+- **DevKitC-1**: Uses GPIO4 for RSSI (GPIO3 is strapping pin)
+- **Super Mini**: Uses GPIO3 for RSSI (optimized pin layout)
 - **VBUS (5V)** - Not 3.3V! RX5808 requires 5V
 - Solder connections for reliability (no breadboard for final build)
 
 #### MicroSD Card Module (Recommended)
 
+**[ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html):**
 ```
 ESP32-S3        SD Card Module
 -----------------------------
@@ -94,6 +110,18 @@ GPIO39   ------ CS (Chip Select)
 GPIO36   ------ SCK (Clock)
 GPIO35   ------ MOSI (Data In)
 GPIO37   ------ MISO (Data Out)
+GND      ------ GND
+3.3V     ------ VCC
+```
+
+**[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/):**
+```
+ESP32-S3        SD Card Module
+-----------------------------
+GPIO8    ------ CS (Chip Select)
+GPIO2    ------ SCK (Clock)
+GPIO10   ------ MOSI (Data In)
+GPIO9    ------ MISO (Data Out)
 GND      ------ GND
 3.3V     ------ VCC
 ```
@@ -283,14 +311,13 @@ Edit `lib/RGBLED/rgbled.h`:
 
 **Using Command Line:**
 ```bash
-# Build firmware
-pio run -e ESP32S3
-
-# Flash firmware
+# For ESP32-S3-DevKitC-1 (8MB flash):
 pio run -e ESP32S3 -t upload
-
-# Flash web interface
 pio run -e ESP32S3 -t uploadfs
+
+# For ESP32-S3 Super Mini (4MB flash):
+pio run -e ESP32S3SuperMini -t upload
+pio run -e ESP32S3SuperMini -t uploadfs
 ```
 
 ### Common Flashing Issues
