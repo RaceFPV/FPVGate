@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <vector>
 
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
 #include <SD.h>
 #include <SPI.h>
 #endif
@@ -39,7 +39,7 @@ class Storage {
    private:
     bool sdAvailable;
     
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     bool initSD();
     SPIClass* spi;
 #endif

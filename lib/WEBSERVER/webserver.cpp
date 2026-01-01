@@ -1408,6 +1408,5 @@ EEPROM:\n\
     dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
 
     startMDNS();
-
     servicesStarted = true;
 }

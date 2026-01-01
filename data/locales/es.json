@@ -325,6 +325,7 @@
             },
             "sensitivity_tip": "Sensibilidad alta ofrece mejor detección señal débil. Usa Normal si hay activaciones falsas.",
             "appearance": "Apariencia",
+            "language": "Idioma:",
             "theme": "Tema:"
         },
         "integration": {

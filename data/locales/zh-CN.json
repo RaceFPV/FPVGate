@@ -322,8 +322,9 @@
                 "normal": "标准 (经典)",
                 "high": "高 (1.5倍增强)"
             },
-            "sensitivity_tip": "高灵敏度可提供更好的弱信号检测。如果出现误触发，请使用标准模式。",
+            "sensitivity_tip": "高灵敏度可提供更好的弱信号检测。如果出现误触发,请使用标准模式。",
             "appearance": "外观",
+            "language": "语言:",
             "theme": "主题:"
         },
         "integration": {

@@ -324,6 +324,7 @@
             },
             "sensitivity_tip": "High sensitivity provides better weak signal detection. Use Normal if experiencing false triggers.",
             "appearance": "Appearance",
+            "language": "Language:",
             "theme": "Theme:"
         },
         "integration": {

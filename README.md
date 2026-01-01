@@ -1,6 +1,6 @@
 # FPVGate
 
-**Personal FPV Lap Timer for ESP32-S3**
+**Personal FPV Lap Timer for ESP32-S3 / ESP32-S3 Super Mini**
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
@@ -104,7 +104,7 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 
 | Component | Required | Notes |
 |-----------|----------|-------|
-| **ESP32-S3-DevKitC-1** | Yes | Main controller |
+| **ESP32-S3-DevKitC-1** or **ESP32-S3 Super Mini** | Yes | Main controller (both supported) |
 | **RX5808 Module** | Yes | 5.8GHz receiver ([SPI mod required](https://sheaivey.github.io/rx5808-pro-diversity/docs/rx5808-spi-mod.html)) |
 | **MicroSD Card** | Yes | FAT32, 1GB+ for audio storage |
 | **5V Power Supply** | Yes | 18650 battery + regulator |
@@ -113,12 +113,32 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 
 ### 2. Basic Wiring
 
+**ESP32-S3 DevKitC-1:**
 ```
-ESP32-S3        RX5808
-GPIO4    ────── RSSI
-GPIO10   ────── CH1 (DATA)
-GPIO11   ────── CH2 (SELECT)
-GPIO12   ────── CH3 (CLOCK)
+ESP32-S3        RX5808           SD Card
+GPIO4    ────── RSSI             
+GPIO10   ────── CH1 (DATA)       
+GPIO11   ────── CH2 (SELECT)     
+GPIO12   ────── CH3 (CLOCK)      
+GPIO39   ────────────────────── CS
+GPIO36   ────────────────────── SCK
+GPIO35   ────────────────────── MOSI
+GPIO37   ────────────────────── MISO
+GND      ────── GND
+5V       ────── +5V
+```
+
+**ESP32-S3 Super Mini:**
+```
+ESP32-S3        RX5808           SD Card
+GPIO3    ────── RSSI             
+GPIO6    ────── CH1 (DATA)       
+GPIO7    ────── CH2 (SELECT)     
+GPIO4    ────── CH3 (CLOCK)      
+GPIO8    ────────────────────── CS
+GPIO2    ────────────────────── SCK
+GPIO10   ────────────────────── MOSI
+GPIO9    ────────────────────── MISO
 GND      ────── GND
 5V       ────── +5V
 ```
@@ -141,8 +161,14 @@ esptool.py --chip esp32s3 --port COM3 write_flash -z \
 ```bash
 git clone https://github.com/LouisHitchcock/FPVGate.git
 cd FPVGate
+
+# For ESP32-S3 DevKitC-1 (8MB flash):
 pio run -e ESP32S3 -t upload
 pio run -e ESP32S3 -t uploadfs
+
+# For ESP32-S3 Super Mini (4MB flash):
+pio run -e ESP32S3SuperMini -t upload
+pio run -e ESP32S3SuperMini -t uploadfs
 ```
 
 **[Detailed setup guide →](docs/GETTING_STARTED.md)**
@@ -207,14 +233,19 @@ Exit  ├/──────────\─
 
 ## Project Status
 
-**Current Version:** v1.5.0
-**Platform:** ESP32-S3
+**Current Version:** v1.5.1-dev
+**Platform:** ESP32-S3 DevKitC-1, ESP32-S3 Super Mini
 **License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
 
 ### Recent Updates
 
-**v1.5.0 (Latest)**
+**v1.5.1-dev (In Development)**
+- ESP32-S3 Super Mini support (4MB flash variant)
+- Compact form factor with optimized pin mappings
+- Dual board support (DevKitC-1 and Super Mini)
+
+**v1.5.0**
 - Digital FPV Band Support - DJI, HDZero, WalkSnail (16 new bands)
 - Improved Lap Detection Algorithm - Minimizes false positives with enhanced signal processing
 - 5-stage RSSI filtering pipeline (Kalman, median, moving average, EMA, step limiter)

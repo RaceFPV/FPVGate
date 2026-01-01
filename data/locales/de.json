@@ -325,6 +325,7 @@
             },
             "sensitivity_tip": "Hohe Empfindlichkeit bietet bessere Schwachsignalerkennung. Verwende Normal bei Fehlauslösungen.",
             "appearance": "Aussehen",
+            "language": "Sprache:",
             "theme": "Thema:"
         },
         "integration": {

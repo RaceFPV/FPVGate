@@ -4,7 +4,7 @@
 #include <FS.h>
 
 Storage::Storage() : sdAvailable(false) {
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     spi = nullptr;
 #endif
 }
@@ -21,7 +21,7 @@ bool Storage::init() {
 bool Storage::initSDDeferred() {
     DEBUG("Attempting deferred SD card initialization...\n");
     
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         DEBUG("SD card already initialized\n");
         return true;
@@ -45,7 +45,7 @@ bool Storage::initSDDeferred() {
 #endif
 }
 
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
 bool Storage::initSD() {
     DEBUG("\n=== SD Card Initialization ===\n");
     DEBUG("Pin Configuration:\n");
@@ -117,7 +117,7 @@ bool Storage::initSD() {
 bool Storage::writeFile(const String& path, const String& data) {
     DEBUG("Storage: Writing to %s (%d bytes)\n", path.c_str(), data.length());
     
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         File file = SD.open(path, FILE_WRITE);
         if (!file) {
@@ -142,7 +142,7 @@ bool Storage::writeFile(const String& path, const String& data) {
 }
 
 bool Storage::readFile(const String& path, String& data) {
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         if (!SD.exists(path)) {
             return false;
@@ -173,7 +173,7 @@ bool Storage::readFile(const String& path, String& data) {
 }
 
 bool Storage::deleteFile(const String& path) {
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         return SD.remove(path);
     }
@@ -182,7 +182,7 @@ bool Storage::deleteFile(const String& path) {
 }
 
 bool Storage::exists(const String& path) {
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         return SD.exists(path);
     }
@@ -191,7 +191,7 @@ bool Storage::exists(const String& path) {
 }
 
 bool Storage::mkdir(const String& path) {
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         return SD.mkdir(path);
     }
@@ -202,7 +202,7 @@ bool Storage::mkdir(const String& path) {
 bool Storage::listDir(const String& path, std::vector<String>& files) {
     files.clear();
     
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         File root = SD.open(path);
         if (!root || !root.isDirectory()) {
@@ -237,7 +237,7 @@ bool Storage::listDir(const String& path, std::vector<String>& files) {
 }
 
 uint64_t Storage::getTotalBytes() {
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         return SD.cardSize();
     }
@@ -246,7 +246,7 @@ uint64_t Storage::getTotalBytes() {
 }
 
 uint64_t Storage::getUsedBytes() {
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
     if (sdAvailable) {
         return SD.usedBytes();
     }

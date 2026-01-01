@@ -21,7 +21,7 @@
 
 */
 
-//ESP23-C3
+//ESP32-C3
 #if defined(ESP32C3)
 
 #define PIN_LED 1
@@ -35,8 +35,34 @@
 #define PIN_BUZZER 5
 #define BUZZER_INVERTED false
 #define PIN_MODE_SWITCH 1     // Mode selection: LOW=WiFi, HIGH=RotorHazard
+// SD Card SPI pins
+#define PIN_SD_CS 8
+#define PIN_SD_SCK 2
+#define PIN_SD_MOSI 10
+#define PIN_SD_MISO 9
 
-//ESP32-S3
+//ESP32-S3 Super Mini
+#elif defined(ESP32S3_SUPERMINI)
+
+#define PIN_LED 1
+#define PIN_RGB_LED 48         // WS2812 RGB LED (optional)
+#define PIN_VBAT 0
+#define VBAT_SCALE 2
+#define VBAT_ADD 2
+#define PIN_RX5808_RSSI 3      // RSSI on Pin 3
+#define PIN_RX5808_DATA 6      // CH1 on Pin 6
+#define PIN_RX5808_SELECT 7    // CH2 on Pin 7
+#define PIN_RX5808_CLOCK 4     // CH3 on Pin 4
+#define PIN_BUZZER 5
+#define BUZZER_INVERTED false
+#define PIN_MODE_SWITCH 1      // Mode selection: LOW=WiFi, HIGH=RotorHazard
+// SD Card SPI pins
+#define PIN_SD_CS 8
+#define PIN_SD_SCK 2
+#define PIN_SD_MOSI 10
+#define PIN_SD_MISO 9
+
+//ESP32-S3 DevKitC
 #elif defined(ESP32S3)
 
 #define PIN_LED 2

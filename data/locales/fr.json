@@ -325,6 +325,7 @@
             },
             "sensitivity_tip": "Sensibilité élevée offre meilleure détection signal faible. Utilisez Normal si déclenchements intempestifs.",
             "appearance": "Apparence",
+            "language": "Langue:",
             "theme": "Thème:"
         },
         "integration": {

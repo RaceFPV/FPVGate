@@ -28,13 +28,6 @@
               <div class="connection-details" id="connectionDetails" data-i18n="conn.loading">Loading...</div>
             </div>
           </div>
-          <select id="languageSelector" class="lang-selector">
-            <option value="en">English</option>
-            <option value="fr">Français</option>
-            <option value="es">Español</option>
-            <option value="de">Deutsch</option>
-            <option value="zh-CN">简体中文</option>
-          </select>
         </div>
       </nav>
       <ul class="nav-links">
@@ -783,6 +776,17 @@
               <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.system.sensitivity_tip">High sensitivity provides better weak signal detection. Use Normal if experiencing false triggers.</div>
 
               <h3 data-i18n="settings.system.appearance">Appearance</h3>
+              <div class="config-item">
+                <label for="languageSelector">Language:</label>
+                <select id="languageSelector" class="lang-selector">
+                  <option value="en">English</option>
+                  <option value="fr">Français</option>
+                  <option value="es">Español</option>
+                  <option value="de">Deutsch</option>
+                  <option value="zh-CN">简体中文</option>
+                </select>
+              </div>
+
               <div class="config-item">
                 <label for="themeSelect" data-i18n="settings.system.theme">Theme:</label>
                 <select id="themeSelect" onchange="changeTheme()">
