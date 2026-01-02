@@ -1028,7 +1028,7 @@ function addLap(lapStr) {
       break;
     case "1lap":
       if (lapNo == 0) {
-        queueSpeak(`<p>${i18n.t("tts.gate1", { n: lapStr })}</p>`);
+        queueSpeak(`<p>${i18n.t("settings.tts.gate1", { n: lapStr })}</p>`);
       } else {
         let text;
         switch (lapFormat) {
@@ -1078,7 +1078,7 @@ function addLap(lapStr) {
     setTimeout(function () {
       if (!stopRaceButton.disabled) {
         stopRace();
-        queueSpeak(`<p>${i18n.t("tts.race_complete")}</p>`);
+        queueSpeak(`<p>${i18n.t("settings.tts.race_complete")}</p>`);
       }
     }, 500); // Small delay to allow lap announcement
   }
@@ -1521,8 +1521,8 @@ async function startRace() {
   }
 
   // Queue both announcements
-  queueSpeak(`<p>${i18n.t("tts.arm_quad")}</p>`);
-  queueSpeak(`<p>${i18n.t("tts.starting_soon")}</p>`);
+  queueSpeak(`<p>${i18n.t("settings.tts.arm_quad")}</p>`);
+  queueSpeak(`<p>${i18n.t("settings.tts.starting_soon")}</p>`);
 
   // Wait for announcements to finish playing
   while (audioAnnouncer.isSpeaking() || audioAnnouncer.audioQueue.length > 0) {
@@ -1562,7 +1562,7 @@ function stopRace() {
   if (audioAnnouncer) {
     audioAnnouncer.clearQueue();
   }
-  queueSpeak(`<p>${i18n.t("tts.race_stopped")}</p>`);
+  queueSpeak(`<p>${i18n.t("settings.tts.race_stopped")}</p>`);
   clearInterval(timerInterval);
   timer.innerHTML = i18n.t("race.timer_default");
 
