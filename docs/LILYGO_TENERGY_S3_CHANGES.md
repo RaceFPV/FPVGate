@@ -14,6 +14,7 @@ The LilyGO T-Energy S3 pinout has been **updated to match the ESP32-S3 DevKitC**
 | **LED** | 2 | Changed from GPIO 15 → GPIO 2 |
 | **RGB LED** | 48 | No change |
 | **Buzzer** | 5 | Changed from GPIO 8 → GPIO 5 |
+| **RX5808 RSSI** | 4 | No change (SAME as DevKitC) |
 | **RX5808 CH1 (DATA)** | 10 | Changed from GPIO 5 → GPIO 10 |
 | **RX5808 CH2 (SELECT)** | 11 | Changed from GPIO 6 → GPIO 11 |
 | **RX5808 CH3 (CLOCK)** | 12 | Changed from GPIO 7 → GPIO 12 |
@@ -27,8 +28,7 @@ The LilyGO T-Energy S3 pinout has been **updated to match the ESP32-S3 DevKitC**
 
 | Component | T-Energy S3 | DevKitC | Reason |
 |-----------|-------------|---------|--------|
-| **Battery Voltage** | GPIO 4 | GPIO 1 | T-Energy has built-in voltage divider on GPIO 4 |
-| **RX5808 RSSI** | GPIO 1 | GPIO 4 | Moved to GPIO 1 because GPIO 4 is used by battery |
+| **Battery Voltage** | GPIO 3 | GPIO 1 | T-Energy has built-in voltage divider on GPIO 3 |
 
 ---
 
@@ -38,11 +38,11 @@ The LilyGO T-Energy S3 pinout has been **updated to match the ESP32-S3 DevKitC**
 ```
 LED:           GPIO 15
 Buzzer:        GPIO 8
-RX5808 RSSI:   GPIO 1
+RX5808 RSSI:   GPIO 4
 RX5808 DATA:   GPIO 5
 RX5808 SELECT: GPIO 6
 RX5808 CLOCK:  GPIO 7
-Battery:       GPIO 4 (hardwired)
+Battery:       GPIO 3 (hardwired)
 SD CS:         GPIO 10
 SD SCK:        GPIO 12
 SD MOSI:       GPIO 11
@@ -53,11 +53,11 @@ SD MISO:       GPIO 13
 ```
 LED:           GPIO 2  SAME as DevKitC
 Buzzer:        GPIO 5  SAME as DevKitC
-RX5808 RSSI:   GPIO 1  DIFFERENT: GPIO 4 used by battery
+RX5808 RSSI:   GPIO 4  SAME as DevKitC
 RX5808 DATA:   GPIO 10 SAME as DevKitC
 RX5808 SELECT: GPIO 11 SAME as DevKitC
 RX5808 CLOCK:  GPIO 12 SAME as DevKitC
-Battery:       GPIO 4  DIFFERENT: T-Energy hardwired
+Battery:       GPIO 3  DIFFERENT: T-Energy hardwired
 SD CS:         GPIO 39 SAME as DevKitC
 SD SCK:        GPIO 36 SAME as DevKitC
 SD MOSI:       GPIO 35 SAME as DevKitC
@@ -69,12 +69,12 @@ SD MISO:       GPIO 37 SAME as DevKitC
 ## For Users Who Already Wired to DevKitC Pinout
 
 ### What Stays the Same
-If you wired your T-Energy S3 according to the DevKitC pinout, **you only need to rewire 1 pin**:
+If you wired your T-Energy S3 according to the DevKitC pinout, **NO rewiring needed!**
 
-- **RX5808 RSSI**: Move from GPIO 4 → GPIO 1
+All pins match DevKitC exactly. GPIO 3 is hardwired to battery on the T-Energy board.
 
-### Why This Change?
-GPIO 4 on the T-Energy S3 is **hardwired** to the battery voltage divider circuit on the board. You cannot use it for anything else. Therefore, RSSI had to be moved to GPIO 1.
+### Why GPIO 3?
+GPIO 3 on the T-Energy S3 is **hardwired** to the battery voltage divider circuit on the board. You cannot use it for anything else.
 
 ### Battery Monitoring
 - **GPIO 4** is automatically connected to the battery (built-in on the board)
@@ -89,7 +89,7 @@ GPIO 4 on the T-Energy S3 is **hardwired** to the battery voltage divider circui
 
 | DevKitC Wiring | T-Energy S3 Wiring | Change? |
 |----------------|-------------------|---------|
-| RSSI → GPIO 4 | RSSI → GPIO 1 | MOVE TO GPIO 1 |
+| RSSI → GPIO 4 | RSSI → GPIO 4 | Same |
 | CH1 → GPIO 10 | CH1 → GPIO 10 | Same |
 | CH2 → GPIO 11 | CH2 → GPIO 11 | Same |
 | CH3 → GPIO 12 | CH3 → GPIO 12 | Same |
@@ -99,13 +99,13 @@ GPIO 4 on the T-Energy S3 is **hardwired** to the battery voltage divider circui
 | SD SCK → GPIO 36 | SD SCK → GPIO 36 | Same |
 | SD MOSI → GPIO 35 | SD MOSI → GPIO 35 | Same |
 | SD MISO → GPIO 37 | SD MISO → GPIO 37 | Same |
-| Battery → GPIO 1 (external) | Battery → GPIO 4 (built-in) | No wire needed |
+| Battery → GPIO 1 (external) | Battery → GPIO 3 (built-in) | No wire needed |
 
 ---
 
 ## Benefits
 
-1. **Minimal rewiring**: Only 1 wire needs to be moved (RSSI from GPIO 4 → GPIO 1)
+1. **No rewiring needed**: All GPIO pins match DevKitC exactly
 2. **Built-in battery monitoring**: GPIO 4 automatically reads battery voltage
 3. **Standard pinout**: Matches DevKitC for easier documentation and troubleshooting
 4. **Hardware SPI**: Uses same SPI pins as DevKitC for SD card

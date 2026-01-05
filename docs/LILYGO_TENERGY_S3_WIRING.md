@@ -38,11 +38,11 @@ The LilyGO T-Energy S3 is an ESP32-S3 development board with built-in battery ma
 
 | Component | GPIO | Function | Notes |
 |-----------|------|----------|-------|
-| **RX5808 RSSI** | 1 | Analog input | DIFFERENT: GPIO 1 (GPIO 4 used by battery) |
+| **RX5808 RSSI** | 4 | Analog input | SAME as DevKitC |
 | **RX5808 CH1 (DATA)** | 10 | SPI data | Same as DevKitC |
 | **RX5808 CH2 (SELECT)** | 11 | SPI chip select | Same as DevKitC |
 | **RX5808 CH3 (CLOCK)** | 12 | SPI clock | Same as DevKitC |
-| **Battery Voltage** | 4 | Analog input | DIFFERENT: Built-in divider (DO NOT CHANGE) |
+| **Battery Voltage** | 3 | Analog input | DIFFERENT: Built-in divider (DO NOT CHANGE) |
 | **Buzzer** | 5 | PWM output | Same as DevKitC |
 | **SD Card CS** | 39 | SPI chip select | Same as DevKitC |
 | **SD Card MOSI** | 35 | SPI data out | Same as DevKitC |
@@ -68,11 +68,11 @@ The LilyGO T-Energy S3 is an ESP32-S3 development board with built-in battery ma
 LilyGO T-Energy S3    RX5808         SD Card Module
 ┌─────────────────┐
 │                 │
-│  GPIO1  ────────┼────── RSSI (GPIO 4 used by battery)
+│  GPIO4  ────────┼────── RSSI (SAME as DevKitC)
 │  GPIO10 ────────┼────── CH1 (DATA)
 │  GPIO11 ────────┼────── CH2 (SELECT)
 │  GPIO12 ────────┼────── CH3 (CLOCK)
-│  GPIO4  ────────┼────── (Battery - DO NOT CONNECT)
+│  GPIO3  ────────┼────── (Battery - DO NOT CONNECT)
 │  GPIO5  ────────┼────── Buzzer (+)
 │  GPIO39 ────────┼──────────────────── CS
 │  GPIO35 ────────┼──────────────────── MOSI
@@ -101,7 +101,7 @@ RX5808 Pin    →    T-Energy S3
 ─────────────────────────────
 VCC (+5V)     →    5V
 GND           →    GND
-RSSI          →    GPIO 1 (DIFFERENT from DevKitC GPIO 4)
+RSSI          →    GPIO 4 (SAME as DevKitC)
 SPI_DATA      →    GPIO 10 (SAME as DevKitC)
 SPI_SEL       →    GPIO 11 (SAME as DevKitC)
 SPI_CLK       →    GPIO 12 (SAME as DevKitC)

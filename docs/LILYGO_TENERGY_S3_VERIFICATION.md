@@ -14,7 +14,7 @@
 
 | Signal | GPIO | ESP32-S3 DevKitC | Match? | Notes |
 |--------|------|------------------|--------|-------|
-| RSSI | 1 | GPIO 4 | NO | DIFFERENT: Moved to GPIO 1 (GPIO 4 used by battery) |
+| RSSI | 4 | GPIO 4 | YES | SAME as DevKitC |
 | CH1 (DATA) | 10 | GPIO 10 | YES | SAME as DevKitC |
 | CH2 (SELECT) | 11 | GPIO 11 | YES | SAME as DevKitC |
 | CH3 (CLOCK) | 12 | GPIO 12 | YES | SAME as DevKitC |
@@ -36,7 +36,7 @@
 | RGB LED (WS2812) | 48 | GPIO 48 | YES | SAME as DevKitC |
 | Buzzer | 5 | GPIO 5 | YES | SAME as DevKitC |
 | Mode Switch | 9 | GPIO 9 | YES | SAME as DevKitC |
-| Battery Voltage | 4 | GPIO 1 | NO | DIFFERENT: T-Energy has built-in divider on GPIO 4 |
+| Battery Voltage | 3 | GPIO 1 | NO | DIFFERENT: T-Energy has built-in divider on GPIO 3 |
 
 ---
 
@@ -44,25 +44,24 @@
 
 ### Battery Monitoring
 ```c
-#define PIN_VBAT 4              // T-Energy built-in voltage divider
+#define PIN_VBAT 3              // T-Energy built-in voltage divider
 #define VBAT_SCALE 2            // 2:1 voltage divider (100K/100K)
 #define VBAT_ADD 0              // Calibration offset (adjust if needed)
 ```
 
 ### Key Differences from DevKitC
-1. **RX5808 RSSI**: GPIO 1 (instead of GPIO 4)
-2. **Battery Voltage**: GPIO 4 (instead of GPIO 1)
+1. **Battery Voltage**: GPIO 3 (instead of GPIO 1)
 
-**Reason:** GPIO 4 on T-Energy S3 is hardwired to battery voltage divider circuit
+**Reason:** GPIO 3 on T-Energy S3 is hardwired to battery voltage divider circuit
 
 ---
 
 ## Pin Availability Check
 
 ### Used Pins (T-Energy S3)
-- GPIO 1: RX5808 RSSI
 - GPIO 2: LED
-- GPIO 4: Battery (hardwired on board)
+- GPIO 3: Battery (hardwired on board)
+- GPIO 4: RX5808 RSSI
 - GPIO 5: Buzzer
 - GPIO 9: Mode Switch
 - GPIO 10: RX5808 CH1
@@ -88,15 +87,12 @@
 ## Hardware Compatibility
 
 ### Compatible with ESP32-S3 DevKitC Wiring?
-**YES - 90% compatible**
+**YES - 100% compatible**
 
-Only 1 wire needs to be moved:
-- **RX5808 RSSI**: From GPIO 4 → GPIO 1
-
-All other connections remain the same.
+All GPIO pins match DevKitC exactly. No rewiring needed.
 
 ### Battery Monitoring
-- **Automatic**: GPIO 4 is connected to battery on the T-Energy board
+- **Automatic**: GPIO 3 is connected to battery on the T-Energy board
 - **No external wiring needed**: Built-in voltage divider
 - **Voltage range**: 3.0V - 4.2V (LiPo battery)
 - **Web interface**: Displays real-time voltage in System Settings
@@ -124,13 +120,13 @@ pio run -e LilyGOTEnergyS3 -t uploadfs
 ## Verification Checklist
 
 ### Before Flashing
-- [ ] RX5808 RSSI connected to GPIO 1 (NOT GPIO 4)
+- [ ] RX5808 RSSI connected to GPIO 4
 - [ ] RX5808 CH1/CH2/CH3 connected to GPIO 10/11/12
 - [ ] SD Card connected to GPIO 39/35/36/37
 - [ ] LED connected to GPIO 2
 - [ ] Buzzer connected to GPIO 5
 - [ ] Battery plugged into T-Energy battery connector
-- [ ] GPIO 4 left unconnected (hardwired to battery)
+- [ ] GPIO 3 left unconnected (hardwired to battery)
 
 ### After Flashing
 - [ ] Device boots successfully
@@ -148,10 +144,10 @@ pio run -e LilyGOTEnergyS3 -t uploadfs
 1. Check battery is connected to T-Energy battery connector
 2. Verify battery voltage with multimeter (should be 3.0V-4.2V)
 3. Adjust `VBAT_ADD` in `config.h` if consistently off
-4. Ensure GPIO 4 is NOT connected to anything external
+4. Ensure GPIO 3 is NOT connected to anything external
 
 ### RSSI Always 0
-1. Verify RX5808 RSSI wire is on GPIO 1 (NOT GPIO 4)
+1. Verify RX5808 RSSI wire is on GPIO 4
 2. Check RX5808 has 5V power
 3. Verify RX5808 SPI mod (R16 bridge) is done
 4. Run self-test in web interface
@@ -166,9 +162,9 @@ pio run -e LilyGOTEnergyS3 -t uploadfs
 
 ## Summary
 
-The LilyGO T-Energy S3 configuration is **correct** and ready for use. The pinout matches the ESP32-S3 DevKitC standard except for:
+The LilyGO T-Energy S3 configuration is **correct** and ready for use. The pinout matches the ESP32-S3 DevKitC standard exactly:
 
-1. **RX5808 RSSI on GPIO 1** (instead of GPIO 4)
-2. **Battery voltage on GPIO 4** (T-Energy built-in)
+1. **All RX5808 pins match DevKitC** (RSSI=GPIO4, CH1/2/3=GPIO10/11/12)
+2. **Battery voltage on GPIO 3** (T-Energy built-in, hardware specific)
 
-Users who wired to DevKitC pinout only need to move one wire (RSSI) to use the T-Energy S3.
+Users who wired to DevKitC pinout need NO rewiring - it's 100% compatible!
