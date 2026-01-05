@@ -69,7 +69,7 @@
 #define PIN_RGB_LED 48         // SAME AS DEVKITC: WS2812 RGB LED
 #define PIN_VBAT 3             // DIFFERENT: Battery voltage sense (T-Energy built-in divider on GPIO 3)
 #define VBAT_SCALE 2           // 2:1 voltage divider (100K/100K)
-#define VBAT_ADD 0             // Calibration offset (adjust if needed)
+#define VBAT_ADD 2             // Calibration offset
 #define PIN_RX5808_RSSI 4      // SAME AS DEVKITC: RSSI on GPIO 4
 #define PIN_RX5808_DATA 10     // SAME AS DEVKITC: CH1 on Pin 10
 #define PIN_RX5808_SELECT 11   // SAME AS DEVKITC: CH2 on Pin 11

@@ -4,7 +4,7 @@
 #include <FS.h>
 
 Storage::Storage() : sdAvailable(false) {
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     spi = nullptr;
 #endif
 }
@@ -21,7 +21,7 @@ bool Storage::init() {
 bool Storage::initSDDeferred() {
     DEBUG("Attempting deferred SD card initialization...\n");
     
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         DEBUG("SD card already initialized\n");
         return true;
@@ -45,7 +45,7 @@ bool Storage::initSDDeferred() {
 #endif
 }
 
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
 bool Storage::initSD() {
     DEBUG("\n=== SD Card Initialization ===\n");
     DEBUG("Pin Configuration:\n");
@@ -117,7 +117,7 @@ bool Storage::initSD() {
 bool Storage::writeFile(const String& path, const String& data) {
     DEBUG("Storage: Writing to %s (%d bytes)\n", path.c_str(), data.length());
     
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         File file = SD.open(path, FILE_WRITE);
         if (!file) {
@@ -142,7 +142,7 @@ bool Storage::writeFile(const String& path, const String& data) {
 }
 
 bool Storage::readFile(const String& path, String& data) {
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         if (!SD.exists(path)) {
             return false;
@@ -173,7 +173,7 @@ bool Storage::readFile(const String& path, String& data) {
 }
 
 bool Storage::deleteFile(const String& path) {
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         return SD.remove(path);
     }
@@ -182,7 +182,7 @@ bool Storage::deleteFile(const String& path) {
 }
 
 bool Storage::exists(const String& path) {
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         return SD.exists(path);
     }
@@ -191,7 +191,7 @@ bool Storage::exists(const String& path) {
 }
 
 bool Storage::mkdir(const String& path) {
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         return SD.mkdir(path);
     }
