@@ -3,8 +3,9 @@
 
 #include <Arduino.h>
 #include <vector>
+#include "config.h"
 
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
+#ifdef HAS_SD_CARD_SUPPORT
 #include <SD.h>
 #include <SPI.h>
 #endif
@@ -39,7 +40,7 @@ class Storage {
    private:
     bool sdAvailable;
     
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
+#ifdef HAS_SD_CARD_SUPPORT
     bool initSD();
     SPIClass* spi;
 #endif

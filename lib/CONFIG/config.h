@@ -121,6 +121,27 @@
 
 #endif
 
+// ====================================================================
+// Centralized Platform Feature Defines
+// Add new board defines here to automatically enable features across the codebase
+// ====================================================================
+
+// ESP32-S3 family boards (SD card support, SPI, USB CDC)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
+    #define HAS_SD_CARD_SUPPORT 1
+    #define HAS_SPI_CLASS 1
+#endif
+
+// ESP32-S3 boards with RGB LED
+#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
+    #define HAS_RGB_LED 1
+#endif
+
+// Boards with built-in battery monitoring
+#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+    #define HAS_BATTERY_MONITOR 1
+#endif
+
 // Mode selection constants
 #define WIFI_MODE LOW          // GND on switch pin = WiFi/Standalone mode
 #define ROTORHAZARD_MODE HIGH  // HIGH (floating/pullup) = RotorHazard node mode

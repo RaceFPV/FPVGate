@@ -1,4 +1,6 @@
-#ifdef ESP32S3
+#include "config.h"
+
+#ifdef HAS_RGB_LED
 
 #include "rgbled.h"
 #include "debug.h"

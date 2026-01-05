@@ -1,6 +1,8 @@
 #pragma once
 
-#ifdef ESP32S3
+#include "config.h"
+
+#ifdef HAS_RGB_LED
 
 #include <Arduino.h>
 #include <FastLED.h>
@@ -159,4 +161,4 @@ class RgbLed {
     void restoreSavedState();
 };
 
-#endif // ESP32S3
+#endif // HAS_RGB_LED

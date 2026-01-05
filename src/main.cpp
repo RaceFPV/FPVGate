@@ -10,7 +10,7 @@
 #include "webhook.h"
 // DISABLED FOR NOW: #include "nodemode.h"  // Uncomment to re-enable RotorHazard support
 #include <ElegantOTA.h>
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
 #include "rgbled.h"
 #endif
 
@@ -56,14 +56,14 @@ static Led led;
 static RaceHistory raceHistory;
 static TrackManager trackManager;
 static WebhookManager webhookManager;
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
 static RgbLed rgbLed;
 RgbLed* g_rgbLed = &rgbLed;
 #else
 void* g_rgbLed = nullptr;
 #endif
 static LapTimer timer;
-#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+#ifdef HAS_BATTERY_MONITOR
 static BatteryMonitor monitor;  // Enabled for T-Energy S3 or testing
 #endif
 
@@ -75,14 +75,14 @@ static void parallelTask(void *pvArgs) {
         uint32_t currentTimeMs = millis();
         buzzer.handleBuzzer(currentTimeMs);
         led.handleLed(currentTimeMs);
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
         rgbLed.handleRgbLed(currentTimeMs);
 #endif
         ws.handleWebUpdate(currentTimeMs);
         usbTransport.update(currentTimeMs);
         config.handleEeprom(currentTimeMs);
         rx.handleFrequencyChange(currentTimeMs, config.getFrequency());
-#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+#ifdef HAS_BATTERY_MONITOR
         monitor.checkBatteryState(currentTimeMs, config.getAlarmThreshold());
 #endif
         buzzer.handleBuzzer(currentTimeMs);
@@ -162,7 +162,7 @@ void setup() {
     rx.init();
     buzzer.init(PIN_BUZZER, BUZZER_INVERTED);
     led.init(PIN_LED, false);
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
     rgbLed.init();
     // Apply saved LED configuration from config
     rgbLed.setBrightness(config.getLedBrightness());
@@ -175,7 +175,7 @@ void setup() {
     rgbLed.setPreset((led_preset_e)config.getLedPreset());
 #endif
     timer.init(&config, &rx, &buzzer, &led, &webhookManager);
-#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+#ifdef HAS_BATTERY_MONITOR
     // Initialize battery monitoring (T-Energy S3 or test mode)
     monitor.init(PIN_VBAT, VBAT_SCALE, VBAT_ADD, &buzzer, &led);
     DEBUG("Battery monitoring initialized on GPIO%d (scale=%d, add=%d)\n", PIN_VBAT, VBAT_SCALE, VBAT_ADD);
