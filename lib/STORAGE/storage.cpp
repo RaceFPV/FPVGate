@@ -202,7 +202,7 @@ bool Storage::mkdir(const String& path) {
 bool Storage::listDir(const String& path, std::vector<String>& files) {
     files.clear();
     
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         File root = SD.open(path);
         if (!root || !root.isDirectory()) {
@@ -237,7 +237,7 @@ bool Storage::listDir(const String& path, std::vector<String>& files) {
 }
 
 uint64_t Storage::getTotalBytes() {
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         return SD.cardSize();
     }
@@ -246,7 +246,7 @@ uint64_t Storage::getTotalBytes() {
 }
 
 uint64_t Storage::getUsedBytes() {
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (sdAvailable) {
         return SD.usedBytes();
     }
@@ -259,7 +259,7 @@ uint64_t Storage::getFreeBytes() {
 }
 
 bool Storage::migrateSoundsToSD() {
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
     if (!sdAvailable) {
         DEBUG("SD card not available, cannot migrate sounds\n");
         return false;
@@ -323,7 +323,7 @@ bool Storage::copyDirectory(const String& srcPath, const String& dstPath, bool d
             DEBUG("  Copying: %s -> %s", fileName.c_str(), dstFilePath.c_str());
             
             // Open destination file on SD
-#ifdef ESP32S3
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
             File dstFile = SD.open(dstFilePath, FILE_WRITE);
             if (!dstFile) {
                 DEBUG(" [FAIL - can't open dest]\n");
