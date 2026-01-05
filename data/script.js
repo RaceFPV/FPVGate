@@ -605,19 +605,22 @@ onload = async function (e) {
 
 async function getBatteryVoltage() {
   try {
-    let response;
+    let batteryVoltage = null;
     if (usbConnected && transportManager) {
-      const data = await transportManager.sendCommand("status", "GET");
-      response = JSON.stringify(data);
+      const data = await transportManager.sendCommand("config", "GET");
+      if (data && data.batteryVoltage !== undefined) {
+        batteryVoltage = data.batteryVoltage.toFixed(1) + "V";
+      }
     } else {
-      const resp = await fetch("/status");
-      response = await resp.text();
+      const resp = await fetch("/config");
+      const config = await resp.json();
+      if (config && config.batteryVoltage !== undefined) {
+        batteryVoltage = config.batteryVoltage.toFixed(1) + "V";
+      }
     }
 
-    const batteryVoltageMatch = response.match(/Battery Voltage:\s*([\d.]+v)/);
-    const batteryVoltage = batteryVoltageMatch ? batteryVoltageMatch[1] : null;
     if (batteryVoltageDisplay) {
-      batteryVoltageDisplay.innerText = batteryVoltage;
+      batteryVoltageDisplay.innerText = batteryVoltage || "--";
     }
   } catch (err) {
     console.error("Failed to get battery voltage:", err);

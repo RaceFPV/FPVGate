@@ -63,8 +63,9 @@ RgbLed* g_rgbLed = &rgbLed;
 void* g_rgbLed = nullptr;
 #endif
 static LapTimer timer;
-// Battery monitoring removed - legacy feature no longer used
-// static BatteryMonitor monitor;
+#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+static BatteryMonitor monitor;  // Enabled for T-Energy S3 or testing
+#endif
 
 static TaskHandle_t xTimerTask = NULL;
 static bool sdInitAttempted = false;
@@ -81,8 +82,9 @@ static void parallelTask(void *pvArgs) {
         usbTransport.update(currentTimeMs);
         config.handleEeprom(currentTimeMs);
         rx.handleFrequencyChange(currentTimeMs, config.getFrequency());
-        // Battery monitoring removed
-        // monitor.checkBatteryState(currentTimeMs, config.getAlarmThreshold());
+#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+        monitor.checkBatteryState(currentTimeMs, config.getAlarmThreshold());
+#endif
         buzzer.handleBuzzer(currentTimeMs);
         led.handleLed(currentTimeMs);
     }
@@ -146,7 +148,11 @@ void setup() {
     // Suppress VFS file-not-found errors (reduces spam from API endpoint checks)
     esp_log_level_set("vfs_api", ESP_LOG_NONE);
     
-#ifdef ESP32S3
+#ifdef LILYGO_TENERGY_S3
+        DEBUG("LilyGO T-Energy S3 build detected - WiFi Mode (Battery monitoring enabled)\n");
+#elif defined(ESP32S3) && defined(ENABLE_BATTERY_TEST)
+        DEBUG("ESP32S3 DevKitC build - WiFi Mode (Battery TEST MODE enabled on GPIO%d)\n", PIN_VBAT);
+#elif defined(ESP32S3)
         DEBUG("ESP32S3 build detected - WiFi Mode\n");
 #else
         DEBUG("Generic ESP32 build - WiFi Mode\n");
@@ -169,8 +175,11 @@ void setup() {
     rgbLed.setPreset((led_preset_e)config.getLedPreset());
 #endif
     timer.init(&config, &rx, &buzzer, &led, &webhookManager);
-    // Battery monitoring removed
-    // monitor.init(PIN_VBAT, VBAT_SCALE, VBAT_ADD, &buzzer, &led);
+#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+    // Initialize battery monitoring (T-Energy S3 or test mode)
+    monitor.init(PIN_VBAT, VBAT_SCALE, VBAT_ADD, &buzzer, &led);
+    DEBUG("Battery monitoring initialized on GPIO%d (scale=%d, add=%d)\n", PIN_VBAT, VBAT_SCALE, VBAT_ADD);
+#endif
     
     // WiFi mode initialization (RotorHazard mode disabled)
     selfTest.init(&storage);
@@ -209,10 +218,18 @@ void setup() {
         }
     }
     
+#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+    ws.init(&config, &timer, &monitor, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager, &webhookManager);
+#else
     ws.init(&config, &timer, nullptr, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager, &webhookManager);
+#endif
     
     // Initialize USB transport
+#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+    usbTransport.init(&config, &timer, &monitor, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager);
+#else
     usbTransport.init(&config, &timer, nullptr, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager);
+#endif
     
     // Register transports with TransportManager
     transportManager.addTransport(&ws);

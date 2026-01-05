@@ -62,14 +62,35 @@
 #define PIN_SD_MOSI 10
 #define PIN_SD_MISO 9
 
+//LilyGO T-Energy S3
+#elif defined(LILYGO_TENERGY_S3)
+
+#define PIN_LED 2              // SAME AS DEVKITC: External LED on GPIO 2
+#define PIN_RGB_LED 48         // SAME AS DEVKITC: WS2812 RGB LED
+#define PIN_VBAT 4             // DIFFERENT: Battery voltage sense (T-Energy built-in divider on GPIO 4)
+#define VBAT_SCALE 2           // 2:1 voltage divider (100K/100K)
+#define VBAT_ADD 0             // Calibration offset (adjust if needed)
+#define PIN_RX5808_RSSI 1      // DIFFERENT: RSSI on GPIO 1 (GPIO 4 used by battery)
+#define PIN_RX5808_DATA 10     // SAME AS DEVKITC: CH1 on Pin 10
+#define PIN_RX5808_SELECT 11   // SAME AS DEVKITC: CH2 on Pin 11
+#define PIN_RX5808_CLOCK 12    // SAME AS DEVKITC: CH3 on Pin 12
+#define PIN_BUZZER 5           // SAME AS DEVKITC: Buzzer on Pin 5
+#define BUZZER_INVERTED false
+#define PIN_MODE_SWITCH 9      // SAME AS DEVKITC: Mode selection
+// SD Card SPI pins (SAME AS DEVKITC)
+#define PIN_SD_CS 39           // SAME AS DEVKITC
+#define PIN_SD_SCK 36          // SAME AS DEVKITC
+#define PIN_SD_MOSI 35         // SAME AS DEVKITC
+#define PIN_SD_MISO 37         // SAME AS DEVKITC
+
 //ESP32-S3 DevKitC
 #elif defined(ESP32S3)
 
 #define PIN_LED 2
 #define PIN_RGB_LED 48         // WS2812 RGB LED on ESP32-S3-DevKitC-1
-#define PIN_VBAT 1
-#define VBAT_SCALE 2
-#define VBAT_ADD 2
+#define PIN_VBAT 1             // Battery voltage test pin (connect 3.0-4.2V via voltage divider)
+#define VBAT_SCALE 2           // 2:1 voltage divider (adjust based on your divider)
+#define VBAT_ADD 2             // Calibration offset: +0.2V correction
 #define PIN_RX5808_RSSI 4      // RSSI on Pin 4 (GPIO3 is a strapping pin - causes boot issues!)
 #define PIN_RX5808_DATA 10     // CH1 on Pin 10
 #define PIN_RX5808_SELECT 11   // CH2 on Pin 11
@@ -151,13 +172,14 @@ typedef struct {
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
+class BatteryMonitor;  // Forward declaration
 
 class Config {
    public:
     void init();
     void load();
     void write();
-    void toJson(AsyncResponseStream& destination);
+    void toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMonitor = nullptr);
     void toJsonString(char* buf);
     void fromJson(JsonObject source);
     void handleEeprom(uint32_t currentTimeMs);

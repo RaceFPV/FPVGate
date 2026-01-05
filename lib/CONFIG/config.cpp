@@ -5,6 +5,7 @@
 
 #include "debug.h"
 #include "storage.h"
+#include "battery.h"
 
 #ifdef ESP32S3
 #include <SD.h>
@@ -74,7 +75,7 @@ void Config::write(void) {
     modified = false;
 }
 
-void Config::toJson(AsyncResponseStream& destination) {
+void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMonitor) {
     // Use https://arduinojson.org/v6/assistant to estimate memory
     DynamicJsonDocument config(512);
     config["freq"] = conf.frequency;
@@ -115,6 +116,14 @@ void Config::toJson(AsyncResponseStream& destination) {
     config["lapFormat"] = conf.lapFormat;
     config["ssid"] = conf.ssid;
     config["pwd"] = conf.password;
+    
+    // Add battery voltage if monitor exists
+    if (batteryMonitor) {
+        uint8_t batteryVoltage = batteryMonitor->getBatteryVoltage();
+        float voltage = batteryVoltage / 10.0f;
+        config["batteryVoltage"] = voltage;
+    }
+    
     serializeJson(config, destination);
 }
 

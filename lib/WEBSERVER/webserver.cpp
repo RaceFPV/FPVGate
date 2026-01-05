@@ -524,7 +524,7 @@ EEPROM:\n\
 
     server.on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
         AsyncResponseStream *response = request->beginResponseStream("application/json");
-        conf->toJson(*response);
+        conf->toJson(*response, monitor);
         request->send(response);
         led->on(200);
     });
