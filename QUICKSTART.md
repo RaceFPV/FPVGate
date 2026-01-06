@@ -133,7 +133,7 @@ GND      ────── GND
    - Password: `fpvgate1`
 
 4. **Open web interface**:
-   - Go to: `http://www.fpvgate.xyz` or `http://192.168.4.1`
+   - Go to: `http://fpvgate.local` or `http://192.168.4.1`
 
 4. **Configure your settings** (Configuration tab):
    - Set your **Band & Channel** to match your VTx (default: RaceBand 8)
@@ -161,7 +161,7 @@ GND      ────── GND
 ## Default Settings
 
 - **WiFi**: `FPVGate_XXXX` / `fpvgate1`
-- **Web Address**: `http://www.fpvgate.xyz` or `http://192.168.4.1`
+- **Web Address**: `http://fpvgate.local` or `http://192.168.4.1`
 - **Default Channel**: RaceBand 8 (5917 MHz)
 - **Minimum Lap Time**: 5 seconds
 - **Lap Count**: Infinite (0)
@@ -206,3 +206,4 @@ GND      ────── GND
 ---
 
 **Happy Flying! 🚁**
+

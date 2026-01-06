@@ -242,11 +242,11 @@ static String toStringIp(IPAddress ip) {
 static bool captivePortal(AsyncWebServerRequest *request) {
     extern const char *wifi_hostname;
 
-    // Allow fpvgate.xyz, IP addresses, and hostname.local without redirecting
+    // Allow fpvgate.local, IP addresses, and hostname.local without redirecting
     if (!isIp(request->host()) && 
         request->host() != (String(wifi_hostname) + ".local") &&
-        request->host() != "fpvgate.xyz" &&
-        request->host() != "www.fpvgate.xyz") {
+        request->host() != "fpvgate.local" &&
+        request->host() != "www.fpvgate.local") {
         DEBUG("Request redirected to captive portal\n");
         request->redirect(String("http://") + toStringIp(request->client()->localIP()));
         return true;

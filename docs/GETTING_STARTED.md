@@ -351,7 +351,7 @@ pio run -e ESP32S3SuperMini -t uploadfs
 1. Look for WiFi network: `FPVGate_XXXX` (XXXX = last 4 digits of MAC)
 2. Connect using password: `fpvgate1`
 3. Open browser and go to:
-   - `http://www.fpvgate.xyz` (preferred)
+   - `http://fpvgate.local` (preferred)
    - `http://192.168.4.1` (fallback)
 
 **USB Connection (Optional):**
@@ -505,7 +505,7 @@ Exit RSSI: 135 (10 below enter)
 
 **Can't Connect to Web Interface**
 
-- Try both URLs: `http://www.fpvgate.xyz` and `http://192.168.4.1`
+- Try both URLs: `http://fpvgate.local` and `http://192.168.4.1`
 - Forget and reconnect to WiFi network
 - Clear browser cache
 - Try different browser
@@ -560,3 +560,4 @@ Exit RSSI: 135 (10 below enter)
 ---
 
 **Need help? [Open an issue](https://github.com/LouisHitchcock/FPVGate/issues) or [start a discussion](https://github.com/LouisHitchcock/FPVGate/discussions)!**
+

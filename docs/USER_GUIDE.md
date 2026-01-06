@@ -35,7 +35,7 @@ FPVGate creates its own WiFi Access Point on startup.
    - (XXXX = last 4 digits of MAC address)
 4. **Enter password:** `fpvgate1`
 5. **Open browser** and navigate to:
-   - `http://www.fpvgate.xyz` (recommended)
+   - `http://fpvgate.local` (recommended)
    - `http://192.168.4.1` (direct IP)
 
 **Connection Tips:**
@@ -1033,3 +1033,4 @@ Save and restore all settings.
 ---
 
 **Questions? [GitHub Discussions](https://github.com/LouisHitchcock/FPVGate/discussions) | [Report Issues](https://github.com/LouisHitchcock/FPVGate/issues)**
+

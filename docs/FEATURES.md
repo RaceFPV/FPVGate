@@ -35,7 +35,7 @@ FPVGate creates its own WiFi network for wireless connectivity.
 - **Security:** WPA2-PSK
 - **Default Password:** `fpvgate1`
 - **IP Address:** `192.168.4.1` (static)
-- **DNS:** Captive portal to `www.fpvgate.xyz`
+- **DNS:** Captive portal to `fpvgate.local`
 - **Channel:** Auto-select (1-11, 2.4GHz)
 - **Max Clients:** 8 simultaneous connections
 
@@ -1500,3 +1500,4 @@ data/
 ---
 
 **Questions? [GitHub Discussions](https://github.com/LouisHitchcock/FPVGate/discussions) | [Report Issues](https://github.com/LouisHitchcock/FPVGate/issues)**
+

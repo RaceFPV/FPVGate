@@ -177,7 +177,7 @@ pio run -e ESP32S3SuperMini -t uploadfs
 
 **WiFi (Default):**
 1. Connect to `FPVGate_XXXX` network (password: `fpvgate1`)
-2. Open `http://www.fpvgate.xyz` or `http://192.168.4.1`
+2. Open `http://fpvgate.local` or `http://192.168.4.1`
 3. Go to Configuration → Set your VTx frequency
 4. Go to Calibration → Set RSSI thresholds
 5. Start racing!
@@ -316,3 +316,4 @@ See the [LICENSE](LICENSE) file for full details or visit https://creativecommon
 ---
 
 **Made with care for the FPV community**
+
