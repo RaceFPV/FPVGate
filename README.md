@@ -147,17 +147,35 @@ GND      ────── GND
 
 ### 3. Flash Firmware
 
-**Option A: Prebuilt Binaries (Recommended)**
+**Option A: Web Flasher (Recommended)**
+
+The easiest way to install FPVGate is using our web-based flasher:
+
+**[https://fpvgate.xyz/flasher.html](https://fpvgate.xyz/flasher.html)**
+
+1. Open the link in Chrome, Edge, or Opera (Web Serial API required)
+2. Connect your ESP32 via USB
+3. Select your board type
+4. Click "Connect" and choose your device's COM port
+5. Click "Flash" and wait for completion (~2-3 minutes)
+
+Supported boards:
+- ESP32-S3 DevKitC-1 (8MB Flash) - Recommended
+- ESP32-S3 Super Mini (4MB Flash)
+- ESP32-C3
+- LilyGO T-Energy S3
+
+**Option B: Command Line (Advanced)**
 ```bash
-# Download from releases page, then flash:
+# Download board-specific binaries from releases page, then flash:
 esptool.py --chip esp32s3 --port COM3 write_flash -z \
-  0x0 bootloader.bin \
-  0x8000 partitions.bin \
-  0x10000 firmware.bin \
-  0x410000 littlefs.bin
+  0x0 [BOARD]-bootloader.bin \
+  0x8000 [BOARD]-partitions.bin \
+  0x10000 [BOARD]-firmware.bin \
+  0x410000 [BOARD]-littlefs.bin
 ```
 
-**Option B: Build from Source**
+**Option C: Build from Source**
 ```bash
 git clone https://github.com/LouisHitchcock/FPVGate.git
 cd FPVGate
