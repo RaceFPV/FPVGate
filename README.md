@@ -111,39 +111,16 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 | **WS2812 RGB LEDs** | Optional | 1-2 LEDs for visual feedback |
 | **Active Buzzer** | Optional | 3.3V-5V for beeps |
 
-### 2. Basic Wiring
+### 2. Wiring Diagrams
 
-**[ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html):**
-```
-ESP32-S3        RX5808           SD Card
-GPIO4    ────── RSSI             
-GPIO10   ────── CH1 (DATA)       
-GPIO11   ────── CH2 (SELECT)     
-GPIO12   ────── CH3 (CLOCK)      
-GPIO39   ────────────────────── CS
-GPIO36   ────────────────────── SCK
-GPIO35   ────────────────────── MOSI
-GPIO37   ────────────────────── MISO
-GND      ────── GND
-5V       ────── +5V
-```
+Detailed wiring diagrams are available for each supported board:
 
-**[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/):**
-```
-ESP32-S3        RX5808           SD Card
-GPIO3    ────── RSSI             
-GPIO6    ────── CH1 (DATA)       
-GPIO7    ────── CH2 (SELECT)     
-GPIO4    ────── CH3 (CLOCK)      
-GPIO8    ────────────────────── CS
-GPIO2    ────────────────────── SCK
-GPIO10   ────────────────────── MOSI
-GPIO9    ────────────────────── MISO
-GND      ────── GND
-5V       ────── +5V
-```
+- **[ESP32-S3 DevKitC-1 (8MB Flash)](docs/wiring/ESP32-S3-DevKitC-1.md)** - Recommended
+- **[ESP32-S3 Super Mini (4MB Flash)](docs/wiring/ESP32-S3-SuperMini.md)** - Compact
+- **[ESP32-C3](docs/wiring/ESP32-C3.md)** - Expert mode
+- **[LilyGO T-Energy S3](docs/wiring/LilyGO-T-Energy-S3.md)** - Expert mode, integrated battery
 
-**[See complete wiring guide →](docs/HARDWARE_GUIDE.md)**
+**[Complete hardware guide →](docs/HARDWARE_GUIDE.md)**
 
 ### 3. Flash Firmware
 
