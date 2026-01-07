@@ -230,7 +230,7 @@ Exit  ├/──────────\─
 
 ## Project Status
 
-**Current Version:** v1.5.1-dev
+**Current Version:** v1.5.2
 **Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)
 **License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
