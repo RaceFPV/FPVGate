@@ -2,6 +2,8 @@
 
 **Personal FPV Lap Timer for [ESP32-S3](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html) / [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)**
 
+[![Website](https://img.shields.io/badge/Website-fpvgate.xyz-blue?style=for-the-badge&logo=google-chrome&logoColor=white)](https://fpvgate.xyz)
+
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
 [![GitHub release](https://img.shields.io/github/v/release/LouisHitchcock/FPVGate)](https://github.com/LouisHitchcock/FPVGate/releases)

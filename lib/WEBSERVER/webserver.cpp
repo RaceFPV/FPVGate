@@ -1,4 +1,5 @@
 #include "webserver.h"
+#include "version.h"
 #include <ElegantOTA.h>
 
 #include <DNSServer.h>
@@ -527,6 +528,11 @@ EEPROM:\n\
         conf->toJson(*response, monitor);
         request->send(response);
         led->on(200);
+    });
+
+    server.on("/version", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String versionStr = FPVGATE_VERSION_STRING();
+        request->send(200, "text/plain", versionStr);
     });
 
     AsyncCallbackJsonWebHandler *configJsonHandler = new AsyncCallbackJsonWebHandler("/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {

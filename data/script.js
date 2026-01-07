@@ -98,8 +98,27 @@ var rssiCrossingSeries = new TimeSeries();
 var maxRssiValue = enterRssi + 10;
 var minRssiValue = exitRssi - 10;
 
+// Fetch and display version
+async function fetchVersion() {
+  try {
+    const response = await fetch('/version');
+    if (response.ok) {
+      const version = await response.text();
+      const footerVersion = document.getElementById('footerVersion');
+      if (footerVersion) {
+        footerVersion.textContent = `FPVGate v${version}`;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch version:', err);
+  }
+}
+
 // Add localized validation message for IP pattern
 document.addEventListener("DOMContentLoaded", () => {
+  // Fetch version on page load
+  fetchVersion();
+  
   const webhookIP = document.getElementById("webhookIP");
   if (webhookIP) {
     const updateValidity = () => {

@@ -16,11 +16,6 @@
       "expert_mode": 1
     },
     {
-      "value": "esp32c6",
-      "label": "ESP32-C6",
-      "expert_mode": 1
-    },
-    {
       "value": "lilygo",
       "label": "LilyGO T-Energy S3",
       "expert_mode": 1
