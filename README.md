@@ -107,7 +107,7 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 | **[ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)** or **[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)** | Yes | Main controller (both supported) |
 | **RX5808 Module** | Yes | 5.8GHz receiver ([SPI mod required](https://sheaivey.github.io/rx5808-pro-diversity/docs/rx5808-spi-mod.html)) |
 | **MicroSD Card** | Yes | FAT32, 1GB+ for audio storage |
-| **5V Power Supply** | Yes | 18650 battery + regulator |
+| **5V Power Supply** | Yes | USB power or any 5V power source |
 | **WS2812 RGB LEDs** | Optional | 1-2 LEDs for visual feedback |
 | **Active Buzzer** | Optional | 3.3V-5V for beeps |
 
