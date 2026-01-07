@@ -2150,7 +2150,7 @@ function renderRaceTimeline(race) {
       // Regular laps
       events.push({
         type: "lap",
-        label: i18n.t("race.lap_counter", { n: index }),
+        label: `Lap ${index}`,
         time: cumulativeTime,
         percentage: percentage,
       });
