@@ -42,21 +42,12 @@ TROUBLESHOOTING
 ========================================
 
 If flashing fails:
-1. Hold BOOT/IO0 button on ESP32-S3 Super Mini while connecting USB
+1. Hold BOOT button on ESP32-S3 while connecting USB
 2. Try a different USB cable (some are charge-only)
-3. Install CH340 USB driver if needed
+3. Install CP210x or CH340 USB driver if needed
 4. Reduce baud rate: add "--baud 115200" to esptool command
 
 After flashing:
 - Device creates WiFi AP: "FPVGate-XXXXXX"
 - Default password: "fpvgate123"
 - Connect and navigate to: http://192.168.4.1
-
-========================================
-IMPORTANT NOTES FOR SUPER MINI
-========================================
-
-- 4MB Flash version (compact build)
-- Limited storage for audio files
-- Use external SD card for race history if needed
-- GPIO pin layout differs from DevKitC-1 - check wiring diagrams
