@@ -790,7 +790,12 @@ function openTab(evt, tabName) {
 
   // Load race history when opening history tab
   if (tabName === "history") {
-    loadRaceHistory();
+    // Close any open race details to ensure clean state
+    closeRaceDetails();
+    // Small delay to ensure DOM is ready after tab switch
+    setTimeout(() => {
+      loadRaceHistory();
+    }, 50);
   }
 }
 
@@ -2048,11 +2053,11 @@ function renderRaceHistory() {
     const distanceDisplay = race.totalDistance ? `${race.totalDistance.toFixed(1)}m` : "";
 
     html += `
-      <div class="race-item" data-race-index="${index}" onclick="viewRaceDetails(${index})">
+      <div class="race-item" data-race-index="${index}">
         <div class="race-item-buttons">
-          <button class="race-item-button" onclick="event.stopPropagation(); openEditModal(${index})">${i18n.t("history.edit")}</button>
-          <button class="race-item-button" onclick="event.stopPropagation(); downloadSingleRace(${race.timestamp})">${i18n.t("history.download")}</button>
-          <button class="race-item-button" style="border-color: #e74c3c; color: #e74c3c;" onclick="event.stopPropagation(); deleteRace(${race.timestamp})">${i18n.t("history.delete")}</button>
+          <button class="race-item-button" data-action="edit" data-index="${index}">${i18n.t("history.edit")}</button>
+          <button class="race-item-button" data-action="download" data-timestamp="${race.timestamp}">${i18n.t("history.download")}</button>
+          <button class="race-item-button" style="border-color: #e74c3c; color: #e74c3c;" data-action="delete" data-timestamp="${race.timestamp}">${i18n.t("history.delete")}</button>
         </div>
         <div class="race-item-header">
           <div>
@@ -2074,10 +2079,91 @@ function renderRaceHistory() {
     `;
   });
 
+  // Preserve the raceDetails div if it exists and has been moved
+  const existingRaceDetails = document.getElementById("raceDetails");
+  const raceDetailsParent = existingRaceDetails ? existingRaceDetails.parentNode : null;
+  const raceDetailsNextSibling = existingRaceDetails ? existingRaceDetails.nextSibling : null;
+  
+  // Remove raceDetails temporarily if it's in the list container
+  if (existingRaceDetails && raceDetailsParent === listContainer) {
+    listContainer.removeChild(existingRaceDetails);
+  }
+  
+  // Update the list
   listContainer.innerHTML = html;
+  
+  // Restore raceDetails if it was in the list
+  if (existingRaceDetails && raceDetailsParent === listContainer) {
+    // Put it back at the end of the list
+    listContainer.appendChild(existingRaceDetails);
+  }
+  
+  // Add event delegation for race item clicks
+  setupRaceHistoryEventHandlers();
+}
+
+function setupRaceHistoryEventHandlers() {
+  const listContainer = document.getElementById("raceHistoryList");
+  if (!listContainer) {
+    console.error("Race history list container not found");
+    return;
+  }
+  
+  // Remove existing listener if any
+  const oldHandler = listContainer._raceClickHandler;
+  if (oldHandler) {
+    listContainer.removeEventListener("click", oldHandler);
+  }
+  
+  // Create new handler
+  const handler = (event) => {
+    const raceItem = event.target.closest(".race-item");
+    const button = event.target.closest(".race-item-button");
+    
+    console.log("Race history click:", { raceItem, button, target: event.target });
+    
+    // Handle button clicks
+    if (button) {
+      event.stopPropagation();
+      const action = button.getAttribute("data-action");
+      
+      if (action === "edit") {
+        const index = parseInt(button.getAttribute("data-index"));
+        openEditModal(index);
+      } else if (action === "download") {
+        const timestamp = parseInt(button.getAttribute("data-timestamp"));
+        downloadSingleRace(timestamp);
+      } else if (action === "delete") {
+        const timestamp = parseInt(button.getAttribute("data-timestamp"));
+        deleteRace(timestamp);
+      }
+      return;
+    }
+    
+    // Handle race item click
+    if (raceItem) {
+      const index = parseInt(raceItem.getAttribute("data-race-index"));
+      console.log("Opening race details for index:", index);
+      viewRaceDetails(index);
+    }
+  };
+  
+  // Store handler reference and add listener
+  listContainer._raceClickHandler = handler;
+  listContainer.addEventListener("click", handler);
+  console.log("Race history event handlers set up");
 }
 
 function viewRaceDetails(index) {
+  // Check if we're on the history tab
+  const historyTab = document.getElementById("history");
+  console.log("viewRaceDetails called. historyTab:", historyTab, "display:", historyTab ? historyTab.style.display : "null");
+  
+  if (!historyTab || historyTab.style.display === "none") {
+    console.log("Not on history tab, ignoring click");
+    return;
+  }
+
   currentDetailRace = raceHistoryData[index];
   const race = currentDetailRace;
   const date = new Date(race.timestamp * 1000);
@@ -2086,15 +2172,17 @@ function viewRaceDetails(index) {
   // Calculate total race time
   const totalTime = race.lapTimes.reduce((sum, t) => sum + t, 0) / 1000;
 
-  document.getElementById("raceDetailsTitle").textContent = i18n.t("history.details_title_with_date", { date: dateStr });
-  document.getElementById("detailFastest").textContent = (race.fastestLap / 1000).toFixed(2) + i18n.t("race.table.seconds_short");
-  document.getElementById("detailMedian").textContent = (race.medianLap / 1000).toFixed(2) + i18n.t("race.table.seconds_short");
-  document.getElementById("detailBest3").textContent = (race.best3LapsTotal / 1000).toFixed(2) + i18n.t("race.table.seconds_short");
-  document.getElementById("detailTotalTime").textContent = totalTime.toFixed(2) + i18n.t("race.table.seconds_short");
+  // Get the race details div - must exist in the history tab
+  const detailsDiv = document.getElementById("raceDetails");
+  console.log("raceDetails div:", detailsDiv);
+  
+  if (!detailsDiv) {
+    console.error("Race details div not found even though history tab is visible!");
+    return;
+  }
 
   // Get the clicked race item element
   const raceItem = document.querySelector(`.race-item[data-race-index="${index}"]`);
-  const detailsDiv = document.getElementById("raceDetails");
 
   // Remove from current position
   if (detailsDiv.parentNode) {
@@ -2106,7 +2194,21 @@ function viewRaceDetails(index) {
     raceItem.parentNode.insertBefore(detailsDiv, raceItem.nextSibling);
   }
 
+  // Show the details div first
   detailsDiv.style.display = "block";
+
+  // Now update the content (elements should be accessible)
+  const titleEl = document.getElementById("raceDetailsTitle");
+  const fastestEl = document.getElementById("detailFastest");
+  const medianEl = document.getElementById("detailMedian");
+  const best3El = document.getElementById("detailBest3");
+  const totalTimeEl = document.getElementById("detailTotalTime");
+
+  if (titleEl) titleEl.textContent = i18n.t("history.details_title_with_date", { date: dateStr });
+  if (fastestEl) fastestEl.textContent = (race.fastestLap / 1000).toFixed(2) + i18n.t("race.table.seconds_short");
+  if (medianEl) medianEl.textContent = (race.medianLap / 1000).toFixed(2) + i18n.t("race.table.seconds_short");
+  if (best3El) best3El.textContent = (race.best3LapsTotal / 1000).toFixed(2) + i18n.t("race.table.seconds_short");
+  if (totalTimeEl) totalTimeEl.textContent = totalTime.toFixed(2) + i18n.t("race.table.seconds_short");
 
   // Render the race timeline
   renderRaceTimeline(race);
@@ -2430,7 +2532,9 @@ function renderDetailHistory() {
 function renderDetailFastestRound() {
   if (!currentDetailRace) return;
 
-  const lapTimes = currentDetailRace.lapTimes.map((t) => t / 1000);
+  // Skip Gate 1 (index 0) - only use actual racing laps
+  const allLapTimes = currentDetailRace.lapTimes.map((t) => t / 1000);
+  const lapTimes = allLapTimes.slice(1); // Skip Gate 1
 
   if (lapTimes.length < 3) {
     document.getElementById("detailContent").innerHTML = `<p class="no-data">${i18n.t("analysis.not_enough_laps")}</p>`;
@@ -2454,6 +2558,7 @@ function renderDetailFastestRound() {
   const maxTime = Math.max(lap1, lap2, lap3);
 
   let html = '<div class="analysis-bars">';
+  // bestStartIndex is in lapTimes array (without Gate 1), so add 1 for actual lap number
   html += createBarItemWithColor(i18n.t("race.lap_counter", { n: bestStartIndex + 1 }), lap1, maxTime, `${lap1.toFixed(2)}${i18n.t("race.table.seconds_short")}`, 0);
   html += createBarItemWithColor(i18n.t("race.lap_counter", { n: bestStartIndex + 2 }), lap2, maxTime, `${lap2.toFixed(2)}${i18n.t("race.table.seconds_short")}`, 1);
   html += createBarItemWithColor(i18n.t("race.lap_counter", { n: bestStartIndex + 3 }), lap3, maxTime, `${lap3.toFixed(2)}${i18n.t("race.table.seconds_short")}`, 2);
