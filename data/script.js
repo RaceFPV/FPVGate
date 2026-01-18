@@ -1617,14 +1617,13 @@ function stopRace() {
     saveCurrentRace();
   }
 
-  lapNo = -1;
-  lapTimes = [];
+  // Don't clear lapNo or lapTimes here - keep them visible until user clicks "Clear Laps"
+  // This allows the lap analysis to remain visible after the race ends
   currentTotalDistance = 0;
   currentDistanceRemaining = 0;
   currentLapDistance = 0.0;
   currentLapStartTime = 0;
   lastCompletedLapTime = 0;
-  updateLapCounter();
   updateDistanceDisplay();
 }
 
@@ -1868,50 +1867,60 @@ function updateStatsBoxes() {
 }
 
 function renderLapHistory() {
-  // Show last 10 laps (or all if less than 10)
-  const recentLaps = lapTimes.slice(-10);
-  const startIndex = Math.max(0, lapTimes.length - 10);
+  // Skip Gate 1 (index 0) and show only actual laps
+  const validLaps = lapTimes.slice(1); // Skip Gate 1
+  if (validLaps.length === 0) {
+    document.getElementById("analysisContent").innerHTML = `<p class="no-data">${i18n.t("analysis.no_data")}</p>`;
+    return;
+  }
+
+  // Show last 10 valid laps (or all if less than 10)
+  const recentLaps = validLaps.slice(-10);
+  const startIndex = Math.max(0, validLaps.length - 10);
   const maxTime = Math.max(...recentLaps);
 
   let html = '<div class="analysis-bars">';
   recentLaps.forEach((time, index) => {
-    const lapNumber = startIndex + index + 1;
+    const lapNumber = startIndex + index + 1; // Lap 1, 2, 3... (not Gate 1)
     const colorIndex = (startIndex + index) % barColors.length;
     html += createBarItemWithColor(i18n.t("race.lap_counter", { n: lapNumber }), time, maxTime, time.toFixed(2) + i18n.t("race.table.seconds_short"), colorIndex);
   });
   html += "</div>";
 
-  if (lapTimes.length > 10) {
-    html += `<p style="text-align: center; margin-top: 16px; color: var(--secondary-color); font-size: 14px;">Showing last 10 of ${lapTimes.length} laps</p>`;
+  if (validLaps.length > 10) {
+    html += `<p style="text-align: center; margin-top: 16px; color: var(--secondary-color); font-size: 14px;">Showing last 10 of ${validLaps.length} laps</p>`;
   }
 
   document.getElementById("analysisContent").innerHTML = html;
 }
 
 function renderFastestRound() {
-  if (lapTimes.length < 3) {
+  // Skip Gate 1 (index 0) and only analyze actual laps
+  const validLaps = lapTimes.slice(1); // Skip Gate 1
+  if (validLaps.length < 3) {
     document.getElementById("analysisContent").innerHTML = `<p class="no-data">${i18n.t("analysis.no_data_3_laps")}</p>`;
     return;
   }
 
-  // Find best consecutive 3 laps
+  // Find best consecutive 3 laps from valid laps only
   let bestTime = Infinity;
   let bestStartIndex = 0;
 
-  for (let i = 0; i <= lapTimes.length - 3; i++) {
-    const sum = lapTimes[i] + lapTimes[i + 1] + lapTimes[i + 2];
+  for (let i = 0; i <= validLaps.length - 3; i++) {
+    const sum = validLaps[i] + validLaps[i + 1] + validLaps[i + 2];
     if (sum < bestTime) {
       bestTime = sum;
       bestStartIndex = i;
     }
   }
 
-  const lap1 = lapTimes[bestStartIndex];
-  const lap2 = lapTimes[bestStartIndex + 1];
-  const lap3 = lapTimes[bestStartIndex + 2];
+  const lap1 = validLaps[bestStartIndex];
+  const lap2 = validLaps[bestStartIndex + 1];
+  const lap3 = validLaps[bestStartIndex + 2];
   const maxTime = Math.max(lap1, lap2, lap3);
 
   let html = '<div class="analysis-bars">';
+  // bestStartIndex is in validLaps array, so add 1 for actual lap number (Lap 1, 2, 3...)
   html += createBarItemWithColor(i18n.t("race.lap_counter", { n: bestStartIndex + 1 }), lap1, maxTime, `${lap1.toFixed(2)}${i18n.t("race.table.seconds_short")}`, 0);
   html += createBarItemWithColor(i18n.t("race.lap_counter", { n: bestStartIndex + 2 }), lap2, maxTime, `${lap2.toFixed(2)}${i18n.t("race.table.seconds_short")}`, 1);
   html += createBarItemWithColor(i18n.t("race.lap_counter", { n: bestStartIndex + 3 }), lap3, maxTime, `${lap3.toFixed(2)}${i18n.t("race.table.seconds_short")}`, 2);

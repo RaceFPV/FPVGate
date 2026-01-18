@@ -2,6 +2,19 @@
 
 All notable changes to FPVGate will be documented in this file.
 
+## [1.5.3] - 2026-01-18
+
+### Fixed - Lap Analysis
+- **Lap Analysis Data Persistence** - Fixed lap analysis data disappearing when switching tabs after race ends
+  - Lap data now persists until "Clear Laps" button is clicked
+  - Users can now review lap analysis after stopping the race
+  - Tab switching between "Lap History" and "Fastest Round" works correctly post-race
+- **Gate 1 Exclusion from Analysis** - Fixed Gate 1 being incorrectly included in lap analysis charts
+  - Gate 1 no longer appears in "Lap History" visualization
+  - Gate 1 excluded from "Fastest Round (3 Laps)" calculations
+  - Lap numbering now correct (Lap 1, 2, 3... instead of Gate 1 being labeled as Lap 1)
+  - Only actual racing laps are analyzed in statistics and charts
+
 ## [1.5.0] - 2024-12-31
 
 ### Added - Digital FPV Band Support
