@@ -6,18 +6,16 @@ on:
       - 'v*.*.*'
 
 jobs:
-  build-firmware:
+  build-and-release:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        environment:
-          - ESP32S3
-          - ESP32S3SuperMini
+    permissions:
+      contents: write
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,114 +37,138 @@ jobs:
           pip install platformio
           pio upgrade
       
-      - name: Build firmware (${{ matrix.environment }})
-        run: pio run -e ${{ matrix.environment }}
-      
-      - name: Build filesystem (${{ matrix.environment }})
-        run: pio run -e ${{ matrix.environment }} -t buildfs
-        continue-on-error: true
-      
-      - name: Prepare release artifacts
+      - name: Build all firmware
         run: |
-          mkdir -p release-artifacts/${{ matrix.environment }}
+          echo "Building ESP32S3 firmware..."
+          pio run -e ESP32S3
+          pio run -e ESP32S3 -t buildfs
           
-          # Copy firmware binary
-          if [ -f .pio/build/${{ matrix.environment }}/firmware.bin ]; then
-            cp .pio/build/${{ matrix.environment }}/firmware.bin \
-               release-artifacts/${{ matrix.environment }}/firmware.bin
-          fi
+          echo "Building ESP32S3SuperMini firmware..."
+          pio run -e ESP32S3SuperMini
+          pio run -e ESP32S3SuperMini -t buildfs
+      
+      - name: Prepare release structure
+        run: |
+          VERSION="${{ github.ref_name }}"
+          RELEASE_DIR="release/${VERSION}"
+          BOARDS_DIR="${RELEASE_DIR}/boards"
           
-          # Copy filesystem binary
-          if [ -f .pio/build/${{ matrix.environment }}/littlefs.bin ]; then
-            cp .pio/build/${{ matrix.environment }}/littlefs.bin \
-               release-artifacts/${{ matrix.environment }}/littlefs.bin
-          fi
+          mkdir -p "${BOARDS_DIR}"
           
-          # Copy bootloader
-          if [ -f ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/bin/bootloader_dio_80m.bin ]; then
-            cp ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/bin/bootloader_dio_80m.bin \
-               release-artifacts/${{ matrix.environment }}/bootloader.bin
-          elif [ -f ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/bin/bootloader_dio_40m.bin ]; then
-            cp ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/bin/bootloader_dio_40m.bin \
-               release-artifacts/${{ matrix.environment }}/bootloader.bin
-          elif [ -f ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin ]; then
-            cp ~/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/bin/bootloader_dio_40m.bin \
-               release-artifacts/${{ matrix.environment }}/bootloader.bin
-          fi
+          # ESP32S3 (8MB) binaries
+          cp .pio/build/ESP32S3/bootloader.bin "${RELEASE_DIR}/ESP32S3-bootloader.bin"
+          cp .pio/build/ESP32S3/firmware.bin "${RELEASE_DIR}/ESP32S3-firmware.bin"
+          cp .pio/build/ESP32S3/littlefs.bin "${RELEASE_DIR}/ESP32S3-littlefs.bin"
+          cp .pio/build/ESP32S3/partitions.bin "${RELEASE_DIR}/ESP32S3-partitions.bin"
           
-          # Copy partition table
-          if [ -f .pio/build/${{ matrix.environment }}/partitions.bin ]; then
-            cp .pio/build/${{ matrix.environment }}/partitions.bin \
-               release-artifacts/${{ matrix.environment }}/partitions.bin
-          fi
+          # ESP32S3 (8MB) binaries for boards/ directory (for web flasher)
+          cp .pio/build/ESP32S3/bootloader.bin "${BOARDS_DIR}/ESP32S3-8MB-bootloader.bin"
+          cp .pio/build/ESP32S3/firmware.bin "${BOARDS_DIR}/ESP32S3-8MB-firmware.bin"
+          cp .pio/build/ESP32S3/littlefs.bin "${BOARDS_DIR}/ESP32S3-8MB-littlefs.bin"
+          cp .pio/build/ESP32S3/partitions.bin "${BOARDS_DIR}/ESP32S3-8MB-partitions.bin"
           
-          # Create flash instructions
-          cat > release-artifacts/${{ matrix.environment }}/FLASH_INSTRUCTIONS.txt << 'EOF'
-          Flash using esptool:
+          # ESP32S3 Super Mini (4MB) binaries
+          cp .pio/build/ESP32S3SuperMini/bootloader.bin "${RELEASE_DIR}/ESP32S3SuperMini-bootloader.bin"
+          cp .pio/build/ESP32S3SuperMini/firmware.bin "${RELEASE_DIR}/ESP32S3SuperMini-firmware.bin"
+          cp .pio/build/ESP32S3SuperMini/littlefs.bin "${RELEASE_DIR}/ESP32S3SuperMini-littlefs.bin"
+          cp .pio/build/ESP32S3SuperMini/partitions.bin "${RELEASE_DIR}/ESP32S3SuperMini-partitions.bin"
           
-          esptool.py --chip auto --port COM3 write_flash -z \
-            0x0 bootloader.bin \
-            0x8000 partitions.bin \
-            0x10000 firmware.bin \
-            0x410000 littlefs.bin
+          # ESP32S3 Super Mini (4MB) binaries for boards/ directory (for web flasher)
+          cp .pio/build/ESP32S3SuperMini/bootloader.bin "${BOARDS_DIR}/ESP32S3SuperMini-4MB-bootloader.bin"
+          cp .pio/build/ESP32S3SuperMini/firmware.bin "${BOARDS_DIR}/ESP32S3SuperMini-4MB-firmware.bin"
+          cp .pio/build/ESP32S3SuperMini/littlefs.bin "${BOARDS_DIR}/ESP32S3SuperMini-4MB-littlefs.bin"
+          cp .pio/build/ESP32S3SuperMini/partitions.bin "${BOARDS_DIR}/ESP32S3SuperMini-4MB-partitions.bin"
           
-          Or use PlatformIO:
-          pio run -e ${{ matrix.environment }} -t upload
-          pio run -e ${{ matrix.environment }} -t uploadfs
+          # Create flash instructions for ESP32S3
+          cat > "${RELEASE_DIR}/ESP32S3-FLASH_INSTRUCTIONS.txt" << 'EOF'
+          FPVGate Firmware Flashing Instructions - ESP32-S3 DevKitC-1 (8MB Flash)
+          
+          Method 1: Web Flasher (Recommended)
+          Visit: https://fpvgate.xyz/flasher.html
+          Select your board and version, then follow on-screen instructions.
+          
+          Method 2: esptool.py
+          esptool.py --chip esp32s3 --port COM3 --baud 460800 write_flash -z \
+            0x0 ESP32S3-bootloader.bin \
+            0x8000 ESP32S3-partitions.bin \
+            0x10000 ESP32S3-firmware.bin \
+            0x410000 ESP32S3-littlefs.bin
+          
+          Method 3: PlatformIO
+          pio run -e ESP32S3 -t upload
+          pio run -e ESP32S3 -t uploadfs
+          
+          Flash Memory Addresses:
+          - Bootloader: 0x0
+          - Partition Table: 0x8000
+          - Firmware: 0x10000
+          - LittleFS: 0x410000
           EOF
           
-          # Create individual board ZIP
-          cd release-artifacts
-          zip -r FPVGate-${{ github.ref_name }}-${{ matrix.environment }}.zip ${{ matrix.environment }}
-      
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: FPVGate-${{ github.ref_name }}-${{ matrix.environment }}
-          path: release-artifacts/FPVGate-${{ github.ref_name }}-${{ matrix.environment }}.zip
-          retention-days: 90
-
-  create-release:
-    needs: build-firmware
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts
-      
-      - name: Create unified release package
-        run: |
-          mkdir -p all-boards
-          cd release-artifacts
-          for dir in */; do
-            cp "$dir"*.zip ../all-boards/
-          done
-          cd ../all-boards
-          zip -r ../FPVGate-${{ github.ref_name }}-AllBoards.zip .
-      
-      - name: Extract changelog for this version
-        id: changelog
-        run: |
-          if [ -f CHANGELOG.md ]; then
+          # Create flash instructions for ESP32S3 Super Mini
+          cat > "${RELEASE_DIR}/ESP32S3SuperMini-FLASH_INSTRUCTIONS.txt" << 'EOF'
+          FPVGate Firmware Flashing Instructions - ESP32-S3 Super Mini (4MB Flash)
+          
+          Method 1: Web Flasher (Recommended)
+          Visit: https://fpvgate.xyz/flasher.html
+          Select your board and version, then follow on-screen instructions.
+          
+          Method 2: esptool.py
+          esptool.py --chip esp32s3 --port COM3 --baud 460800 write_flash -z \
+            0x0 ESP32S3SuperMini-bootloader.bin \
+            0x8000 ESP32S3SuperMini-partitions.bin \
+            0x10000 ESP32S3SuperMini-firmware.bin \
+            0x290000 ESP32S3SuperMini-littlefs.bin
+          
+          Method 3: PlatformIO
+          pio run -e ESP32S3SuperMini -t upload
+          pio run -e ESP32S3SuperMini -t uploadfs
+          
+          Flash Memory Addresses:
+          - Bootloader: 0x0
+          - Partition Table: 0x8000
+          - Firmware: 0x10000
+          - LittleFS: 0x290000
+          EOF
+          
+          # Create/copy release notes
+          if [ -f "${RELEASE_DIR}/RELEASE_NOTES.md" ]; then
+            cp "${RELEASE_DIR}/RELEASE_NOTES.md" release-notes.md
+          elif [ -f CHANGELOG.md ]; then
             # Extract section for this version from CHANGELOG.md
-            VERSION="${{ github.ref_name }}"
             sed -n "/## \[${VERSION#v}\]/,/## \[/p" CHANGELOG.md | sed '$d' > release-notes.md
             
-            # If extraction failed, provide default notes
             if [ ! -s release-notes.md ]; then
-              echo "Release ${{ github.ref_name }}" > release-notes.md
+              echo "Release ${VERSION}" > release-notes.md
               echo "" >> release-notes.md
-              echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full details." >> release-notes.md
+              echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." >> release-notes.md
             fi
+            
+            cp release-notes.md "${RELEASE_DIR}/RELEASE_NOTES.md"
           else
-            echo "Release ${{ github.ref_name }}" > release-notes.md
+            echo "Release ${VERSION}" > release-notes.md
+            cp release-notes.md "${RELEASE_DIR}/RELEASE_NOTES.md"
+          fi
+      
+      - name: Commit binaries to repository
+        run: |
+          VERSION="${{ github.ref_name }}"
+          RELEASE_DIR="release/${VERSION}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Force add binaries (they may be in .gitignore)
+          git add -f "${RELEASE_DIR}/boards/"*.bin
+          git add "${RELEASE_DIR}/"*.txt
+          git add "${RELEASE_DIR}/RELEASE_NOTES.md"
+          
+          # Only commit if there are changes
+          if ! git diff --staged --quiet; then
+            git commit -m "Add ${VERSION} release binaries for web flasher"
+            git push origin main
+          else
+            echo "No changes to commit"
           fi
       
       - name: Create GitHub Release
@@ -154,9 +176,17 @@ jobs:
         with:
           body_path: release-notes.md
           files: |
-            all-boards/FPVGate-${{ github.ref_name }}-ESP32S3.zip
-            all-boards/FPVGate-${{ github.ref_name }}-ESP32S3SuperMini.zip
-            FPVGate-${{ github.ref_name }}-AllBoards.zip
+            release/${{ github.ref_name }}/ESP32S3-bootloader.bin
+            release/${{ github.ref_name }}/ESP32S3-firmware.bin
+            release/${{ github.ref_name }}/ESP32S3-littlefs.bin
+            release/${{ github.ref_name }}/ESP32S3-partitions.bin
+            release/${{ github.ref_name }}/ESP32S3-FLASH_INSTRUCTIONS.txt
+            release/${{ github.ref_name }}/ESP32S3SuperMini-bootloader.bin
+            release/${{ github.ref_name }}/ESP32S3SuperMini-firmware.bin
+            release/${{ github.ref_name }}/ESP32S3SuperMini-littlefs.bin
+            release/${{ github.ref_name }}/ESP32S3SuperMini-partitions.bin
+            release/${{ github.ref_name }}/ESP32S3SuperMini-FLASH_INSTRUCTIONS.txt
+            release/${{ github.ref_name }}/RELEASE_NOTES.md
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
         env:
