@@ -3,6 +3,7 @@
 **Personal FPV Lap Timer for [ESP32-S3](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html) / [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)**
 
 [![Website](https://img.shields.io/badge/Website-fpvgate.xyz-blue?style=for-the-badge&logo=google-chrome&logoColor=white)](https://fpvgate.xyz)
+[![Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/louishitchcock)
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
@@ -287,6 +288,7 @@ Exit  ├/──────────\─
 
 - **Bug Reports:** [GitHub Issues](https://github.com/LouisHitchcock/FPVGate/issues)
 - **Feature Requests:** [GitHub Discussions](https://github.com/LouisHitchcock/FPVGate/discussions)
+- **Support Development:** [Ko-fi](https://ko-fi.com/louishitchcock)
 - **Star this repo** if you find it useful!
 
 ---
