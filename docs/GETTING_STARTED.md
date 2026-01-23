@@ -465,6 +465,8 @@ Exit RSSI: 135 (10 below enter)
 5. Watch lap times appear in table
 6. Click **"Stop Race"** when finished
 
+> **Mobile Note:** Make sure your phone is NOT on silent mode or the starting beep won't play!
+
 **[Complete user guide ?](USER_GUIDE.md)**
 
 ---

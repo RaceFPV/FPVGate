@@ -44,8 +44,8 @@
 //ESP32-S3 Super Mini
 #elif defined(ESP32S3_SUPERMINI)
 
-#define PIN_LED 1
-#define PIN_RGB_LED 48         // WS2812 RGB LED (optional)
+#define PIN_LED 2              // External status LED (if present)
+#define PIN_RGB_LED 1          // WS2812 RGB LED on GPIO1
 #define PIN_VBAT 0
 #define VBAT_SCALE 2
 #define VBAT_ADD 2
@@ -82,6 +82,27 @@
 #define PIN_SD_SCK 36          // SAME AS DEVKITC
 #define PIN_SD_MOSI 35         // SAME AS DEVKITC
 #define PIN_SD_MISO 37         // SAME AS DEVKITC
+
+// Seeed Studio XIAO ESP32S3
+#elif defined(SEEED_XIAO_ESP32S3)
+
+#define PIN_LED 21             // Onboard user LED
+#define PIN_RGB_LED 44         // NeoPixel signal on D7 (GPIO44)
+#define PIN_VBAT 0             // External divider required if used
+#define VBAT_SCALE 2
+#define VBAT_ADD 2
+#define PIN_RX5808_RSSI 3      // D2
+#define PIN_RX5808_DATA 5      // D4
+#define PIN_RX5808_SELECT 6    // D5
+#define PIN_RX5808_CLOCK 4     // D3
+#define PIN_BUZZER 5           // D4
+#define BUZZER_INVERTED false
+#define PIN_MODE_SWITCH 1      // D0
+// SD Card SPI pins (XIAO S3 per user wiring)
+#define PIN_SD_CS 2            // D1 (CS)
+#define PIN_SD_SCK 7           // D8 (SCK)
+#define PIN_SD_MOSI 8          // D9 (MOSI)
+#define PIN_SD_MISO 9          // D10 (MISO)
 
 //ESP32-S3 DevKitC
 #elif defined(ESP32S3)
@@ -127,13 +148,13 @@
 // ====================================================================
 
 // ESP32-S3 family boards (SD card support, SPI, USB CDC)
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3)
     #define HAS_SD_CARD_SUPPORT 1
     #define HAS_SPI_CLASS 1
 #endif
 
 // ESP32-S3 boards with RGB LED
-#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3)
+#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3)
     #define HAS_RGB_LED 1
 #endif
 

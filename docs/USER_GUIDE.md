@@ -492,6 +492,8 @@ Result: 3 laps counted
 - First gate pass = "Gate 1" (hole shot)
 - Subsequent passes = Lap 1, 2, 3...
 
+> **Mobile/iOS Note:** Your phone MUST NOT be on silent mode for the start beep to play. The starting tone requires your device's ringer to be enabled. On iOS devices, make sure the silent switch is off.
+
 ### During Race
 
 **Live Information:**
