@@ -1,6 +1,6 @@
 # FPVGate
 
-**Personal FPV Lap Timer for [ESP32-S3](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html) / [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)**
+**Personal FPV Lap Timer for [ESP32-S3](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html) / [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/) / Seeed Studio XIAO ESP32S3**
 
 [![Website](https://img.shields.io/badge/Website-fpvgate.xyz-blue?style=for-the-badge&logo=google-chrome&logoColor=white)](https://fpvgate.xyz)
 [![Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/louishitchcock)
@@ -120,7 +120,7 @@ Detailed wiring diagrams are available for each supported board:
 
 - **[ESP32-S3 DevKitC-1 (8MB Flash)](docs/wiring/ESP32-S3-DevKitC-1.md)** - Recommended
 - **[ESP32-S3 Super Mini (4MB Flash)](docs/wiring/ESP32-S3-SuperMini.md)** - Compact
-- **[ESP32-C3](docs/wiring/ESP32-C3.md)** - Expert mode
+- **[Seeed Studio XIAO ESP32S3](docs/wiring/Seeed-XIAO-ESP32S3.md)** - Compact, 8MB
 - **[LilyGO T-Energy S3](docs/wiring/LilyGO-T-Energy-S3.md)** - Expert mode, integrated battery
 
 **[Complete hardware guide →](docs/HARDWARE_GUIDE.md)**
@@ -142,7 +142,7 @@ The easiest way to install FPVGate is using our web-based flasher:
 Supported boards:
 - ESP32-S3 DevKitC-1 (8MB Flash) - Recommended
 - ESP32-S3 Super Mini (4MB Flash)
-- ESP32-C3
+- Seeed Studio XIAO ESP32S3 (8MB)
 - LilyGO T-Energy S3
 
 **Option B: Command Line (Advanced)**
@@ -232,7 +232,7 @@ Exit  ├/──────────\─
 ## Project Status
 
 **Current Version:** v1.5.2
-**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)
+**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/), Seeed Studio XIAO ESP32S3
 **License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
 

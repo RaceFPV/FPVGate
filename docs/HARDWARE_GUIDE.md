@@ -81,10 +81,10 @@ Technical specifications, wiring diagrams, and hardware troubleshooting.
 - Less RAM (may limit voice files)
 - Older architecture
 
-### Not Recommended
+### Not Recommended / Not Supported
 
 **ESP32-C3:**
-- Single-core (performance issues)
+- No longer supported in FPVGate (performance and compatibility issues)
 - Different pin layout
 
 **ESP32-S2:**

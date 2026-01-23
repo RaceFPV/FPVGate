@@ -10,15 +10,15 @@
 #define COUNTDOWN_PHASE_MS 1000  // 1 second per phase (Red, Yellow, Green)
 
 void RgbLed::init() {
-    // GPIO5 for external NeoPixel strip - must be compile-time constant for FastLED template
-    FastLED.addLeds<WS2812, 5, GRB>(leds, NUM_LEDS);
+    // Use PIN_RGB_LED from config - must be compile-time constant for FastLED template
+    FastLED.addLeds<WS2812, PIN_RGB_LED, GRB>(leds, NUM_LEDS);
     FastLED.setBrightness(80); // Medium-high brightness
     // Initialize all LEDs to off
     for (int i = 0; i < NUM_LEDS; i++) {
         leds[i] = CRGB::Black;
     }
     FastLED.show();
-    DEBUG("RGB LED initialized on GPIO5 with %d LEDs\n", NUM_LEDS);
+    DEBUG("RGB LED initialized on GPIO%d with %d LEDs\n", PIN_RGB_LED, NUM_LEDS);
 }
 
 void RgbLed::handleRgbLed(uint32_t currentTimeMs) {

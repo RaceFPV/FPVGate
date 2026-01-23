@@ -59,8 +59,9 @@ void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMoni
     // Reduce TX power to prevent boot-looping in AP mode due to power consumption
     // WIFI_POWER_11dBm provides good range while keeping power consumption manageable
     WiFi.setTxPower(WIFI_POWER_11dBm);
-    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);
-    esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_LR);
+    // Long Range protocol disabled for compatibility with standard devices
+    // esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);
+    // esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_LR);
     if (conf->getSsid()[0] == 0) {
         changeMode = WIFI_AP;
     } else {
@@ -265,7 +266,8 @@ static void handleRoot(AsyncWebServerRequest *request) {
     if (g_rgbLed) g_rgbLed->flashGreen();
 #endif
 
-    if (!LittleFS.begin(false) || !LittleFS.exists("/index.html")) {
+    // LittleFS is already mounted in startServices(), don't remount
+    if (!LittleFS.exists("/index.html")) {
         request->send(500, "text/plain",
             "Web UI not found. LittleFS not mounted or /index.html missing.\n"
             "Did you add a LittleFS partition + run uploadfs?");
