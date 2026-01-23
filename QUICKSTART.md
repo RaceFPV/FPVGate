@@ -158,6 +158,8 @@ GND      ────── GND
    - View analysis with bar charts
    - Click **Stop Race** when done
 
+   > **Mobile Note:** Make sure your phone is NOT on silent mode or the starting beep won't play!
+
 ## Default Settings
 
 - **WiFi**: `FPVGate_XXXX` / `fpvgate1`
