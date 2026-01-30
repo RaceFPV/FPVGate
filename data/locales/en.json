@@ -326,8 +326,16 @@
             "title": "System Settings",
             "battery": "Battery Monitoring",
             "enable_battery": "Battery Monitoring:",
-            "low_battery": "Low Battery Alarm:",
+            "battery_type": "Battery Type:",
+            "battery_type_lipo": "LiPo (3.0v - 4.2v)",
+            "battery_type_lipohv": "LiPoHV (3.0v - 4.35v)",
+            "battery_type_liion": "Li-Ion/18650 (2.5v - 4.2v)",
+            "battery_cells": "Cell Count:",
+            "voltage_divider": "Voltage Divider Ratio:",
+            "voltage_divider_tip": "Adjust based on your voltage divider circuit (e.g., 2.0 for 2:1, 5.5 for 11:2)",
+            "low_battery_per_cell": "Low Battery Alarm (per cell):",
             "battery_voltage": "Battery Voltage:",
+            "battery_voltage_tip": "Total voltage and per-cell average",
             "rssi_detection": "RSSI Detection",
             "rssi_sensitivity": "RSSI Sensitivity:",
             "sensitivity_options": {
@@ -390,6 +398,9 @@
             "cancel": "Cancel",
             "unit_meters": "{n} meters"
         }
+    },
+    "battery_alarm": {
+        "dismiss": "Dismiss"
     },
     "messages": {
         "confirm_clear_history": "Are you sure you want to clear all race history? This cannot be undone.",

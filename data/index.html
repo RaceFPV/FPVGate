@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FPVGate Lap Timer</title>
-    <link rel="icon" type="image/svg+xml" href="logo-white.svg" id="favicon" />
+    <link rel="icon" type="image/png" href="logo-white.png" id="favicon" />
     <link rel="stylesheet" type="text/css" href="style.css" />
     <link rel="stylesheet" type="text/css" href="calib-styles.css" />
     <script src="jquery-3.7.1.min.js"></script>
@@ -18,11 +18,16 @@
     <header>
       <nav>
         <div class="logo">
-          <img src="logo-white.svg" alt="FPVGate" width="64" id="headerLogo" />
+          <img src="logo-white.png" alt="FPVGate" width="64" id="headerLogo" />
           <h1>FPVGate</h1>
         </div>
         <div class="header-right">
+          <div id="batteryIndicator" class="battery-indicator" style="display: none;">
+            <img id="batteryIcon" class="battery-icon" src="bat-full-svg.svg" width="20" height="20" alt="Battery" />
+            <span id="batteryVoltageHeaderText">--</span>
+          </div>
           <div id="connectionIndicator" class="connection-indicator">
+            <img class="wifi-icon" src="wifi-svg.svg" width="16" height="16" alt="WiFi" />
             <div class="status-dot connected"></div>
             <div class="connection-info" id="connectionInfo">
               <div class="connection-mode" data-i18n="conn.wifi_connected">WiFi Connected</div>
@@ -248,7 +253,7 @@
 
     <footer>
       <div class="footer-content">
-        <span id="footerVersion">FPVGate v1.5.5-dev</span>
+        <span id="footerVersion">FPVGate v1.5.6</span>
       </div>
     </footer>
 
@@ -803,17 +808,48 @@
 
               <div id="batteryMonitoringSection" style="display: none">
                 <div class="config-item">
-                  <label for="alarmThreshold" data-i18n="settings.system.low_battery">Low Battery Alarm:</label>
+                  <label for="batteryType" data-i18n="settings.system.battery_type">Battery Type:</label>
+                  <select id="batteryType" onchange="updateBatteryType()">
+                    <option value="0" data-i18n="settings.system.battery_type_lipo">LiPo (3.0v - 4.2v)</option>
+                    <option value="1" data-i18n="settings.system.battery_type_lipohv">LiPoHV (3.0v - 4.35v)</option>
+                    <option value="2" data-i18n="settings.system.battery_type_liion">Li-Ion/18650 (2.5v - 4.2v)</option>
+                  </select>
+                </div>
+
+                <div class="config-item">
+                  <label for="batteryCells" data-i18n="settings.system.battery_cells">Cell Count:</label>
+                  <select id="batteryCells" onchange="updateBatteryCells()">
+                    <option value="1">1S</option>
+                    <option value="2">2S</option>
+                    <option value="3">3S</option>
+                    <option value="4" selected>4S</option>
+                    <option value="5">5S</option>
+                    <option value="6">6S</option>
+                  </select>
+                </div>
+
+                <div class="config-item">
+                  <label for="batteryVoltageDivider" data-i18n="settings.system.voltage_divider">Voltage Divider Ratio:</label>
                   <div class="input-with-value">
-                    <span class="val">3.6v</span>
-                    <input type="range" id="alarmThreshold" step="0.1" min="2.5" max="4.2" oninput="updateAlarmThreshold(this,value)" />
+                    <span class="val" id="batteryVoltageDividerValue">2.0</span>
+                    <input type="range" id="batteryVoltageDivider" step="0.1" min="1.0" max="20.0" value="2.0" oninput="updateBatteryVoltageDivider(this.value)" />
+                  </div>
+                </div>
+                <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.system.voltage_divider_tip">Adjust based on your voltage divider circuit (e.g., 2.0 for 2:1, 5.5 for 11:2)</div>
+
+                <div class="config-item">
+                  <label for="lowBatteryAlarmPerCell" data-i18n="settings.system.low_battery_per_cell">Low Battery Alarm (per cell):</label>
+                  <div class="input-with-value">
+                    <span class="val" id="lowBatteryAlarmPerCellValue">3.5v</span>
+                    <input type="range" id="lowBatteryAlarmPerCell" step="0.01" min="2.5" max="4.35" value="3.5" oninput="updateLowBatteryAlarmPerCell(this.value)" />
                   </div>
                 </div>
 
                 <div class="config-item">
                   <label for="bvolt" data-i18n="settings.system.battery_voltage">Battery Voltage:</label>
-                  <span class="val" id="bvolt">--</span>
+                  <span class="val" id="bvolt" style="font-size: 16px; font-weight: bold">--</span>
                 </div>
+                <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.system.battery_voltage_tip">Total voltage and per-cell average</div>
               </div>
 
               <h3 style="margin-top: 0" data-i18n="settings.system.rssi_detection">RSSI Detection</h3>
@@ -952,6 +988,15 @@
           <button onclick="saveTrack()" id="saveTrackBtn" data-i18n="modals.track.save">Save Track</button>
           <button onclick="closeTrackModal()" style="background-color: var(--secondary-color)" data-i18n="modals.track.cancel">Cancel</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Low Battery Alarm Modal -->
+    <div id="lowBatteryAlarmModal" class="battery-alarm-modal" style="display: none">
+      <div class="battery-alarm-content">
+        <div class="battery-alarm-icon">LOW BATTERY</div>
+        <div class="battery-alarm-voltage" id="batteryAlarmVoltage">--V (--V/cell)</div>
+        <button class="battery-alarm-dismiss" onclick="dismissBatteryAlarm()" data-i18n="battery_alarm.dismiss">Dismiss</button>
       </div>
     </div>
 

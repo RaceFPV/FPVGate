@@ -4,7 +4,7 @@
 
 #include "debug.h"
 
-void BatteryMonitor::init(uint8_t pin, uint8_t batScale, uint8_t batAdd, Buzzer *buzzer, Led *l) {
+void BatteryMonitor::init(uint8_t pin, float batScale, uint8_t batAdd, Buzzer *buzzer, Led *l) {
     buz = buzzer;
     led = l;
     vbatPin = pin;
@@ -24,16 +24,18 @@ void BatteryMonitor::init(uint8_t pin, uint8_t batScale, uint8_t batAdd, Buzzer 
 
 static uint16_t averageSum = 0;
 
-uint8_t BatteryMonitor::getBatteryVoltage() {
+uint16_t BatteryMonitor::getBatteryVoltage() {
     // 0-3.3V maps to 0-4095, battery voltage ranges from 4.2V to 3.0V, but the voltage is divided, so 2.1V - 1.5V
     volatile uint16_t raw = analogRead(vbatPin);
     averageSum = averageSum - measurements[measurementIndex];  // substract oldest val
     measurements[measurementIndex] = raw;                      // replace old with new val
     averageSum += raw;                                         // update averageSum
     measurementIndex = (measurementIndex + 1) % AVERAGING_SIZE;
-    uint8_t scaled = map(round(averageSum / AVERAGING_SIZE), 0, 4095, 0, 33 * scale) + add;  // 3.3v ref accuracy, divider + voltage drop
+    uint16_t averaged = round(averageSum / AVERAGING_SIZE);
+    // Map ADC reading (0-4095) to voltage in tenths of volt (0-330 for 3.3V ref, multiplied by divider ratio)
+    uint16_t scaled = map(averaged, 0, 4095, 0, (uint16_t)(33 * scale)) + add;
     if (enableDebug) {
-        DEBUG("Battery raw:%u, scaled:%u\n", raw, scaled);
+        DEBUG("Battery raw:%u, avg:%u, scaled:%u (%.1fV)\n", raw, averaged, scaled, scaled / 10.0f);
     }
     return scaled;
 }

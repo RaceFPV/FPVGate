@@ -557,6 +557,16 @@ EEPROM:\n\
         DEBUG("\n");
 #endif
         conf->fromJson(jsonObj);
+        
+        // Update battery monitor voltage divider if it changed
+#ifdef HAS_BATTERY_MONITOR
+        if (jsonObj.containsKey("batteryVoltageDivider") && monitor) {
+            float ratio = jsonObj["batteryVoltageDivider"].as<float>();
+            monitor->setVoltageDivider(ratio);
+            DEBUG("Battery voltage divider updated to %.1f\n", ratio);
+        }
+#endif
+        
         request->send(200, "application/json", "{\"status\": \"OK\"}");
         led->on(200);
     });

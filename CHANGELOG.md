@@ -2,6 +2,66 @@
 
 All notable changes to FPVGate will be documented in this file.
 
+## [1.5.6] - 2026-02-01
+
+### Added - Battery Monitoring
+- **High-Precision Voltage Monitoring** - Upgraded from uint8_t to uint16_t
+  - Increased precision from 0-255 range to 0-65535 range
+  - Enables accurate voltage readings to tenths of a volt (e.g., 4.2V)
+  - Better resolution for battery state monitoring and low voltage detection
+  - Improved debug output with actual voltage display
+- **Configurable Voltage Divider** - Changed scale parameter from uint8_t to float
+  - Allows precise voltage divider ratio configuration (e.g., 2.0, 2.5, 3.3)
+  - Added `batteryVoltageDivider` configuration field (default: 2.0)
+  - New `setVoltageDivider(float ratio)` method for runtime adjustment
+  - Better support for custom hardware configurations
+
+### Added - UI Enhancements
+- **Battery Status Indicator in Header**
+  - Real-time battery voltage display
+  - Dynamic battery icon (full/mid/low states)
+  - Visual warning when battery is low
+  - Only displays when battery monitoring is enabled
+- **New SVG Assets**
+  - Added `bat-full-svg.svg` - Battery full icon
+  - Added `bat-mid-svg.svg` - Battery medium icon
+  - Added `bat-low-svg.svg` - Battery low icon
+  - Added `wifi-svg.svg` - WiFi connection icon
+  - Added `logo-black.png` and `logo-white.png` - FPVGate logos
+
+### Improved - Battery Monitoring
+- Enhanced ADC reading with better averaging and scaling
+- More accurate voltage calculation algorithm
+- Better debug logging with averaged values and calculated voltages
+- Supports wider range of battery types and voltage divider configurations
+
+### Improved - Configuration System
+- Added battery voltage divider persistence to config
+- New configuration methods: `getBatteryVoltageDivider()` and `setBatteryVoltageDivider()`
+- Battery monitoring configuration saved across reboots
+- Better configuration validation and error handling
+
+### Fixed - Battery Monitoring
+- Fixed battery voltage precision limited to 0-255 range
+- Fixed voltage divider scale parameter limited to integer values
+- Fixed inaccurate battery voltage readings on custom hardware
+- Fixed battery voltage debug output not showing actual voltage
+- Fixed battery monitoring configuration not persisting across reboots
+
+### Technical
+- **Modified Files**
+  - `lib/BATTERY/battery.cpp` - Changed voltage type to uint16, added float scale parameter
+  - `lib/BATTERY/battery.h` - Updated method signatures, added setVoltageDivider()
+  - `lib/CONFIG/config.cpp` - Added batteryVoltageDivider configuration field
+  - `lib/CONFIG/config.h` - New configuration methods for voltage divider
+  - `lib/WEBSERVER/webserver.cpp` - Updated battery voltage endpoints
+  - `src/main.cpp` - Battery monitor initialization with new parameters
+  - `lib/VERSION/version.h` - Version bumped to 1.5.6
+  - `data/index.html` - Added battery indicator in header, new SVG assets
+  - `data/script.js` - Enhanced battery monitoring with uint16 support
+  - `data/style.css` - New styles for battery indicator and icons
+  - `data/locales/en.json` - Added battery-related translation keys
+
 ## [1.5.5] - 2026-01-30
 
 ### Added - Voice Announcements

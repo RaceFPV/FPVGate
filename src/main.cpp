@@ -176,9 +176,11 @@ void setup() {
 #endif
     timer.init(&config, &rx, &buzzer, &led, &webhookManager);
 #ifdef HAS_BATTERY_MONITOR
-    // Initialize battery monitoring (T-Energy S3 or test mode)
-    monitor.init(PIN_VBAT, VBAT_SCALE, VBAT_ADD, &buzzer, &led);
-    DEBUG("Battery monitoring initialized on GPIO%d (scale=%d, add=%d)\n", PIN_VBAT, VBAT_SCALE, VBAT_ADD);
+    // Initialize battery monitoring with config voltage divider ratio
+    float voltageDivider = config.getBatteryVoltageDivider();
+    if (voltageDivider == 0.0f) voltageDivider = VBAT_SCALE;  // Fallback to default if not set
+    monitor.init(PIN_VBAT, voltageDivider, VBAT_ADD, &buzzer, &led);
+    DEBUG("Battery monitoring initialized on GPIO%d (divider=%.1f, add=%d)\n", PIN_VBAT, voltageDivider, VBAT_ADD);
 #endif
     
     // WiFi mode initialization (RotorHazard mode disabled)

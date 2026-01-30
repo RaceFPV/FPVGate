@@ -170,9 +170,14 @@
 #define EEPROM_RESERVED_SIZE 512
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 7U
+#define CONFIG_VERSION 8U
 
 #define EEPROM_CHECK_TIME_MS 1000
+
+// Battery type constants
+#define BATTERY_TYPE_LIPO 0
+#define BATTERY_TYPE_LIPOHV 1
+#define BATTERY_TYPE_LIION 2
 
 typedef struct {
     uint32_t version;
@@ -180,7 +185,7 @@ typedef struct {
     uint8_t bandIndex;         // Band index (0-21) - added for accurate band/channel restoration
     uint8_t channelIndex;      // Channel index (0-7) - added for accurate band/channel restoration
     uint8_t minLap;
-    uint8_t alarm;
+    uint8_t alarm;             // Legacy alarm threshold (kept for migration)
     uint8_t announcerType;
     uint8_t announcerRate;
     uint8_t enterRssi;
@@ -213,6 +218,11 @@ typedef struct {
     char lapFormat[11];        // Lap announcement format (full, laptime, timeonly)
     char ssid[33];
     char password[33];
+    uint8_t batteryType;       // Battery type: 0=LiPo, 1=LiPoHV, 2=Li-Ion
+    uint8_t batteryCells;      // Number of cells (1-6 for LiPo/LiPoHV, 1 for Li-Ion)
+    float lowBatteryAlarmPerCell;  // Alarm voltage per cell (3.0v-4.2v)
+    uint8_t batteryAlarmEnabled;   // Battery alarm enabled (0=disabled, 1=enabled)
+    float batteryVoltageDivider;   // Voltage divider ratio (e.g., 2.0 for 2:1, 5.5 for 11:2)
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
@@ -266,6 +276,11 @@ class Config {
     char* getTheme();
     char* getSelectedVoice();
     char* getLapFormat();
+    uint8_t getBatteryType();
+    uint8_t getBatteryCells();
+    float getLowBatteryAlarmPerCell();
+    uint8_t getBatteryAlarmEnabled();
+    float getBatteryVoltageDivider();
     
     // Setters for RotorHazard node mode
     void setFrequency(uint16_t freq);
@@ -291,6 +306,11 @@ class Config {
     void setWebhookRaceStart(uint8_t enabled);
     void setWebhookRaceStop(uint8_t enabled);
     void setWebhookLap(uint8_t enabled);
+    void setBatteryType(uint8_t type);
+    void setBatteryCells(uint8_t cells);
+    void setLowBatteryAlarmPerCell(float voltage);
+    void setBatteryAlarmEnabled(uint8_t enabled);
+    void setBatteryVoltageDivider(float ratio);
 
    private:
     laptimer_config_t conf;

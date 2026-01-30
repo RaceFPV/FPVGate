@@ -176,10 +176,15 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
     config["lapFormat"] = conf.lapFormat;
     config["ssid"] = conf.ssid;
     config["pwd"] = conf.password;
+    config["batteryType"] = conf.batteryType;
+    config["batteryCells"] = conf.batteryCells;
+    config["lowBatteryAlarmPerCell"] = conf.lowBatteryAlarmPerCell;
+    config["batteryAlarmEnabled"] = conf.batteryAlarmEnabled;
+    config["batteryVoltageDivider"] = conf.batteryVoltageDivider;
     
     // Add battery voltage if monitor exists
     if (batteryMonitor) {
-        uint8_t batteryVoltage = batteryMonitor->getBatteryVoltage();
+        uint16_t batteryVoltage = batteryMonitor->getBatteryVoltage();
         float voltage = batteryVoltage / 10.0f;
         config["batteryVoltage"] = voltage;
     }
@@ -407,6 +412,32 @@ void Config::fromJson(JsonObject source) {
         const char* v = source["pwd"] | "";
         if (strcmp(v, conf.password) != 0) {
             strlcpy(conf.password, v, sizeof(conf.password));
+            modified = true;
+        }
+    }
+    if (source.containsKey("batteryType") && source["batteryType"] != conf.batteryType) {
+        conf.batteryType = source["batteryType"];
+        modified = true;
+    }
+    if (source.containsKey("batteryCells") && source["batteryCells"] != conf.batteryCells) {
+        conf.batteryCells = source["batteryCells"];
+        modified = true;
+    }
+    if (source.containsKey("lowBatteryAlarmPerCell")) {
+        float v = source["lowBatteryAlarmPerCell"].as<float>();
+        if (conf.lowBatteryAlarmPerCell != v) {
+            conf.lowBatteryAlarmPerCell = v;
+            modified = true;
+        }
+    }
+    if (source.containsKey("batteryAlarmEnabled") && source["batteryAlarmEnabled"] != conf.batteryAlarmEnabled) {
+        conf.batteryAlarmEnabled = source["batteryAlarmEnabled"];
+        modified = true;
+    }
+    if (source.containsKey("batteryVoltageDivider")) {
+        float v = source["batteryVoltageDivider"].as<float>();
+        if (conf.batteryVoltageDivider != v) {
+            conf.batteryVoltageDivider = v;
             modified = true;
         }
     }
@@ -717,6 +748,61 @@ void Config::setWebhookLap(uint8_t enabled) {
     }
 }
 
+uint8_t Config::getBatteryType() {
+    return conf.batteryType;
+}
+
+void Config::setBatteryType(uint8_t type) {
+    if (conf.batteryType != type) {
+        conf.batteryType = type;
+        modified = true;
+    }
+}
+
+uint8_t Config::getBatteryCells() {
+    return conf.batteryCells;
+}
+
+void Config::setBatteryCells(uint8_t cells) {
+    if (conf.batteryCells != cells) {
+        conf.batteryCells = cells;
+        modified = true;
+    }
+}
+
+float Config::getLowBatteryAlarmPerCell() {
+    return conf.lowBatteryAlarmPerCell;
+}
+
+void Config::setLowBatteryAlarmPerCell(float voltage) {
+    if (conf.lowBatteryAlarmPerCell != voltage) {
+        conf.lowBatteryAlarmPerCell = voltage;
+        modified = true;
+    }
+}
+
+uint8_t Config::getBatteryAlarmEnabled() {
+    return conf.batteryAlarmEnabled;
+}
+
+void Config::setBatteryAlarmEnabled(uint8_t enabled) {
+    if (conf.batteryAlarmEnabled != enabled) {
+        conf.batteryAlarmEnabled = enabled;
+        modified = true;
+    }
+}
+
+float Config::getBatteryVoltageDivider() {
+    return conf.batteryVoltageDivider;
+}
+
+void Config::setBatteryVoltageDivider(float ratio) {
+    if (conf.batteryVoltageDivider != ratio) {
+        conf.batteryVoltageDivider = ratio;
+        modified = true;
+    }
+}
+
 void Config::setDefaults(void) {
     DEBUG("Setting EEPROM defaults\n");
     // Reset everything to 0/false and then just set anything that zero is not appropriate
@@ -759,6 +845,11 @@ void Config::setDefaults(void) {
     strlcpy(conf.lapFormat, "timeonly", sizeof(conf.lapFormat));  // Default lap format
     strlcpy(conf.ssid, "", sizeof(conf.ssid));  // Empty WiFi credentials
     strlcpy(conf.password, "", sizeof(conf.password));  // Empty WiFi credentials
+    conf.batteryType = BATTERY_TYPE_LIPO;  // Default to LiPo
+    conf.batteryCells = 4;  // Default to 4S
+    conf.lowBatteryAlarmPerCell = 3.5f;  // Default 3.5V per cell
+    conf.batteryAlarmEnabled = 0;  // Disabled by default
+    conf.batteryVoltageDivider = 2.0f;  // Default 2:1 voltage divider
     modified = true;
     write();
 }

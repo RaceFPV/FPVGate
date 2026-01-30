@@ -30,7 +30,6 @@ const pilotNameInput = document.getElementById("pname");
 const ssidInput = document.getElementById("ssid");
 const pwdInput = document.getElementById("pwd");
 const minLapInput = document.getElementById("minLap");
-const alarmThreshold = document.getElementById("alarmThreshold");
 const maxLapsInput = document.getElementById("maxLaps");
 
 const freqLookup = [
@@ -556,10 +555,6 @@ onload = async function (e) {
       minLapInput.value = (parseFloat(configData.minLap) / 10).toFixed(1);
       updateMinLap(minLapInput, minLapInput.value);
     }
-    if (configData.alarm !== undefined) {
-      alarmThreshold.value = (parseFloat(configData.alarm) / 10).toFixed(1);
-      updateAlarmThreshold(alarmThreshold, alarmThreshold.value);
-    }
     if (configData.anType !== undefined) announcerSelect.selectedIndex = configData.anType;
     if (configData.anRate !== undefined) {
       announcerRateInput.value = (parseFloat(configData.anRate) / 10).toFixed(1);
@@ -682,9 +677,33 @@ onload = async function (e) {
       webhookLapToggle.checked = configData.webhookLap === 1;
     }
 
-    // Initialize battery monitoring UI on page load (default is disabled)
+    // Initialize battery monitoring UI on page load
     const batterySection = document.getElementById("batteryMonitoringSection");
     const batteryToggle = document.getElementById("batteryMonitorToggle");
+    const batteryTypeSelect = document.getElementById("batteryType");
+    const batteryCellsSelect = document.getElementById("batteryCells");
+    const lowBatteryAlarmPerCellInput = document.getElementById("lowBatteryAlarmPerCell");
+    const batteryVoltageDividerInput = document.getElementById("batteryVoltageDivider");
+    
+    // Load battery settings from config
+    if (batteryToggle && configData.batteryAlarmEnabled !== undefined) {
+      batteryToggle.checked = configData.batteryAlarmEnabled === 1;
+    }
+    if (batteryTypeSelect && configData.batteryType !== undefined) {
+      batteryTypeSelect.value = configData.batteryType;
+    }
+    if (batteryCellsSelect && configData.batteryCells !== undefined) {
+      batteryCellsSelect.value = configData.batteryCells;
+    }
+    if (lowBatteryAlarmPerCellInput && configData.lowBatteryAlarmPerCell !== undefined) {
+      lowBatteryAlarmPerCellInput.value = configData.lowBatteryAlarmPerCell.toFixed(2);
+      updateLowBatteryAlarmPerCell(configData.lowBatteryAlarmPerCell);
+    }
+    if (batteryVoltageDividerInput && configData.batteryVoltageDivider !== undefined) {
+      batteryVoltageDividerInput.value = configData.batteryVoltageDivider.toFixed(1);
+      updateBatteryVoltageDivider(configData.batteryVoltageDivider);
+    }
+    
     if (batterySection && batteryToggle) {
       batterySection.style.display = batteryToggle.checked ? "block" : "none";
     }
@@ -698,40 +717,167 @@ onload = async function (e) {
 };
 
 let batteryVoltageInterval = null;
+let batteryAlarmActive = false;
+let batteryAlarmDismissed = false;
+let batteryAlarmDismissTime = 0;
+const BATTERY_ALARM_HYSTERESIS = 0.1; // 0.1V hysteresis above threshold
+const BATTERY_ALARM_DISMISS_DURATION = 30000; // 30 seconds in milliseconds
 
 async function getBatteryVoltage() {
   // Only fetch if battery monitoring is enabled
   const batteryToggle = document.getElementById("batteryMonitorToggle");
+  const batteryIndicator = document.getElementById("batteryIndicator");
+  const batteryVoltageHeaderText = document.getElementById("batteryVoltageHeaderText");
+  const batteryIcon = document.getElementById("batteryIcon");
+  
   if (!batteryToggle || !batteryToggle.checked) {
     if (batteryVoltageDisplay) {
       batteryVoltageDisplay.innerText = "--";
+      batteryVoltageDisplay.style.color = "";
+    }
+    // Hide battery indicator when monitoring disabled
+    if (batteryIndicator) {
+      batteryIndicator.style.display = "none";
     }
     return;
   }
   
   try {
-    let batteryVoltage = null;
+    let configData = null;
     if (usbConnected && transportManager) {
-      const data = await transportManager.sendCommand("config", "GET");
-      if (data && data.batteryVoltage !== undefined) {
-        batteryVoltage = data.batteryVoltage.toFixed(1) + "V";
-      }
+      configData = await transportManager.sendCommand("config", "GET");
     } else {
       const resp = await fetch("/config");
-      const config = await resp.json();
-      if (config && config.batteryVoltage !== undefined) {
-        batteryVoltage = config.batteryVoltage.toFixed(1) + "V";
-      }
+      configData = await resp.json();
     }
 
-    if (batteryVoltageDisplay) {
-      batteryVoltageDisplay.innerText = batteryVoltage || "--";
+    if (configData && configData.batteryVoltage !== undefined) {
+      const totalVoltage = configData.batteryVoltage;
+      const batteryCells = configData.batteryCells || 4;
+      const perCellVoltage = totalVoltage / batteryCells;
+      const alarmThreshold = configData.lowBatteryAlarmPerCell || 3.5;
+      const batteryAlarmEnabled = configData.batteryAlarmEnabled || 0;
+      
+      // Display format: "16.8V (4.2V/cell)"
+      const displayText = totalVoltage.toFixed(1) + "V (" + perCellVoltage.toFixed(2) + "V/cell)";
+      
+      if (batteryVoltageDisplay) {
+        batteryVoltageDisplay.innerText = displayText;
+        
+        // Color coding based on per-cell voltage vs alarm threshold
+        if (batteryAlarmEnabled === 1 && perCellVoltage < alarmThreshold) {
+          batteryVoltageDisplay.style.color = "#e74c3c"; // Red for low battery
+        } else if (batteryAlarmEnabled === 1 && perCellVoltage < alarmThreshold + 0.1) {
+          batteryVoltageDisplay.style.color = "#f39c12"; // Orange for warning
+        } else {
+          batteryVoltageDisplay.style.color = "#2ecc71"; // Green for good
+        }
+      }
+      
+      // Update battery indicator with appropriate SVG icon
+      if (batteryIndicator && batteryVoltageHeaderText && batteryIcon) {
+        batteryIndicator.style.display = "flex";
+        batteryVoltageHeaderText.innerText = totalVoltage.toFixed(1) + "V";
+        
+        // Determine battery type voltage range
+        const batteryType = configData.batteryType || 0; // 0=LiPo, 1=LiPoHV, 2=Li-Ion
+        let maxVoltage, halfVoltage, criticalVoltage;
+        
+        if (batteryType === 0) { // LiPo
+          maxVoltage = 4.2;
+          halfVoltage = 3.7;
+          criticalVoltage = alarmThreshold + 0.15;
+        } else if (batteryType === 1) { // LiPoHV
+          maxVoltage = 4.35;
+          halfVoltage = 3.8;
+          criticalVoltage = alarmThreshold + 0.15;
+        } else { // Li-Ion
+          maxVoltage = 4.2;
+          halfVoltage = 3.6;
+          criticalVoltage = alarmThreshold + 0.15;
+        }
+        
+        // Switch battery icon based on voltage level
+        if (perCellVoltage >= halfVoltage) {
+          batteryIcon.src = "bat-full-svg.svg";
+          batteryIcon.className = "battery-icon battery-full"; // Green for full charge
+        } else if (perCellVoltage >= criticalVoltage) {
+          batteryIcon.src = "bat-mid-svg.svg";
+          batteryIcon.className = "battery-icon battery-mid"; // Yellow/Orange for half charge
+        } else {
+          batteryIcon.src = "bat-low-svg.svg";
+          batteryIcon.className = "battery-icon battery-low"; // Red for critical
+        }
+      }
+      
+      // Alarm logic with hysteresis
+      if (batteryAlarmEnabled === 1) {
+        // Check if dismiss period has expired
+        if (batteryAlarmDismissed && Date.now() > batteryAlarmDismissTime) {
+          batteryAlarmDismissed = false;
+        }
+        
+        if (!batteryAlarmActive && !batteryAlarmDismissed && perCellVoltage < alarmThreshold) {
+          // Trigger alarm when below threshold
+          triggerBatteryAlarm(displayText);
+        } else if (batteryAlarmActive && perCellVoltage >= alarmThreshold + BATTERY_ALARM_HYSTERESIS) {
+          // Clear alarm when voltage rises above threshold + hysteresis
+          batteryAlarmDismissed = false;
+          batteryAlarmDismissTime = 0;
+        }
+      }
+    } else {
+      if (batteryVoltageDisplay) {
+        batteryVoltageDisplay.innerText = "--";
+        batteryVoltageDisplay.style.color = "";
+      }
+      if (batteryIndicator) {
+        batteryIndicator.style.display = "none";
+      }
     }
   } catch (err) {
     // Silently fail - battery monitoring is optional
     if (batteryVoltageDisplay) {
       batteryVoltageDisplay.innerText = "--";
+      batteryVoltageDisplay.style.color = "";
     }
+    if (batteryIndicator) {
+      batteryIndicator.style.display = "none";
+    }
+  }
+}
+
+// Trigger battery alarm
+function triggerBatteryAlarm(voltageText) {
+  batteryAlarmActive = true;
+  const alarmModal = document.getElementById("lowBatteryAlarmModal");
+  const alarmVoltageEl = document.getElementById("batteryAlarmVoltage");
+  
+  if (alarmModal && alarmVoltageEl) {
+    alarmVoltageEl.textContent = voltageText;
+    alarmModal.style.display = "flex";
+    
+    // Play beep sound
+    if (beepAudioContext) {
+      beep(500, 800, "sine");
+    }
+    
+    // Audio announcement
+    if (audioEnabled && audioAnnouncer) {
+      audioAnnouncer.speak("BATTERY CRITICAL");
+    }
+  }
+}
+
+// Dismiss battery alarm
+function dismissBatteryAlarm() {
+  batteryAlarmActive = false;
+  batteryAlarmDismissed = true;
+  batteryAlarmDismissTime = Date.now() + BATTERY_ALARM_DISMISS_DURATION;
+  const alarmModal = document.getElementById("lowBatteryAlarmModal");
+  
+  if (alarmModal) {
+    alarmModal.style.display = "none";
   }
 }
 
@@ -947,12 +1093,19 @@ async function saveConfig() {
   }
   const selectedChannelIndex = channelSelect.selectedIndex;
   
+  // Get battery settings
+  const batteryTypeSelect = document.getElementById("batteryType");
+  const batteryCellsSelect = document.getElementById("batteryCells");
+  const lowBatteryAlarmPerCellInput = document.getElementById("lowBatteryAlarmPerCell");
+  const batteryMonitorToggle = document.getElementById("batteryMonitorToggle");
+  const batteryVoltageDividerInput = document.getElementById("batteryVoltageDivider");
+  
   const configData = {
     freq: frequency,
     bandIndex: selectedBandIndex,
     channelIndex: selectedChannelIndex,
     minLap: parseInt(minLapInput.value * 10),
-    alarm: parseInt(alarmThreshold.value * 10),
+    alarm: 0,  // Legacy alarm field (no longer used)
     anType: announcerSelect.selectedIndex,
     anRate: parseInt(announcerRate * 10),
     enterRssi: enterRssi,
@@ -968,6 +1121,11 @@ async function saveConfig() {
     lapFormat: lapFormatSelect ? lapFormatSelect.value : "full",
     ssid: ssidInput.value,
     pwd: pwdInput.value,
+    batteryType: batteryTypeSelect ? parseInt(batteryTypeSelect.value) : 0,
+    batteryCells: batteryCellsSelect ? parseInt(batteryCellsSelect.value) : 4,
+    lowBatteryAlarmPerCell: lowBatteryAlarmPerCellInput ? parseFloat(lowBatteryAlarmPerCellInput.value) : 3.5,
+    batteryAlarmEnabled: batteryMonitorToggle ? (batteryMonitorToggle.checked ? 1 : 0) : 0,
+    batteryVoltageDivider: batteryVoltageDividerInput ? parseFloat(batteryVoltageDividerInput.value) : 2.0,
   };
 
   if (usbConnected && transportManager) {
@@ -1564,6 +1722,57 @@ function toggleBatteryMonitor(enabled) {
   }
 }
 
+// Battery type change handler
+function updateBatteryType() {
+  const batteryTypeSelect = document.getElementById("batteryType");
+  const alarmSlider = document.getElementById("lowBatteryAlarmPerCell");
+  if (batteryTypeSelect && alarmSlider) {
+    const batteryType = parseInt(batteryTypeSelect.value);
+    // Adjust alarm slider range based on battery type
+    if (batteryType === 0) { // LiPo
+      alarmSlider.min = "3.0";
+      alarmSlider.max = "4.2";
+    } else if (batteryType === 1) { // LiPoHV
+      alarmSlider.min = "3.0";
+      alarmSlider.max = "4.35";
+    } else if (batteryType === 2) { // Li-Ion
+      alarmSlider.min = "2.5";
+      alarmSlider.max = "4.2";
+    }
+    // Clamp current value to new range
+    const currentValue = parseFloat(alarmSlider.value);
+    const minVal = parseFloat(alarmSlider.min);
+    const maxVal = parseFloat(alarmSlider.max);
+    if (currentValue < minVal) alarmSlider.value = minVal.toFixed(2);
+    if (currentValue > maxVal) alarmSlider.value = maxVal.toFixed(2);
+    updateLowBatteryAlarmPerCell(alarmSlider.value);
+  }
+  autoSaveConfig();
+}
+
+// Battery cells change handler
+function updateBatteryCells() {
+  autoSaveConfig();
+}
+
+// Low battery alarm per cell slider update
+function updateLowBatteryAlarmPerCell(value) {
+  const displaySpan = document.getElementById("lowBatteryAlarmPerCellValue");
+  if (displaySpan) {
+    displaySpan.textContent = parseFloat(value).toFixed(2) + "v";
+  }
+  autoSaveConfig();
+}
+
+// Voltage divider ratio slider update
+function updateBatteryVoltageDivider(value) {
+  const displaySpan = document.getElementById("batteryVoltageDividerValue");
+  if (displaySpan) {
+    displaySpan.textContent = parseFloat(value).toFixed(1);
+  }
+  autoSaveConfig();
+}
+
 // Generic fetch wrapper that works with both WiFi and USB
 async function transportFetch(url, options = {}) {
   const method = options.method || "GET";
@@ -2025,10 +2234,10 @@ function updateThemeLogos(theme) {
   const isLight = lightThemes.has(theme);
   const favicon = document.getElementById("favicon");
   const headerLogo = document.getElementById("headerLogo");
-  const logoPath = isLight ? "logo-black.svg" : "logo-white.svg";
+  const logoPath = isLight ? "logo-black.png" : "logo-white.png";
   if (favicon) {
     favicon.href = logoPath;
-    favicon.type = "image/svg+xml";
+    favicon.type = "image/png";
   }
   if (headerLogo) headerLogo.src = logoPath;
 }
@@ -4570,10 +4779,6 @@ function openSettingsModal() {
         if (config.minLap !== undefined) {
           minLapInput.value = (parseFloat(config.minLap) / 10).toFixed(1);
           updateMinLap(minLapInput, minLapInput.value);
-        }
-        if (config.alarm !== undefined) {
-          alarmThreshold.value = (parseFloat(config.alarm) / 10).toFixed(1);
-          updateAlarmThreshold(alarmThreshold, alarmThreshold.value);
         }
         if (config.anType !== undefined) announcerSelect.selectedIndex = config.anType;
         if (config.anRate !== undefined) {

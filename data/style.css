@@ -355,9 +355,17 @@ nav {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
   cursor: pointer;
-  margin-right: 3em;
+  transition: background-color 0.3s;
+  min-height: 32px;
+}
+
+.connection-indicator:hover {
+  background-color: rgba(255, 255, 255, 0.25);
 }
 
 .status-dot {
@@ -1794,3 +1802,129 @@ footer {
     padding: 10px 6px;
   }
 }
+
+/* Battery Alarm Modal */
+.battery-alarm-modal {
+  position: fixed;
+  z-index: 10000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(220, 53, 69, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: batteryAlarmFadeIn 0.3s ease-in;
+}
+
+@keyframes batteryAlarmFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.battery-alarm-content {
+  text-align: center;
+  padding: 48px 36px;
+  background-color: var(--background-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  max-width: 400px;
+  border: 3px solid #dc3545;
+  animation: batteryAlarmPulse 2s infinite;
+}
+
+@keyframes batteryAlarmPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 8px 40px rgba(220, 53, 69, 0.6);
+  }
+}
+
+.battery-alarm-icon {
+  font-size: 32px;
+  font-weight: bold;
+  color: #dc3545;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.battery-alarm-voltage {
+  font-size: 28px;
+  font-weight: bold;
+  color: var(--text-color);
+  margin-bottom: 32px;
+}
+
+.battery-alarm-dismiss {
+  padding: 14px 32px;
+  font-size: 18px;
+  font-weight: bold;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.battery-alarm-dismiss:hover {
+  background-color: #c82333;
+}
+
+/* Battery Indicator */
+.battery-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  transition: background-color 0.3s;
+  min-height: 32px;
+}
+
+.battery-indicator:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.battery-icon {
+  flex-shrink: 0;
+  filter: brightness(0) saturate(100%) invert(100%);
+}
+
+/* Battery state colors */
+.battery-icon.battery-full {
+  filter: brightness(0) saturate(100%) invert(68%) sepia(41%) saturate(527%) hue-rotate(86deg) brightness(95%) contrast(88%);
+  /* Green color: #2ecc71 */
+}
+
+.battery-icon.battery-mid {
+  filter: brightness(0) saturate(100%) invert(69%) sepia(72%) saturate(598%) hue-rotate(359deg) brightness(99%) contrast(92%);
+  /* Orange color: #f39c12 */
+}
+
+.battery-icon.battery-low {
+  filter: brightness(0) saturate(100%) invert(34%) sepia(92%) saturate(1512%) hue-rotate(338deg) brightness(95%) contrast(91%);
+  /* Red color: #e74c3c */
+}
+
+#batteryVoltageHeaderText {
+  white-space: nowrap;
+}
+
+/* WiFi Icon */
+.wifi-icon {
+  flex-shrink: 0;
+  margin-right: 4px;
+  filter: brightness(0) saturate(100%) invert(100%);
+}
+
