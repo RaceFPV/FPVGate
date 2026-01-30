@@ -13,6 +13,50 @@
 
 #define CONFIG_BACKUP_PATH "/config_backup.bin"
 
+// Frequency lookup table (same as frontend script.js)
+static const uint16_t freqLookup[][8] = {
+  {5865, 5845, 5825, 5805, 5785, 5765, 5745, 5725}, // A
+  {5733, 5752, 5771, 5790, 5809, 5828, 5847, 5866}, // B
+  {5705, 5685, 5665, 5645, 5885, 5905, 5925, 5945}, // E
+  {5740, 5760, 5780, 5800, 5820, 5840, 5860, 5880}, // F
+  {5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917}, // R (RaceBand)
+  {5362, 5399, 5436, 5473, 5510, 5547, 5584, 5621}, // L (LowBand)
+  {5660, 5695, 5735, 5770, 5805, 5878, 5914, 5839}, // DJIv1-25
+  {5735, 5770, 5805, 0, 0, 0, 0, 5839},             // DJIv1-25CE
+  {5695, 5770, 5878, 0, 0, 0, 0, 5839},             // DJIv1_50
+  {5669, 5705, 5768, 5804, 5839, 5876, 5912, 0},    // DJI03/04-20
+  {5768, 5804, 5839, 0, 0, 0, 0, 0},                // DJI03/04-20CE
+  {5677, 5794, 5902, 0, 0, 0, 0, 0},                // DJI03/04-40
+  {5794, 0, 0, 0, 0, 0, 0, 0},                      // DJI03/04-40CE
+  {5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917}, // DJI04-R
+  {5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917}, // HDZero-R
+  {5707, 0, 0, 0, 0, 0, 0, 0},                      // HDZero-E
+  {5740, 5760, 0, 5800, 0, 0, 0, 0},                // HDZero-F
+  {5732, 5769, 5806, 5843, 0, 0, 0, 0},             // HDZero-CE
+  {5658, 5659, 5732, 5769, 5806, 5843, 5880, 5917}, // WalkSnail-R
+  {5660, 5695, 5735, 5770, 5805, 5878, 5914, 5839}, // WalkSnail-25
+  {5735, 5770, 5805, 0, 0, 0, 0, 5839},             // WalkSnail-25CE
+  {5695, 5770, 5878, 0, 0, 0, 0, 5839},             // WalkSnail-50
+};
+
+// Get band and channel indices from frequency
+// Returns the FIRST match to prioritize analog bands over digital
+static void getBandChannelFromFreq(uint16_t freq, int8_t* bandIndex, int8_t* channelIndex) {
+    *bandIndex = -1;
+    *channelIndex = -1;
+    
+    // Search through all bands (iterate forwards to prioritize analog bands A, B, E, F, R, L)
+    for (int i = 0; i < 22; i++) {
+        for (int j = 0; j < 8; j++) {
+            if (freqLookup[i][j] == freq) {
+                *bandIndex = i;
+                *channelIndex = j;
+                return; // Return first match (analog bands come first)
+            }
+        }
+    }
+}
+
 void Config::init(void) {
     if (sizeof(laptimer_config_t) > EEPROM_RESERVED_SIZE) {
         DEBUG("Config size too big, adjust reserved EEPROM size\n");
@@ -79,6 +123,22 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
     // Use https://arduinojson.org/v6/assistant to estimate memory
     DynamicJsonDocument config(512);
     config["freq"] = conf.frequency;
+    
+    // Use stored band/channel indices if valid, otherwise compute from frequency
+    if (conf.bandIndex < 22 && conf.channelIndex < 8) {
+        config["bandIndex"] = conf.bandIndex;
+        config["channelIndex"] = conf.channelIndex;
+    } else {
+        // Fallback: compute from frequency
+        int8_t bandIdx = -1;
+        int8_t channelIdx = -1;
+        getBandChannelFromFreq(conf.frequency, &bandIdx, &channelIdx);
+        if (bandIdx >= 0 && channelIdx >= 0) {
+            config["bandIndex"] = bandIdx;
+            config["channelIndex"] = channelIdx;
+        }
+    }
+    
     config["minLap"] = conf.minLap;
     config["alarm"] = conf.alarm;
     config["anType"] = conf.announcerType;
@@ -157,6 +217,15 @@ void Config::toJsonString(char* buf) {
 void Config::fromJson(JsonObject source) {
     if (source["freq"] != conf.frequency) {
         conf.frequency = source["freq"];
+        modified = true;
+    }
+    // Store band and channel indices if provided
+    if (source.containsKey("bandIndex") && source["bandIndex"] != conf.bandIndex) {
+        conf.bandIndex = source["bandIndex"];
+        modified = true;
+    }
+    if (source.containsKey("channelIndex") && source["channelIndex"] != conf.channelIndex) {
+        conf.channelIndex = source["channelIndex"];
         modified = true;
     }
     if (source["minLap"] != conf.minLap) {
@@ -654,6 +723,8 @@ void Config::setDefaults(void) {
     memset(&conf, 0, sizeof(conf));
     conf.version = CONFIG_VERSION | CONFIG_MAGIC;
     conf.frequency = 5658;  // RaceBand Channel 1 (R1) - 5658 MHz
+    conf.bandIndex = 4;  // RaceBand (R)
+    conf.channelIndex = 0;  // Channel 1
     conf.minLap = 20;  // 2.0 seconds
     conf.alarm = 0;  // Alarm disabled
     conf.announcerType = 2;

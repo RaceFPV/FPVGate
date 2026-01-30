@@ -420,6 +420,11 @@ EEPROM:\n\
         led->on(200);
     });
 
+    // Vertical OSD route
+    server.on("/vert-OSD", [this](AsyncWebServerRequest *request) {
+        request->send(LittleFS, "/vert-osd.html", "text/html");
+    });
+
     server.on("/timer/start", HTTP_POST, [this](AsyncWebServerRequest *request) {
         timer->start();
         if (transportMgr) {
@@ -513,6 +518,14 @@ EEPROM:\n\
     });
     server.addHandler(playbackStopHandler);
 
+    server.on("/timer/clearLaps", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        // Broadcast clearLaps event to all connected clients (including OSD)
+        if (transportMgr) {
+            transportMgr->broadcastRaceStateEvent("cleared");
+        }
+        request->send(200, "application/json", "{\"status\": \"OK\"}");
+    });
+
     server.on("/timer/rssiStart", HTTP_POST, [this](AsyncWebServerRequest *request) {
         sendRssi = true;
         request->send(200, "application/json", "{\"status\": \"OK\"}");
@@ -549,51 +562,124 @@ EEPROM:\n\
     });
 
     // Serve audio files from SD card voice directories (sounds_default, sounds_rachel, etc.)
-    server.on("^\\/sounds_.+\\/.+\\.mp3$", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    // Use onRequestBody to handle the route before serveStatic catches it
+    server.on("/sounds_default/*", HTTP_GET, [this](AsyncWebServerRequest *request) {
         String path = request->url();
+        DEBUG("Audio request: %s\n", path.c_str());
         
-#ifdef ESP32S3
-        // Try SD card first if available
+#ifdef HAS_SD_CARD_SUPPORT
         if (storage->isSDAvailable() && SD.exists(path)) {
-            DEBUG("Serving audio from SD: %s\n", path.c_str());
+            DEBUG("Serving from SD: %s\n", path.c_str());
             request->send(SD, path, "audio/mpeg");
             return;
         }
 #endif
-        
-        // Fall back to LittleFS
         if (LittleFS.exists(path)) {
-            DEBUG("Serving audio from LittleFS: %s\n", path.c_str());
+            DEBUG("Serving from LittleFS: %s\n", path.c_str());
             request->send(LittleFS, path, "audio/mpeg");
             return;
         }
-        
-        // File not found
         DEBUG("Audio file not found: %s\n", path.c_str());
         request->send(404, "text/plain", "Audio file not found");
     });
     
-    // Serve audio files from SD /sounds/ directory (legacy/fallback)
-    server.on("^\\/sounds\\/.+\\.mp3$", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    server.on("/sounds_rachel/*", HTTP_GET, [this](AsyncWebServerRequest *request) {
         String path = request->url();
+        DEBUG("Audio request: %s\n", path.c_str());
         
-#ifdef ESP32S3
-        // Try SD card first if available
+#ifdef HAS_SD_CARD_SUPPORT
         if (storage->isSDAvailable() && SD.exists(path)) {
-            DEBUG("Serving audio from SD: %s\n", path.c_str());
+            DEBUG("Serving from SD: %s\n", path.c_str());
             request->send(SD, path, "audio/mpeg");
             return;
         }
 #endif
-        
-        // Fall back to LittleFS
         if (LittleFS.exists(path)) {
-            DEBUG("Serving audio from LittleFS: %s\n", path.c_str());
+            DEBUG("Serving from LittleFS: %s\n", path.c_str());
             request->send(LittleFS, path, "audio/mpeg");
             return;
         }
+        DEBUG("Audio file not found: %s\n", path.c_str());
+        request->send(404, "text/plain", "Audio file not found");
+    });
+    
+    server.on("/sounds_adam/*", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String path = request->url();
+        DEBUG("Audio request: %s\n", path.c_str());
         
-        // File not found
+#ifdef HAS_SD_CARD_SUPPORT
+        if (storage->isSDAvailable() && SD.exists(path)) {
+            DEBUG("Serving from SD: %s\n", path.c_str());
+            request->send(SD, path, "audio/mpeg");
+            return;
+        }
+#endif
+        if (LittleFS.exists(path)) {
+            DEBUG("Serving from LittleFS: %s\n", path.c_str());
+            request->send(LittleFS, path, "audio/mpeg");
+            return;
+        }
+        DEBUG("Audio file not found: %s\n", path.c_str());
+        request->send(404, "text/plain", "Audio file not found");
+    });
+    
+    server.on("/sounds_antoni/*", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String path = request->url();
+        DEBUG("Audio request: %s\n", path.c_str());
+        
+#ifdef HAS_SD_CARD_SUPPORT
+        if (storage->isSDAvailable() && SD.exists(path)) {
+            DEBUG("Serving from SD: %s\n", path.c_str());
+            request->send(SD, path, "audio/mpeg");
+            return;
+        }
+#endif
+        if (LittleFS.exists(path)) {
+            DEBUG("Serving from LittleFS: %s\n", path.c_str());
+            request->send(LittleFS, path, "audio/mpeg");
+            return;
+        }
+        DEBUG("Audio file not found: %s\n", path.c_str());
+        request->send(404, "text/plain", "Audio file not found");
+    });
+    
+    server.on("/sounds_matilda/*", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String path = request->url();
+        DEBUG("Audio request: %s\n", path.c_str());
+        
+#ifdef HAS_SD_CARD_SUPPORT
+        if (storage->isSDAvailable() && SD.exists(path)) {
+            DEBUG("Serving from SD: %s\n", path.c_str());
+            request->send(SD, path, "audio/mpeg");
+            return;
+        }
+#endif
+        if (LittleFS.exists(path)) {
+            DEBUG("Serving from LittleFS: %s\n", path.c_str());
+            request->send(LittleFS, path, "audio/mpeg");
+            return;
+        }
+        DEBUG("Audio file not found: %s\n", path.c_str());
+        request->send(404, "text/plain", "Audio file not found");
+    });
+    
+    // Serve audio files from SD /sounds/ directory (legacy/fallback - PiperTTS)
+    server.on("/sounds/*", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String path = request->url();
+        DEBUG("Audio request (legacy): %s\n", path.c_str());
+        
+#ifdef HAS_SD_CARD_SUPPORT
+        if (storage->isSDAvailable() && SD.exists(path)) {
+            DEBUG("Serving from SD: %s\n", path.c_str());
+            request->send(SD, path, "audio/mpeg");
+            return;
+        }
+#endif
+        if (LittleFS.exists(path)) {
+            DEBUG("Serving from LittleFS: %s\n", path.c_str());
+            request->send(LittleFS, path, "audio/mpeg");
+            return;
+        }
         DEBUG("Audio file not found: %s\n", path.c_str());
         request->send(404, "text/plain", "Audio file not found");
     });
@@ -985,7 +1071,7 @@ EEPROM:\n\
     
     // SD card test endpoint - list files
     server.on("/storage/sdtest", HTTP_GET, [this](AsyncWebServerRequest *request) {
-#ifdef ESP32S3
+#ifdef HAS_SD_CARD_SUPPORT
         String response = "SD Card Test:\n\n";
         response += "Available: " + String(storage->isSDAvailable() ? "YES" : "NO") + "\n";
         response += "Storage Type: " + storage->getStorageType() + "\n";

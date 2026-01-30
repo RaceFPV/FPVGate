@@ -170,13 +170,15 @@
 #define EEPROM_RESERVED_SIZE 512
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 6U
+#define CONFIG_VERSION 7U
 
 #define EEPROM_CHECK_TIME_MS 1000
 
 typedef struct {
     uint32_t version;
     uint16_t frequency;
+    uint8_t bandIndex;         // Band index (0-21) - added for accurate band/channel restoration
+    uint8_t channelIndex;      // Channel index (0-7) - added for accurate band/channel restoration
     uint8_t minLap;
     uint8_t alarm;
     uint8_t announcerType;

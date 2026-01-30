@@ -79,3 +79,6 @@ tools/apply_frontend_defaults.html
 
 # Desktop app builds (too large for git, use GitHub releases)
 *.zip
+
+# PCB design files
+PCB/

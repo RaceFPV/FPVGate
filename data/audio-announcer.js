@@ -24,6 +24,7 @@ class AudioAnnouncer {
             'rachel': 'sounds_rachel',    // Rachel (Calm Female)
             'adam': 'sounds_adam',        // Adam (Deep Male)
             'antoni': 'sounds_antoni',    // Antoni (Male)
+            'matilda': 'sounds_matilda',  // Matilda (Warm Female)
             'piper': 'sounds'             // PiperTTS uses fallback (no pre-recorded)
         };
         
@@ -102,8 +103,9 @@ class AudioAnnouncer {
 
     /**
      * Play pre-recorded audio file with optimized playback and instant transitions
+     * @param {number} overlapMs - Milliseconds to resolve early for crossfade (default: 50ms)
      */
-    async playPrerecorded(audioPath) {
+    async playPrerecorded(audioPath, overlapMs = 50) {
         return new Promise((resolve, reject) => {
             // Check cache first
             if (this.audioCache.has(audioPath)) {
@@ -111,10 +113,11 @@ class AudioAnnouncer {
                 audio.playbackRate = this.rate;
                 audio.preservesPitch = false; // Better quality at higher speeds
                 
-                // Resolve slightly before audio ends for instant transition
+                // Resolve early for seamless transitions with slight overlap
                 let resolved = false;
+                const overlapSeconds = overlapMs / 1000;
                 audio.ontimeupdate = () => {
-                    if (!resolved && audio.duration > 0 && audio.currentTime >= audio.duration - 0.05) {
+                    if (!resolved && audio.duration > 0 && audio.currentTime >= audio.duration - overlapSeconds) {
                         resolved = true;
                         resolve();
                     }
@@ -143,9 +146,10 @@ class AudioAnnouncer {
             audio.src = audioPath;
             
             let resolved = false;
+            const overlapSeconds = overlapMs / 1000;
             
             audio.ontimeupdate = () => {
-                if (!resolved && audio.duration > 0 && audio.currentTime >= audio.duration - 0.05) {
+                if (!resolved && audio.duration > 0 && audio.currentTime >= audio.duration - overlapSeconds) {
                     resolved = true;
                     this.audioCache.set(audioPath, audio);
                     resolve();
@@ -530,29 +534,44 @@ class AudioAnnouncer {
         try {
             // Speak whole number part (0-99 as words)
             if (wholePart >= 0 && wholePart <= 99) {
-                await this.playPrerecorded(`${voiceDir}/num_${wholePart}.mp3`);
+                await this.playPrerecorded(`${voiceDir}/num_${wholePart}.mp3`, 30);
             } else {
                 // Fallback: spell out digit by digit for numbers >= 100
                 console.log('[AudioAnnouncer] Number >= 100, using digit-by-digit:', wholePart);
                 for (const char of parts[0]) {
-                    await this.playPrerecorded(`${voiceDir}/num_${char}.mp3`);
+                    await this.playPrerecorded(`${voiceDir}/num_${char}.mp3`, 30);
                 }
             }
             
             // Speak decimal part if exists
             if (decimalPart) {
-                await this.playPrerecorded(`${voiceDir}/point.mp3`);
+                await this.playPrerecorded(`${voiceDir}/point.mp3`, 20);
                 
-                // Parse decimal as a number (e.g., "44" -> 44, "04" -> 4)
-                const decimalNum = parseInt(decimalPart);
-                
-                if (decimalNum >= 0 && decimalNum <= 99) {
-                    await this.playPrerecorded(`${voiceDir}/num_${decimalNum}.mp3`);
+                // Handle decimals with leading zeros properly
+                // For lap times, we always want to preserve leading zeros (e.g., "01" = "zero one", not "one")
+                if (decimalPart.length === 2) {
+                    // Two-digit decimal: speak each digit separately to preserve leading zeros
+                    const firstDigit = parseInt(decimalPart[0]);
+                    const secondDigit = parseInt(decimalPart[1]);
+                    
+                    // If first digit is 0, we must say it
+                    if (firstDigit === 0) {
+                        await this.playPrerecorded(`${voiceDir}/num_0.mp3`, 30);
+                        await this.playPrerecorded(`${voiceDir}/num_${secondDigit}.mp3`, 30);
+                    } else {
+                        // Parse as a two-digit number (e.g., "44" -> forty-four)
+                        const decimalNum = parseInt(decimalPart);
+                        await this.playPrerecorded(`${voiceDir}/num_${decimalNum}.mp3`, 30);
+                    }
+                } else if (decimalPart.length === 1) {
+                    // Single digit decimal (e.g., "4.5")
+                    const digit = parseInt(decimalPart);
+                    await this.playPrerecorded(`${voiceDir}/num_${digit}.mp3`, 30);
                 } else {
-                    // Fallback: spell out digit by digit
-                    console.log('[AudioAnnouncer] Decimal >= 100, using digit-by-digit:', decimalNum);
+                    // More than 2 digits: spell out digit by digit
+                    console.log('[AudioAnnouncer] Decimal > 2 digits, using digit-by-digit:', decimalPart);
                     for (const char of decimalPart) {
-                        await this.playPrerecorded(`${voiceDir}/num_${char}.mp3`);
+                        await this.playPrerecorded(`${voiceDir}/num_${char}.mp3`, 30);
                     }
                 }
             }

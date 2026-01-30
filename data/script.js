@@ -10,9 +10,16 @@ const RECONNECT_DELAY_MS = 2000;
 let connectionStatusUpdateInterval = null;
 
 const bcf = document.getElementById("bandChannelFreq");
+const systemSelect = document.getElementById("systemSelect");
 const bandSelect = document.getElementById("bandSelect");
 const channelSelect = document.getElementById("channelSelect");
 const freqOutput = document.getElementById("freqOutput");
+
+// Calibration tab band/channel selectors
+const calibSystemSelect = document.getElementById("calibSystemSelect");
+const calibBandSelect = document.getElementById("calibBandSelect");
+const calibChannelSelect = document.getElementById("calibChannelSelect");
+const calibFreqOutput = document.getElementById("calibFreqOutput");
 const announcerSelect = document.getElementById("announcerSelect");
 const announcerRateInput = document.getElementById("rate");
 const enterRssiInput = document.getElementById("enter");
@@ -50,6 +57,35 @@ const freqLookup = [
   [5735, 5770, 5805, 0, 0, 0, 0, 5839],             // WalkSnail-25CE
   [5695, 5770, 5878, 0, 0, 0, 0, 5839],             // WalkSnail-50
 ];
+
+// Band definitions with display names and system
+const bandDefinitions = [
+  { index: 0, value: "A", label: "A (Boscam A / TBS / IRC)", system: "analog" },
+  { index: 1, value: "B", label: "B (Boscam B)", system: "analog" },
+  { index: 2, value: "E", label: "E (Boscam E / DJI)", system: "analog" },
+  { index: 3, value: "F", label: "F (IRC / Immersion)", system: "analog" },
+  { index: 4, value: "R", label: "R (Raceband)", system: "analog" },
+  { index: 5, value: "L", label: "L (Lowband)", system: "analog" },
+  { index: 6, value: "DJIv1-25", label: "DJI FPV v1 (25mW)", system: "dji" },
+  { index: 7, value: "DJIv1-25CE", label: "DJI FPV v1 (25mW CE)", system: "dji" },
+  { index: 8, value: "DJIv1_50", label: "DJI FPV v1 (50mW+)", system: "dji" },
+  { index: 9, value: "DJI03/04-20", label: "DJI O3/Air Unit (20MHz)", system: "dji" },
+  { index: 10, value: "DJI03/04-20CE", label: "DJI O3/Air Unit (20MHz CE)", system: "dji" },
+  { index: 11, value: "DJI03/04-40", label: "DJI O3/Air Unit (40MHz)", system: "dji" },
+  { index: 12, value: "DJI03/04-40CE", label: "DJI O3/Air Unit (40MHz CE)", system: "dji" },
+  { index: 13, value: "DJI04-R", label: "DJI O3 (Raceband)", system: "dji" },
+  { index: 14, value: "HDZero-R", label: "HDZero (Raceband)", system: "hdzero" },
+  { index: 15, value: "HDZero-E", label: "HDZero (E-band)", system: "hdzero" },
+  { index: 16, value: "HDZero-F", label: "HDZero (F-band)", system: "hdzero" },
+  { index: 17, value: "HDZero-CE", label: "HDZero (CE)", system: "hdzero" },
+  { index: 18, value: "WalkSnail-R", label: "Walksnail (Raceband)", system: "walksnail" },
+  { index: 19, value: "WalkSnail-25", label: "Walksnail (25mW)", system: "walksnail" },
+  { index: 20, value: "WalkSnail-25CE", label: "Walksnail (25mW CE)", system: "walksnail" },
+  { index: 21, value: "WalkSnail-50", label: "Walksnail (50mW+)", system: "walksnail" },
+];
+
+// System selection state
+let currentSystem = "analog";
 
 const config = document.getElementById("config");
 const race = document.getElementById("race");
@@ -477,7 +513,45 @@ onload = async function (e) {
     configData = {};
   }
   {
-    if (configData.freq !== undefined) setBandChannelIndex(configData.freq);
+    // Initialize system selectors with analog bands by default
+    populateBandsBySystem("analog", bandSelect);
+    populateBandsBySystem("analog", calibBandSelect);
+    
+    // Restore band/channel selection - prioritize bandIndex/channelIndex if available
+    if (configData.bandIndex !== undefined && configData.channelIndex !== undefined) {
+      // Determine which system this band belongs to
+      const bandDef = bandDefinitions[configData.bandIndex];
+      if (bandDef) {
+        currentSystem = bandDef.system;
+        
+        // Set system selectors
+        if (systemSelect) systemSelect.value = currentSystem;
+        if (calibSystemSelect) calibSystemSelect.value = currentSystem;
+        
+        // Populate bands for this system
+        populateBandsBySystem(currentSystem, bandSelect);
+        populateBandsBySystem(currentSystem, calibBandSelect);
+        
+        // Find and select the matching band by value
+        const targetBandValue = bandDef.value;
+        const bandOption = Array.from(bandSelect.options).find(opt => opt.value === targetBandValue);
+        const calibBandOption = Array.from(calibBandSelect.options).find(opt => opt.value === targetBandValue);
+        
+        if (bandOption) bandSelect.value = targetBandValue;
+        if (calibBandOption) calibBandSelect.value = targetBandValue;
+        
+        // Set channel
+        channelSelect.selectedIndex = configData.channelIndex;
+        if (calibChannelSelect) calibChannelSelect.selectedIndex = configData.channelIndex;
+        
+        // Update channel availability
+        updateChannelAvailability(bandSelect);
+        updateChannelAvailability(calibBandSelect);
+      }
+    } else if (configData.freq !== undefined) {
+      // Fallback: find by frequency
+      setBandChannelIndex(configData.freq);
+    }
     if (configData.minLap !== undefined) {
       minLapInput.value = (parseFloat(configData.minLap) / 10).toFixed(1);
       updateMinLap(minLapInput, minLapInput.value);
@@ -521,6 +595,7 @@ onload = async function (e) {
       updateColorPreview();
     }
     populateFreqOutput();
+    populateCalibFreqOutput(); // Also update calibration tab frequency display
     stopRaceButton.disabled = true;
     startRaceButton.disabled = false;
     addLapButton.disabled = true;
@@ -622,7 +697,18 @@ onload = async function (e) {
   }
 };
 
+let batteryVoltageInterval = null;
+
 async function getBatteryVoltage() {
+  // Only fetch if battery monitoring is enabled
+  const batteryToggle = document.getElementById("batteryMonitorToggle");
+  if (!batteryToggle || !batteryToggle.checked) {
+    if (batteryVoltageDisplay) {
+      batteryVoltageDisplay.innerText = "--";
+    }
+    return;
+  }
+  
   try {
     let batteryVoltage = null;
     if (usbConnected && transportManager) {
@@ -642,11 +728,15 @@ async function getBatteryVoltage() {
       batteryVoltageDisplay.innerText = batteryVoltage || "--";
     }
   } catch (err) {
-    console.error("Failed to get battery voltage:", err);
+    // Silently fail - battery monitoring is optional
+    if (batteryVoltageDisplay) {
+      batteryVoltageDisplay.innerText = "--";
+    }
   }
 }
 
-setInterval(getBatteryVoltage, 2000);
+// Start battery voltage polling (will only run when enabled)
+batteryVoltageInterval = setInterval(getBatteryVoltage, 2000);
 
 function addRssiPoint() {
   if (!rssiChart) return; // Chart not initialized yet
@@ -845,8 +935,22 @@ async function saveConfig() {
 
   // Save all settings to device
   const rssiSensitivitySelect = document.getElementById("rssiSensitivity");
+  
+  // Save band and channel indices along with frequency for accurate restoration
+  // Get the actual band index from the dataset
+  let selectedBandIndex = 0;
+  if (bandSelect && bandSelect.selectedIndex !== -1) {
+    const selectedOption = bandSelect.options[bandSelect.selectedIndex];
+    if (selectedOption && selectedOption.dataset.bandIndex) {
+      selectedBandIndex = parseInt(selectedOption.dataset.bandIndex);
+    }
+  }
+  const selectedChannelIndex = channelSelect.selectedIndex;
+  
   const configData = {
     freq: frequency,
+    bandIndex: selectedBandIndex,
+    channelIndex: selectedChannelIndex,
     minLap: parseInt(minLapInput.value * 10),
     alarm: parseInt(alarmThreshold.value * 10),
     anType: announcerSelect.selectedIndex,
@@ -883,17 +987,231 @@ async function saveConfig() {
   }
 }
 
+// Populate band selector based on selected system
+function populateBandsBySystem(system, targetBandSelect, maintainSelection = false) {
+  if (!targetBandSelect) return;
+  
+  const previousValue = targetBandSelect.value;
+  const filteredBands = bandDefinitions.filter(b => b.system === system);
+  
+  targetBandSelect.innerHTML = '';
+  filteredBands.forEach(band => {
+    const option = document.createElement('option');
+    option.value = band.value;
+    option.textContent = band.label;
+    option.dataset.bandIndex = band.index;
+    targetBandSelect.appendChild(option);
+  });
+  
+  // Try to maintain previous selection if possible
+  if (maintainSelection && previousValue) {
+    const matchingOption = Array.from(targetBandSelect.options).find(opt => opt.value === previousValue);
+    if (matchingOption) {
+      targetBandSelect.value = previousValue;
+    }
+  }
+  
+  // If no selection or couldn't maintain, select first option
+  if (targetBandSelect.selectedIndex === -1 && targetBandSelect.options.length > 0) {
+    targetBandSelect.selectedIndex = 0;
+  }
+  
+  updateChannelAvailability(targetBandSelect);
+}
+
+// Update channel selector based on selected band (disable unused channels)
+function updateChannelAvailability(targetBandSelect) {
+  // Determine which channel selector to use
+  let targetChannelSelect;
+  if (targetBandSelect && targetBandSelect.id === 'bandSelect') {
+    targetChannelSelect = document.getElementById('channelSelect');
+  } else if (targetBandSelect && targetBandSelect.id === 'calibBandSelect') {
+    targetChannelSelect = document.getElementById('calibChannelSelect');
+  }
+  
+  if (!targetChannelSelect || !targetBandSelect || targetBandSelect.selectedIndex === -1) return;
+  
+  const selectedOption = targetBandSelect.options[targetBandSelect.selectedIndex];
+  if (!selectedOption) return;
+  
+  const bandIndex = parseInt(selectedOption.dataset.bandIndex);
+  const frequencies = freqLookup[bandIndex];
+  
+  // Enable/disable channels based on whether they have non-zero frequencies
+  for (let i = 0; i < targetChannelSelect.options.length; i++) {
+    if (i < frequencies.length && frequencies[i] > 0) {
+      targetChannelSelect.options[i].disabled = false;
+    } else {
+      targetChannelSelect.options[i].disabled = true;
+    }
+  }
+  
+  // If current selection is disabled, select first available channel
+  if (targetChannelSelect.options[targetChannelSelect.selectedIndex]?.disabled) {
+    for (let i = 0; i < targetChannelSelect.options.length; i++) {
+      if (!targetChannelSelect.options[i].disabled) {
+        targetChannelSelect.selectedIndex = i;
+        break;
+      }
+    }
+  }
+}
+
+// Handle system selection change (settings)
+function onSystemChange() {
+  if (!systemSelect) return;
+  currentSystem = systemSelect.value;
+  populateBandsBySystem(currentSystem, bandSelect);
+  
+  // Sync to calibration
+  if (calibSystemSelect) {
+    calibSystemSelect.value = currentSystem;
+    populateBandsBySystem(currentSystem, calibBandSelect);
+  }
+  
+  populateFreqOutput();
+  autoSaveConfig();
+}
+
+// Handle system selection change (calibration)
+function onCalibSystemChange() {
+  if (!calibSystemSelect) return;
+  currentSystem = calibSystemSelect.value;
+  populateBandsBySystem(currentSystem, calibBandSelect);
+  
+  // Sync to settings
+  if (systemSelect) {
+    systemSelect.value = currentSystem;
+    populateBandsBySystem(currentSystem, bandSelect);
+  }
+  
+  populateCalibFreqOutput();
+  autoSaveConfig();
+}
+
+// Handle band selection change - update channels
+function onBandChange() {
+  updateChannelAvailability(bandSelect);
+  populateFreqOutput();
+  syncSettingsToCalib();
+  autoSaveConfig();
+}
+
+function onCalibBandChange() {
+  updateChannelAvailability(calibBandSelect);
+  populateCalibFreqOutput();
+  autoSaveConfig();
+}
+
 function populateFreqOutput() {
-  let band = bandSelect.options[bandSelect.selectedIndex].value;
-  let chan = channelSelect.options[channelSelect.selectedIndex].value;
-  frequency = freqLookup[bandSelect.selectedIndex][channelSelect.selectedIndex];
+  if (!bandSelect || bandSelect.selectedIndex === -1) return;
+  const selectedOption = bandSelect.options[bandSelect.selectedIndex];
+  if (!selectedOption) return;
+  
+  const bandIndex = parseInt(selectedOption.dataset.bandIndex);
+  const band = selectedOption.value;
+  const chan = channelSelect.options[channelSelect.selectedIndex].value;
+  frequency = freqLookup[bandIndex][channelSelect.selectedIndex];
   freqOutput.textContent = band + chan + " " + frequency;
 }
 
-bcf.addEventListener("change", function handleChange(event) {
-  populateFreqOutput();
-  autoSaveConfig();
-});
+function populateCalibFreqOutput() {
+  if (!calibBandSelect || !calibChannelSelect || !calibFreqOutput) return;
+  if (calibBandSelect.selectedIndex === -1) return;
+  
+  const selectedOption = calibBandSelect.options[calibBandSelect.selectedIndex];
+  if (!selectedOption) return;
+  
+  const bandIndex = parseInt(selectedOption.dataset.bandIndex);
+  const band = selectedOption.value;
+  const chan = calibChannelSelect.options[calibChannelSelect.selectedIndex].value;
+  frequency = freqLookup[bandIndex][calibChannelSelect.selectedIndex];
+  calibFreqOutput.textContent = band + chan + " " + frequency + "MHz";
+  
+  // Sync to settings (without triggering another update)
+  if (systemSelect && bandSelect && channelSelect) {
+    systemSelect.value = currentSystem;
+    
+    // Only repopulate if systems don't match
+    if (systemSelect.value !== currentSystem) {
+      populateBandsBySystem(currentSystem, bandSelect);
+    }
+    
+    // Match band by value
+    const calibBandValue = calibBandSelect.options[calibBandSelect.selectedIndex]?.value;
+    if (calibBandValue) {
+      const matchingOption = Array.from(bandSelect.options).find(opt => opt.value === calibBandValue);
+      if (matchingOption) {
+        bandSelect.value = calibBandValue;
+      }
+    }
+    
+    // Sync channel
+    channelSelect.selectedIndex = calibChannelSelect.selectedIndex;
+    populateFreqOutput();
+  }
+}
+
+// Sync settings band/channel changes to calibration tab
+function syncSettingsToCalib() {
+  if (!bandSelect || !calibBandSelect) return;
+  
+  // Sync system first
+  if (systemSelect && calibSystemSelect) {
+    calibSystemSelect.value = systemSelect.value;
+  }
+  
+  // Find matching band value and set it
+  const settingsBandValue = bandSelect.options[bandSelect.selectedIndex]?.value;
+  if (settingsBandValue) {
+    const matchingOption = Array.from(calibBandSelect.options).find(opt => opt.value === settingsBandValue);
+    if (matchingOption) {
+      calibBandSelect.value = settingsBandValue;
+    }
+  }
+  
+  // Sync channel
+  if (calibChannelSelect && channelSelect) {
+    calibChannelSelect.selectedIndex = channelSelect.selectedIndex;
+  }
+}
+
+// Initialize event listeners after DOM is ready
+function initializeBandSelectors() {
+  // System selector event listeners
+  if (systemSelect) {
+    systemSelect.addEventListener("change", onSystemChange);
+  }
+  if (calibSystemSelect) {
+    calibSystemSelect.addEventListener("change", onCalibSystemChange);
+  }
+
+  // Band/channel selector event listeners
+  if (bandSelect) {
+    bandSelect.addEventListener("change", onBandChange);
+  }
+  if (channelSelect) {
+    channelSelect.addEventListener("change", function() {
+      populateFreqOutput();
+      syncSettingsToCalib();
+      autoSaveConfig();
+    });
+  }
+
+  // Calibration tab band/channel change handlers
+  if (calibBandSelect) {
+    calibBandSelect.addEventListener("change", onCalibBandChange);
+  }
+  if (calibChannelSelect) {
+    calibChannelSelect.addEventListener("change", function() {
+      populateCalibFreqOutput();
+      autoSaveConfig();
+    });
+  }
+}
+
+// Call initialization when script loads
+initializeBandSelectors();
 
 // Add auto-save listeners for other inputs
 if (announcerSelect) {
@@ -1656,6 +1974,24 @@ function clearLaps() {
   document.getElementById("statMedian").textContent = "--";
   document.getElementById("statBest3").textContent = "--";
   document.getElementById("statBest3Laps").textContent = "";
+  
+  // Broadcast clearLaps event to OSD and other clients
+  if (usbConnected && transportManager) {
+    transportManager
+      .sendCommand("timer/clearLaps", "POST")
+      .then((response) => console.log("/timer/clearLaps:", response))
+      .catch((err) => console.error("Failed to clear laps:", err));
+  } else {
+    fetch("/timer/clearLaps", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+    })
+      .then((response) => response.json())
+      .then((response) => console.log("/timer/clearLaps:" + JSON.stringify(response)));
+  }
 }
 
 // EventSource initialization moved to setupWiFiEvents() function above

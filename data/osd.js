@@ -159,6 +159,8 @@ function connectToEvents() {
       handleRaceStart();
     } else if (e.data === 'stopped') {
       handleRaceStop();
+    } else if (e.data === 'cleared') {
+      handleClearLaps();
     }
   });
 
@@ -235,6 +237,20 @@ function handleRaceStop() {
   stopTimer();
 }
 
+// Handle clear laps from backend
+function handleClearLaps() {
+  console.log('Laps cleared by user');
+  // Reset lap data
+  lapNo = -1;
+  lapTimes = [];
+  updateLapCounter();
+  clearStats();
+  clearLapsTable();
+  // Reset timer display to default
+  timer.textContent = '00:00.00';
+  currentLapTime.textContent = '00.00' + i18n.t('race.table.seconds_short');
+}
+
 // Add lap
 function addLap(lapTimeSec) {
   // If race hasn't started yet, start it now (backup)
@@ -278,8 +294,9 @@ function updateLapCounter() {
 function updateLastLap(lapTime) {
   
   lastLapTime.textContent = lapTime + i18n.t('race.table.seconds_short');
-  // Highlight if it's the fastest
-  const fastest = lapTimes.length > 0 ? Math.min(...lapTimes) : null;
+  // Highlight if it's the fastest (excluding Gate 1)
+  const validLaps = lapTimes.slice(1); // Skip first lap (Gate 1)
+  const fastest = validLaps.length > 0 ? Math.min(...validLaps) : null;
   if (fastest && lapTime === fastest) {
     lastLapTime.style.color = '#ffd700';
   } else {
@@ -289,23 +306,27 @@ function updateLastLap(lapTime) {
 
 // Update statistics
 function updateStats() {
-  if (lapTimes.length === 0) {
+  // Exclude first lap (Gate 1) from all statistics
+  const validLaps = lapTimes.slice(1);
+  
+  if (validLaps.length === 0) {
     fastestLap.textContent = '--';
     fastest3Consec.textContent = '--';
     medianLap.textContent = '--';
     return;
   }
   
-  // Fastest Lap
-  const fastest = Math.min(...lapTimes);
+  // Fastest Lap (excluding Gate 1)
+  const fastest = Math.min(...validLaps);
   
   fastestLap.textContent = fastest.toFixed(2) + i18n.t('race.table.seconds_short');
-  // Fastest 3 Consecutive
-  if (lapTimes.length >= 3) {
+  
+  // Fastest 3 Consecutive (excluding Gate 1)
+  if (validLaps.length >= 3) {
     let fastestConsecTime = Infinity;
     
-    for (let i = 0; i <= lapTimes.length - 3; i++) {
-      const consecTime = lapTimes[i] + lapTimes[i + 1] + lapTimes[i + 2];
+    for (let i = 0; i <= validLaps.length - 3; i++) {
+      const consecTime = validLaps[i] + validLaps[i + 1] + validLaps[i + 2];
       if (consecTime < fastestConsecTime) {
         fastestConsecTime = consecTime;
       }
@@ -316,8 +337,8 @@ function updateStats() {
     fastest3Consec.textContent = '--';
   }
   
-  // Median Lap
-  const sorted = [...lapTimes].sort((a, b) => a - b);
+  // Median Lap (excluding Gate 1)
+  const sorted = [...validLaps].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   const median = sorted.length % 2 === 0 
     ? (sorted[mid - 1] + sorted[mid]) / 2 
@@ -342,7 +363,9 @@ function clearLapsTable() {
 function updateLapsTable() {
   const recentLaps = lapTimes.slice(-5).reverse(); // Last 5 laps, most recent first
   const startIndex = Math.max(0, lapTimes.length - 5);
-  const fastest = lapTimes.length > 0 ? Math.min(...lapTimes) : null;
+  // Calculate fastest excluding Gate 1 (first lap)
+  const validLaps = lapTimes.slice(1);
+  const fastest = validLaps.length > 0 ? Math.min(...validLaps) : null;
   
   lapsTableBody.innerHTML = '';
   
@@ -350,8 +373,8 @@ function updateLapsTable() {
     const actualIndex = lapTimes.length - 1 - index;
     const row = lapsTableBody.insertRow();
     
-    // Highlight fastest lap
-    if (lapTime === fastest) {
+    // Highlight fastest lap (but not if it's Gate 1)
+    if (actualIndex > 0 && fastest && lapTime === fastest) {
       row.classList.add('fastest-lap');
     }
     
@@ -365,7 +388,10 @@ function updateLapsTable() {
     lapTimeCell.textContent = lapTime.toFixed(2) + i18n.t('race.table.seconds_short');
     // Gap to fastest
     const gapCell = row.insertCell(2);
-    if (fastest && lapTime !== fastest) {
+    // Don't show gap for Gate 1, and calculate gap to fastest (excluding Gate 1)
+    if (actualIndex === 0 || !fastest) {
+      gapCell.textContent = '--';
+    } else if (lapTime !== fastest) {
       const gap = (lapTime - fastest).toFixed(2);
       gapCell.textContent = `+${gap}` + i18n.t('race.table.seconds_short');
     } else {

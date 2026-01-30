@@ -1,0 +1,225 @@
+﻿/* ============================================
+   CALIBRATION TAB MODERN UI
+   ============================================ */
+
+.calib-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--primary-color);
+}
+
+.calib-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.calib-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+.calib-freq-badge {
+  background: var(--primary-color);
+  color: var(--background-color);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+}
+
+.calib-channel-grid {
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  gap: 16px;
+}
+
+.calib-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calib-input-group label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--secondary-color);
+}
+
+.calib-select {
+  padding: 10px 12px;
+  border: 2px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.calib-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.1);
+}
+
+.calib-chart-wrapper {
+  background-color: var(--background-color);
+  border-radius: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.calib-wizard-btn {
+  padding: 8px 16px;
+  background-color: var(--primary-color);
+  color: var(--background-color);
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.calib-wizard-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.calib-threshold-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.calib-threshold-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calib-threshold-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.calib-threshold-header label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.calib-threshold-value {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--primary-color);
+  font-family: 'Courier New', monospace;
+}
+
+.calib-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.calib-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.calib-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.calib-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.calib-slider::-moz-range-thumb:hover {
+  transform: scale(1.2);
+}
+
+.enter-slider {
+  background: linear-gradient(to right, #666 0%, #4CAF50 100%);
+}
+
+.exit-slider {
+  background: linear-gradient(to right, #E53935 0%, #666 100%);
+}
+
+.calib-threshold-hint {
+  font-size: 12px;
+  color: var(--secondary-color);
+  font-style: italic;
+}
+
+.calib-save-btn {
+  width: 100%;
+  padding: 14px;
+  background-color: var(--primary-color);
+  color: var(--background-color);
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.calib-save-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Mobile responsive for calibration */
+@media screen and (max-width: 768px) {
+  .calib-channel-grid,
+  .calib-threshold-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .calib-card {
+    padding: 16px;
+  }
+  
+  .calib-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .calib-freq-badge {
+    align-self: stretch;
+    text-align: center;
+  }
+}

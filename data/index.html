@@ -6,6 +6,7 @@
     <title>FPVGate Lap Timer</title>
     <link rel="icon" type="image/svg+xml" href="logo-white.svg" id="favicon" />
     <link rel="stylesheet" type="text/css" href="style.css" />
+    <link rel="stylesheet" type="text/css" href="calib-styles.css" />
     <script src="jquery-3.7.1.min.js"></script>
     <script src="i18n.js"></script>
     <script src="audio-announcer.js"></script>
@@ -157,28 +158,85 @@
       </div>
 
       <div id="calib" class="tabcontent" style="display: none;">
-        <div style="margin-bottom: 16px">
-          <button id="startWizardButton" onclick="startCalibrationWizard()" style="width: 100%; padding: 12px; font-size: 16px; background-color: var(--primary-color)" data-i18n="calib.start_wizard">Start Calibration Wizard</button>
+        <!-- Modern Calibration Header -->
+        <div class="calib-header">
+          <h2 style="margin: 0 0 8px 0; font-size: 24px" data-i18n="calib.title">RSSI Calibration</h2>
+          <p style="margin: 0; color: var(--secondary-color); font-size: 14px" data-i18n="calib.subtitle">Tune your gate detection thresholds</p>
         </div>
 
-        <div>
-          <canvas id="rssiChart"></canvas>
-        </div>
-        <div class="config-item">
-          <label for="enter" data-i18n="calib.enter_rssi">Enter RSSI:</label>
-          <div class="input-with-value">
-            <span id="enterSpan" class="val">120</span>
-            <input type="range" min="50" max="255" step="1" id="enter" value="120" oninput="updateEnterRssi(this,value)" />
+        <!-- Channel Selection Card -->
+        <div class="calib-card">
+          <div class="calib-card-header">
+            <span data-i18n="calib.channel_selection">Channel Selection</span>
+            <div class="calib-freq-badge" id="calibFreqOutput">R1 5658MHz</div>
+          </div>
+          <div class="calib-channel-grid" style="display: flex; gap: 12px; align-items: center;">
+            <div class="calib-input-group" style="flex: 1; margin: 0;">
+              <label data-i18n="calib.system" style="margin-bottom: 4px;">System</label>
+              <select id="calibSystemSelect" class="calib-select">
+                <option value="analog">Analog</option>
+                <option value="hdzero">HDZero</option>
+                <option value="walksnail">Walksnail</option>
+                <option value="dji">DJI</option>
+              </select>
+            </div>
+            <div class="calib-input-group" style="flex: 1; margin: 0;">
+              <label data-i18n="calib.band" style="margin-bottom: 4px;">Band</label>
+              <select id="calibBandSelect" class="calib-select">
+              </select>
+            </div>
+            <div class="calib-input-group" style="flex: 0.6; margin: 0;">
+              <label data-i18n="calib.channel" style="margin-bottom: 4px;">Channel</label>
+              <select id="calibChannelSelect" class="calib-select">
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+              </select>
+            </div>
           </div>
         </div>
-        <div class="config-item">
-          <label for="exit" data-i18n="calib.exit_rssi">Exit RSSI:</label>
-          <div class="input-with-value">
-            <span id="exitSpan" class="val">100</span>
-            <input type="range" min="50" max="255" step="1" id="exit" value="100" oninput="updateExitRssi(this,value)" />
+
+        <!-- RSSI Graph Card -->
+        <div class="calib-card">
+          <div class="calib-card-header">
+            <span data-i18n="calib.rssi_graph">Live RSSI Signal</span>
+            <button id="startWizardButton" onclick="startCalibrationWizard()" class="calib-wizard-btn" data-i18n="calib.start_wizard">Wizard</button>
+          </div>
+          <div class="calib-chart-wrapper">
+            <canvas id="rssiChart"></canvas>
           </div>
         </div>
-        <button onclick="saveConfig()" data-i18n="calib.save_thresholds">Save RSSI Thresholds</button>
+
+        <!-- Threshold Controls Card -->
+        <div class="calib-card">
+          <div class="calib-card-header">
+            <span data-i18n="calib.thresholds">Detection Thresholds</span>
+          </div>
+          <div class="calib-threshold-grid">
+            <div class="calib-threshold-item">
+              <div class="calib-threshold-header">
+                <label data-i18n="calib.enter_rssi">Enter RSSI</label>
+                <span id="enterSpan" class="calib-threshold-value">120</span>
+              </div>
+              <input type="range" min="50" max="255" step="1" id="enter" value="120" oninput="updateEnterRssi(this,value)" class="calib-slider enter-slider" />
+              <div class="calib-threshold-hint" data-i18n="calib.enter_hint">Trigger when signal rises above this</div>
+            </div>
+            <div class="calib-threshold-item">
+              <div class="calib-threshold-header">
+                <label data-i18n="calib.exit_rssi">Exit RSSI</label>
+                <span id="exitSpan" class="calib-threshold-value">100</span>
+              </div>
+              <input type="range" min="50" max="255" step="1" id="exit" value="100" oninput="updateExitRssi(this,value)" class="calib-slider exit-slider" />
+              <div class="calib-threshold-hint" data-i18n="calib.exit_hint">Reset when signal drops below this</div>
+            </div>
+          </div>
+          <button onclick="saveConfig()" class="calib-save-btn" data-i18n="calib.save_thresholds">Save Thresholds</button>
+        </div>
       </div>
 
       <div id="ota" class="tabcontent" style="display: none">
@@ -190,7 +248,7 @@
 
     <footer>
       <div class="footer-content">
-        <span id="footerVersion">FPVGate v0.0.0</span>
+        <span id="footerVersion">FPVGate v1.5.5-dev</span>
       </div>
     </footer>
 
@@ -378,6 +436,7 @@
                   <option value="rachel" data-i18n="settings.tts.voice_options.eleven_rachel">ElevenLabs (Rachel - Calm)</option>
                   <option value="adam" data-i18n="settings.tts.voice_options.eleven_adam">ElevenLabs (Adam - Deep Male)</option>
                   <option value="antoni" data-i18n="settings.tts.voice_options.eleven_antoni">ElevenLabs (Antoni - Male)</option>
+                  <option value="matilda" data-i18n="settings.tts.voice_options.eleven_matilda">ElevenLabs (Matilda - Warm Female)</option>
                   <option value="piper" data-i18n="settings.tts.voice_options.piper">PiperTTS (Lower Latency)</option>
                 </select>
               </div>
@@ -407,30 +466,18 @@
 
               <div id="bandChannelFreq">
                 <div class="config-item">
+                  <label for="systemSelect" data-i18n="settings.pilot.system">System:</label>
+                  <select id="systemSelect">
+                    <option value="analog">Analog</option>
+                    <option value="hdzero">HDZero</option>
+                    <option value="walksnail">Walksnail</option>
+                    <option value="dji">DJI</option>
+                  </select>
+                </div>
+
+                <div class="config-item">
                   <label for="bandSelect" data-i18n="settings.pilot.band">Band:</label>
                   <select id="bandSelect">
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="E">E</option>
-                    <option value="F">F</option>
-                    <option value="R">R</option>
-                    <option value="L">L</option>
-                    <option value="DJIv1-25">DJIv1-25</option>
-                    <option value="DJIv1-25CE">DJIv1-25CE</option>
-                    <option value="DJIv1_50">DJIv1_50</option>
-                    <option value="DJI03/04-10/20">DJI03/04-10/20</option>
-                    <option value="DJI03/04-20CE">DJI03/04-20CE</option>
-                    <option value="DJI03/04-40">DJI03/04-40</option>
-                    <option value="DJI03/04-40CE">DJI03/04-40CE</option>
-                    <option value="DJI04-R">DJI04-R</option>
-                    <option value="HDZero-R">HDZero-R</option>
-                    <option value="HDZero-E">HDZero-E</option>
-                    <option value="HDZero-F">HDZero-F</option>
-                    <option value="HDZero-CE">HDZero-CE</option>
-                    <option value="WalkSnail-R">WalkSnail-R</option>
-                    <option value="WalkSnail-25">WalkSnail-25</option>
-                    <option value="WalkSnail-25CE">WalkSnail-25CE</option>
-                    <option value="WalkSnail-50">WalkSnail-50</option>
                   </select>
                 </div>
 

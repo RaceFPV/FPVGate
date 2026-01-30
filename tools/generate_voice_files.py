@@ -46,11 +46,15 @@ VOICES = {
     'antoni': {  # Antoni - Well-rounded male
         'id': 'ErXwobaYiN019PkySvjV',
         'name': 'Antoni (Male)'
+    },
+    'matilda': {  # Matilda - Warm female
+        'id': 'ZF6FPAbjXT4488VcRRnw',
+        'name': 'Matilda (Warm Female)'
     }
 }
 
-# Select voice - change 'default' to 'rachel', 'adam', or 'antoni'
-SELECTED_VOICE = 'default'
+# Select voice - change 'default' to 'rachel', 'adam', 'antoni', or 'matilda'
+SELECTED_VOICE = 'matilda'
 VOICE_ID = VOICES[SELECTED_VOICE]['id']
 
 VOICE_SETTINGS = VoiceSettings(
@@ -118,8 +122,9 @@ def generate_audio_files(api_key: str):
     # Initialize client
     client = ElevenLabs(api_key=api_key)
     
-    # Create output directory
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # Create voice-specific output directory
+    voice_dir = OUTPUT_DIR / f"sounds_{SELECTED_VOICE}"
+    voice_dir.mkdir(parents=True, exist_ok=True)
     
     # Get all phrases to generate
     phrases = get_phrases_to_generate()
@@ -128,13 +133,13 @@ def generate_audio_files(api_key: str):
     voice_name = VOICES[SELECTED_VOICE]['name']
     print(f"\n🎤 Generating {total} audio files with ElevenLabs...")
     print(f"   Voice: {voice_name} ({VOICE_ID})")
-    print(f"   Output: {OUTPUT_DIR}\n")
+    print(f"   Output: {voice_dir}\n")
     
     success_count = 0
     error_count = 0
     
     for i, (filename, text) in enumerate(phrases.items(), 1):
-        output_path = OUTPUT_DIR / filename
+        output_path = voice_dir / filename
         
         # Skip if already exists
         if output_path.exists():
@@ -174,9 +179,9 @@ def generate_audio_files(api_key: str):
     if error_count > 0:
         print(f"❌ Errors: {error_count}")
     
-    total_size = sum(f.stat().st_size for f in OUTPUT_DIR.glob("*.mp3"))
+    total_size = sum(f.stat().st_size for f in voice_dir.glob("*.mp3"))
     print(f"📦 Total size: {total_size / 1024 / 1024:.2f} MB")
-    print(f"📁 Location: {OUTPUT_DIR.absolute()}")
+    print(f"📁 Location: {voice_dir.absolute()}")
     print(f"{'='*60}\n")
     
     # Estimate character usage
