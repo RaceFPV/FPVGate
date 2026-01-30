@@ -2,6 +2,89 @@
 
 All notable changes to FPVGate will be documented in this file.
 
+## [1.5.5] - 2026-01-30
+
+### Added - Voice Announcements
+- **Matilda Voice** - New ElevenLabs voice option (Warm Female)
+  - 214 pre-generated audio files for race announcements
+  - Requires SD card for audio file storage
+  - Voice ID: ZF6FPAbjXT4488VcRRnw
+  - Added to voice selector in settings modal
+  - Added `/sounds_matilda/*` webserver route for SD card serving
+
+### Added - VTX Frequency Selection
+- **System-Based Band Selection** - Hierarchical VTX configuration UI
+  - New "System" dropdown with 4 options: Analog, HDZero, Walksnail, DJI
+  - Band selector dynamically filters to show only relevant bands for selected system
+  - Channel selector automatically disables unavailable channels (frequency = 0)
+  - Real-time synchronization between settings modal and calibration tab
+  - Cleaner, more intuitive UI with inline layout
+  - Band/channel configuration persists correctly across reboots
+
+### Improved - Audio Playback
+- **Audio Crossfade System** - Seamless transitions between number announcements
+  - Configurable overlap timing (30ms for numbers, 20ms for "point")
+  - Eliminates gaps between audio clips for more natural speech
+  - Example: "13.52" now flows seamlessly instead of "13 [gap] point [gap] 52"
+  - Improved audio caching and preloading
+  - Better fallback mechanisms (ElevenLabs → PiperTTS → Web Speech API)
+
+### Fixed - Audio Announcements
+- **Decimal Pronunciation with Leading Zeros** - Fixed lap time announcements
+  - Times like 4.04 now correctly say "four point zero four" (not "four point four")
+  - Times like 12.01 now correctly say "twelve point zero one" (not "twelve point one")
+  - All 2-digit decimals with leading zeros are now spoken correctly
+  - Handles both single-digit and two-digit decimal parts properly
+
+### Fixed - Battery Monitoring
+- **Battery Voltage Polling Spam** - Eliminated console error spam
+  - Battery voltage only polled when battery monitoring is enabled
+  - Prevents connection drops from excessive failed requests
+  - Silent failure mode for better stability
+  - Fixed hundreds of "Failed to get battery voltage: TypeError" errors
+
+### Fixed - SD Card Audio
+- **SD Card Audio File Serving** - Alternative voices now work correctly
+  - Changed `#ifdef ESP32S3` to `#ifdef HAS_SD_CARD_SUPPORT` for proper board detection
+  - Replaced problematic regex patterns with simple wildcard routes
+  - Added explicit routes for each voice directory (`/sounds_default/*`, `/sounds_rachel/*`, etc.)
+  - Routes registered before catch-all to ensure proper priority
+  - SD card test endpoint now works correctly at `/storage/sdtest`
+
+### Fixed - Configuration UI
+- **Band/Channel Selector Synchronization** - Settings stay in sync across UI
+  - Fixed variable shadowing in channel availability updates
+  - Band definitions properly mapped to systems with correct indexing
+  - RSSI graph displays properly with new selector system
+  - Configuration save/load includes system selection
+
+### Changed - Voice Generation Tools
+- **Updated Voice Generation Script** - Enhanced audio file generation
+  - Added Matilda voice to generation tools
+  - Voice-specific output directories (sounds_matilda, sounds_adam, etc.)
+  - Easy regeneration of individual corrupted audio files
+  - Script now outputs to proper SD card directory structure
+
+### Technical
+- **New Files**
+  - `data/calib-styles.css` - Calibration UI styles
+  - `data/vert-osd.css` - Vertical OSD styles
+  - `data/vert-osd.html` - Vertical OSD layout
+  - `CHANGELOG_v1.5.5.md` - Detailed release notes
+- **Modified Files**
+  - `data/index.html` - Matilda voice option, system-based band selectors
+  - `data/script.js` - System-to-band mapping, dynamic channel filtering, battery fix
+  - `data/audio-announcer.js` - Audio crossfade, decimal pronunciation fix, Matilda support
+  - `data/locales/en.json` - Translation keys for Matilda voice and system selectors
+  - `lib/WEBSERVER/webserver.cpp` - Matilda route, fixed SD card audio serving
+  - `lib/CONFIG/config.h` - Band/channel configuration structure
+  - `lib/CONFIG/config.cpp` - Configuration save/load improvements
+  - `lib/VERSION/version.h` - Version bumped to 1.5.5
+  - `tools/generate_voice_files.py` - Added Matilda voice, voice-specific directories
+
+### Summary
+This release focuses on audio quality improvements and VTX frequency selection UX. The new Matilda voice provides another high-quality announcement option, while the system-based band selector makes frequency configuration more intuitive. Critical audio bugs have been fixed, including decimal pronunciation and battery voltage polling spam. The audio crossfade system creates seamless, natural-sounding announcements.
+
 ## [1.5.3] - 2026-01-18
 
 ### Fixed - Lap Analysis
