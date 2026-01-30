@@ -231,14 +231,23 @@ Exit  ├/──────────\─
 
 ## Project Status
 
-**Current Version:** v1.5.2
+**Current Version:** v1.5.5
 **Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/), Seeed Studio XIAO ESP32S3
 **License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
 
 ### Recent Updates
 
-**v1.5.1-dev (In Development)**
+**v1.5.5 (Latest Release - January 30, 2026)**
+- **New Matilda Voice** - ElevenLabs Warm Female voice with 214 audio files
+- **System-Based VTX Selection** - Hierarchical Analog/HDZero/Walksnail/DJI band selector
+- **Audio Crossfade System** - Seamless 30ms transitions between number announcements
+- **Fixed Decimal Pronunciation** - 4.04 now says "four point zero four" correctly
+- **Fixed Battery Voltage Spam** - Eliminated console spam and connection drops
+- **Fixed SD Card Audio** - Alternative voices now work correctly from SD card
+- **Fixed Band/Channel Sync** - Settings and calibration stay synchronized
+
+**v1.5.1-dev**
 - [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/) support (4MB flash variant)
 - Compact form factor with optimized pin mappings
 - Dual board support (DevKitC-1 and Super Mini)
