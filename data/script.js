@@ -2234,10 +2234,10 @@ function updateThemeLogos(theme) {
   const isLight = lightThemes.has(theme);
   const favicon = document.getElementById("favicon");
   const headerLogo = document.getElementById("headerLogo");
-  const logoPath = isLight ? "logo-black.png" : "logo-white.png";
+  const logoPath = isLight ? "logo-black.svg" : "logo-white.svg";
   if (favicon) {
     favicon.href = logoPath;
-    favicon.type = "image/png";
+    favicon.type = "image/svg+xml";
   }
   if (headerLogo) headerLogo.src = logoPath;
 }
