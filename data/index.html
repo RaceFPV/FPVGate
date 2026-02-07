@@ -379,6 +379,9 @@
             <div class="settings-nav-item" onclick="switchSettingsSection('webhooks')">
               <span data-i18n="settings.tabs.webhooks">Webhooks</span>
             </div>
+            <div class="settings-nav-item" onclick="switchSettingsSection('osd')">
+              <span data-i18n="settings.tabs.osd">On Screen Displays</span>
+            </div>
             <div class="settings-nav-item" onclick="switchSettingsSection('system')">
               <span data-i18n="settings.tabs.system">System Settings</span>
             </div>
@@ -852,16 +855,6 @@
                 <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.system.battery_voltage_tip">Total voltage and per-cell average</div>
               </div>
 
-              <h3 style="margin-top: 0" data-i18n="settings.system.rssi_detection">RSSI Detection</h3>
-              <div class="config-item">
-                <label for="rssiSensitivity" data-i18n="settings.system.rssi_sensitivity">RSSI Sensitivity:</label>
-                <select id="rssiSensitivity">
-                  <option value="0" data-i18n="settings.system.sensitivity_options.normal">Normal (Legacy)</option>
-                  <option value="1" selected data-i18n="settings.system.sensitivity_options.high">High (1.5x Boost)</option>
-                </select>
-              </div>
-              <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.system.sensitivity_tip">High sensitivity provides better weak signal detection. Use Normal if experiencing false triggers.</div>
-
               <h3 data-i18n="settings.system.appearance">Appearance</h3>
               <div class="config-item">
                 <label for="languageSelector">Language:</label>
@@ -875,45 +868,116 @@
               </div>
 
               <div class="config-item">
-                <label for="themeSelect" data-i18n="settings.system.theme">Theme:</label>
+                <label for="themeSelect" data-i18n="settings.themes.theme">Theme:</label>
                 <select id="themeSelect" onchange="changeTheme()">
-                  <option value="lighter">Material Lighter</option>
-                  <option value="oceanic" selected>Material Oceanic</option>
-                  <option value="darker">Material Darker</option>
-                  <option value="palenight">Material Palenight</option>
-                  <option value="deepocean">Material Deep Ocean</option>
-                  <option value="forest">Material Forest</option>
-                  <option value="skyblue">Material Sky Blue</option>
-                  <option value="sandybeach">Material Sandy Beach</option>
-                  <option value="volcano">Material Volcano</option>
-                  <option value="space">Material Space</option>
-                  <option value="monokai">Monokai Pro</option>
-                  <option value="dracula">Dracula</option>
-                  <option value="github">GitHub</option>
-                  <option value="githubdark">GitHub Dark</option>
-                  <option value="arcdark">Arc Dark</option>
-                  <option value="onedark">One Dark</option>
-                  <option value="onelight">One Light</option>
-                  <option value="solarizeddark">Solarized Dark</option>
-                  <option value="solarizedlight">Solarized Light</option>
-                  <option value="nightowl">Night Owl</option>
-                  <option value="lightowl">Light Owl</option>
-                  <option value="moonlight">Moonlight</option>
-                  <option value="synthwave">SynthWave '84</option>
+                  <optgroup label="Material">
+                    <option value="lighter">Material Lighter</option>
+                    <option value="oceanic" selected>Material Oceanic</option>
+                    <option value="darker">Material Darker</option>
+                    <option value="palenight">Material Palenight</option>
+                    <option value="deepocean">Material Deep Ocean</option>
+                    <option value="forest">Material Forest</option>
+                    <option value="skyblue">Material Sky Blue</option>
+                    <option value="sandybeach">Material Sandy Beach</option>
+                    <option value="volcano">Material Volcano</option>
+                    <option value="space">Material Space</option>
+                  </optgroup>
+                  <optgroup label="Popular">
+                    <option value="monokai">Monokai Pro</option>
+                    <option value="dracula">Dracula</option>
+                    <option value="github">GitHub</option>
+                    <option value="githubdark">GitHub Dark</option>
+                    <option value="synthwave">SynthWave '84</option>
+                  </optgroup>
+                  <optgroup label="Classic">
+                    <option value="arcdark">Arc Dark</option>
+                    <option value="onedark">One Dark</option>
+                    <option value="onelight">One Light</option>
+                    <option value="solarizeddark">Solarized Dark</option>
+                    <option value="solarizedlight">Solarized Light</option>
+                    <option value="nightowl">Night Owl</option>
+                    <option value="lightowl">Light Owl</option>
+                    <option value="moonlight">Moonlight</option>
+                  </optgroup>
+                  <optgroup label="Custom">
+                    <option value="custom">Custom Theme</option>
+                  </optgroup>
                 </select>
               </div>
 
-              <h3 data-i18n="settings.integration.title">Integration</h3>
-              <div class="config-item">
-                <label data-i18n="settings.integration.obs_overlay">OBS Streaming Overlay:</label>
-                <button onclick="openOSD()" style="padding: 8px 16px; background-color: var(--accent-color)" data-i18n="settings.integration.open_osd">Open OSD & Copy URL</button>
+              <div id="customThemeSection" style="display: none">
+                <h3 data-i18n="settings.themes.custom_theme">Custom Theme Colors</h3>
+                <div style="margin-bottom: 16px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 14px">
+                  <p style="margin: 0" data-i18n="settings.themes.custom_tip">Create your own theme by selecting colors below. Changes are applied instantly.</p>
+                </div>
+
+                <div class="config-item">
+                  <label for="customBgColor" data-i18n="settings.themes.background">Background Color:</label>
+                  <input type="color" id="customBgColor" value="#263238" onchange="updateCustomTheme()" style="height: 40px; width: 80px; border: 2px solid var(--border-color); border-radius: 4px; cursor: pointer" />
+                </div>
+
+                <div class="config-item">
+                  <label for="customPrimaryColor" data-i18n="settings.themes.highlight">Highlight Color:</label>
+                  <input type="color" id="customPrimaryColor" value="#009688" onchange="updateCustomTheme()" style="height: 40px; width: 80px; border: 2px solid var(--border-color); border-radius: 4px; cursor: pointer" />
+                </div>
+
+                <div class="config-item">
+                  <label for="customTextColor" data-i18n="settings.themes.text">Text Color:</label>
+                  <input type="color" id="customTextColor" value="#B0BEC5" onchange="updateCustomTheme()" style="height: 40px; width: 80px; border: 2px solid var(--border-color); border-radius: 4px; cursor: pointer" />
+                </div>
+
+                <div class="config-item">
+                  <label for="customMenuColor" data-i18n="settings.themes.menu">Menu/Panel Color:</label>
+                  <input type="color" id="customMenuColor" value="#37474F" onchange="updateCustomTheme()" style="height: 40px; width: 80px; border: 2px solid var(--border-color); border-radius: 4px; cursor: pointer" />
+                </div>
+
+                <div class="config-item">
+                  <label for="customSecondaryColor" data-i18n="settings.themes.secondary">Secondary Color:</label>
+                  <input type="color" id="customSecondaryColor" value="#607D8B" onchange="updateCustomTheme()" style="height: 40px; width: 80px; border: 2px solid var(--border-color); border-radius: 4px; cursor: pointer" />
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 16px">
+                  <button onclick="resetCustomTheme()" style="flex: 1; background-color: var(--secondary-color)" data-i18n="settings.themes.reset">Reset to Default</button>
+                </div>
               </div>
-              <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.integration.obs_tip">Opens overlay in new tab and copies URL for OBS Browser Source</div>
 
               <h3 data-i18n="settings.firmware.title">Firmware</h3>
               <div class="config-item">
                 <label data-i18n="settings.firmware.update">Firmware Update:</label>
-                <a href="/update" target="_blank" class="update-link" data-i18n="settings.firmware.open_page">Open Update Page</a>
+                <a href="https://fpvgate.xyz/flasher" target="_blank" class="update-link" data-i18n="settings.firmware.open_page">Open Web Flasher</a>
+              </div>
+            </div>
+
+            <!-- OSD Section -->
+            <div id="settings-osd" class="settings-section">
+              <h2 data-i18n="settings.osd.title">On Screen Displays</h2>
+
+              <div style="margin-bottom: 16px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 14px">
+                <p style="margin: 0" data-i18n="settings.osd.description">Use these overlays as OBS Browser Sources for live streaming.</p>
+              </div>
+
+              <h3 style="margin-top: 0" data-i18n="settings.osd.horizontal">Horizontal OSD</h3>
+              <div style="margin-bottom: 8px; font-size: 13px; color: var(--secondary-color)" data-i18n="settings.osd.horizontal_desc">Standard horizontal layout for 16:9 streams</div>
+              <div style="display: flex; gap: 8px; margin-bottom: 16px">
+                <button onclick="openHorizontalOSD()" style="flex: 1; padding: 10px 16px" data-i18n="settings.osd.open">Open</button>
+                <button onclick="copyHorizontalOSDUrl()" style="padding: 10px 16px; background-color: var(--secondary-color)" data-i18n="settings.osd.copy_url">Copy URL</button>
+              </div>
+
+              <h3 data-i18n="settings.osd.vertical">Vertical OSD</h3>
+              <div style="margin-bottom: 8px; font-size: 13px; color: var(--secondary-color)" data-i18n="settings.osd.vertical_desc">Vertical layout for portrait streams or side panels</div>
+              <div style="display: flex; gap: 8px; margin-bottom: 16px">
+                <button onclick="openVerticalOSD()" style="flex: 1; padding: 10px 16px" data-i18n="settings.osd.open">Open</button>
+                <button onclick="copyVerticalOSDUrl()" style="padding: 10px 16px; background-color: var(--secondary-color)" data-i18n="settings.osd.copy_url">Copy URL</button>
+              </div>
+
+              <h3 data-i18n="settings.osd.obs_setup">OBS Browser Source Setup</h3>
+              <div style="padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 13px">
+                <ol style="margin: 0; padding-left: 20px; color: var(--text-color)">
+                  <li data-i18n="settings.osd.obs_step1">1. Click "Open" to preview the OSD in a new tab</li>
+                  <li data-i18n="settings.osd.obs_step2">2. Click "Copy URL" to copy the link</li>
+                  <li data-i18n="settings.osd.obs_step3">3. In OBS, add a Browser Source and paste the URL</li>
+                  <li data-i18n="settings.osd.obs_step4">4. Set width to 1920 and height to 1080 (or 1080x1920 for vertical)</li>
+                </ol>
               </div>
             </div>
 
@@ -921,7 +985,17 @@
             <div id="settings-diagnostics" class="settings-section">
               <h2 data-i18n="settings.diagnostics.title">System Diagnostics</h2>
 
-              <h3 style="margin-top: 0" data-i18n="settings.diagnostics.hardware_tests">Hardware Tests</h3>
+              <h3 style="margin-top: 0" data-i18n="settings.diagnostics.rssi_detection">RSSI Detection</h3>
+              <div class="config-item">
+                <label for="rssiSensitivity" data-i18n="settings.diagnostics.rssi_sensitivity">RSSI Sensitivity:</label>
+                <select id="rssiSensitivity">
+                  <option value="0" data-i18n="settings.diagnostics.sensitivity_options.normal">Normal (Legacy)</option>
+                  <option value="1" selected data-i18n="settings.diagnostics.sensitivity_options.high">High (1.5x Boost)</option>
+                </select>
+              </div>
+              <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.diagnostics.sensitivity_tip">High sensitivity provides better weak signal detection. Use Normal if experiencing false triggers.</div>
+
+              <h3 data-i18n="settings.diagnostics.hardware_tests">Hardware Tests</h3>
               <div style="margin-bottom: 16px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 14px">
                 <p style="margin: 0" data-i18n="settings.diagnostics.description">Run comprehensive hardware and software tests to verify all FPVGate components are functioning correctly.</p>
               </div>

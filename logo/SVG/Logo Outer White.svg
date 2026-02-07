@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 871.97 980">
+  <defs>
+    <style>
+      .cls-1 {
+        stroke-width: 5px;
+      }
+
+      .cls-1, .cls-2, .cls-3, .cls-4, .cls-5 {
+        stroke: #fff;
+        stroke-miterlimit: 10;
+      }
+
+      .cls-1, .cls-2, .cls-4, .cls-5 {
+        fill: #fff;
+      }
+
+      .cls-3 {
+        fill: none;
+      }
+
+      .cls-3, .cls-4 {
+        stroke-width: 10px;
+      }
+
+      .cls-5 {
+        opacity: .04;
+      }
+    </style>
+  </defs>
+  <g id="Layer_3">
+    <g>
+      <g>
+        <polygon class="cls-1" points="397.95 45.75 397.95 109.61 405.08 109.61 405.08 52.41 466.97 52.41 466.97 109.61 474.11 109.61 474.11 45.75 397.95 45.75"/>
+        <rect class="cls-2" x="395.24" y="111.42" width="13.45" height="10.25"/>
+        <rect class="cls-2" x="463.33" y="107.99" width="13.49" height="14.19"/>
+      </g>
+      <g>
+        <circle class="cls-3" cx="435.99" cy="544.02" r="338.96"/>
+        <path class="cls-3" d="M405.08,114.15C181.48,129.99,5,316.38,5,544.02s192.96,430.99,430.99,430.99,430.99-192.96,430.99-430.99S690.53,130.04,466.97,114.15"/>
+        <rect class="cls-4" x="346.7" y="5" width="178.65" height="43"/>
+        <rect class="cls-4" x="659.53" y="138.31" width="61.86" height="49.95" transform="translate(199.49 -348.91) rotate(32.91)"/>
+        <rect class="cls-4" x="652.99" y="102.1" width="126.29" height="43" transform="translate(182.05 -369.23) rotate(32.91)"/>
+        <rect class="cls-4" x="152.45" y="138" width="61.86" height="49.95" transform="translate(425.87 200.17) rotate(147.09)"/>
+        <rect class="cls-4" x="94.55" y="101.79" width="126.29" height="43" transform="translate(357.08 141.12) rotate(147.09)"/>
+        <ellipse class="cls-5" cx="436.03" cy="543.48" rx="433.56" ry="431.52"/>
+        <path class="cls-2" d="M436.03,112.56C196.58,112.56,2.47,305.75,2.47,544.07s194.11,431.52,433.56,431.52,433.56-193.2,433.56-431.52S675.48,112.56,436.03,112.56ZM436.03,883.03c-187.2,0-338.96-151.76-338.96-338.96S248.83,205.12,436.03,205.12s338.96,151.76,338.96,338.96-151.76,338.96-338.96,338.96Z"/>
+        <rect class="cls-4" x="397.95" y="30.8" width="72.13" height="115.54"/>
+      </g>
+    </g>
+  </g>
+</svg>

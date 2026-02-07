@@ -137,6 +137,7 @@
             "wifi": "WiFi 与连接",
             "webhooks": "Webhooks",
             "system": "系统设置",
+            "osd": "屏幕显示",
             "diagnostics": "诊断"
         },
         "sidebar_header": "设置",
@@ -316,6 +317,45 @@
             "enable_battery": "电池监控:",
             "low_battery": "低电量报警:",
             "battery_voltage": "电池电压:",
+            "appearance": "外观",
+            "language": "语言:",
+            "theme": "主题:"
+        },
+        "osd": {
+            "title": "屏幕显示",
+            "description": "将这些叠加层用作 OBS 浏览器源进行直播。",
+            "horizontal": "横向 OSD",
+            "horizontal_desc": "适用于 16:9 直播的标准横向布局",
+            "vertical": "纵向 OSD",
+            "vertical_desc": "适用于纵向直播或侧边栏的纵向布局",
+            "open": "打开",
+            "copy_url": "复制 URL",
+            "obs_setup": "OBS 浏览器源设置",
+            "obs_step1": "1. 点击 \"打开\" 在新标签页中预览 OSD",
+            "obs_step2": "2. 点击 \"复制 URL\" 复制链接",
+            "obs_step3": "3. 在 OBS 中添加浏览器源并粘贴 URL",
+            "obs_step4": "4. 将宽度设为 1920，高度设为 1080（纵向为 1080x1920）"
+        },
+        "firmware": {
+            "title": "固件",
+            "update": "固件更新:",
+            "open_page": "打开网页烧录器"
+        },
+        "themes": {
+            "title": "主题",
+            "preset_themes": "预设主题",
+            "theme": "主题:",
+            "custom_theme": "自定义主题颜色",
+            "custom_tip": "通过选择下方的颜色来创建您自己的主题。更改会立即应用。",
+            "background": "背景颜色:",
+            "highlight": "强调色:",
+            "text": "文字颜色:",
+            "menu": "菜单/面板颜色:",
+            "secondary": "次要颜色:",
+            "reset": "重置为默认"
+        },
+        "diagnostics": {
+            "title": "诊断",
             "rssi_detection": "RSSI 检测",
             "rssi_sensitivity": "RSSI 灵敏度:",
             "sensitivity_options": {
@@ -323,23 +363,6 @@
                 "high": "高 (1.5倍增强)"
             },
             "sensitivity_tip": "高灵敏度可提供更好的弱信号检测。如果出现误触发,请使用标准模式。",
-            "appearance": "外观",
-            "language": "语言:",
-            "theme": "主题:"
-        },
-        "integration": {
-            "title": "集成",
-            "obs_overlay": "OBS 直播推流叠加层:",
-            "open_osd": "打开 OSD 并复制 URL",
-            "obs_tip": "在新标签页中打开叠加层并复制用于 OBS 浏览器源的 URL"
-        },
-        "firmware": {
-            "title": "固件",
-            "update": "固件更新:",
-            "open_page": "打开更新页面"
-        },
-        "diagnostics": {
-            "title": "诊断",
             "hardware_tests": "硬件测试",
             "description": "运行全面的硬件和软件测试，验证所有 FPVGate 组件是否正常运行。",
             "run_test": "运行系统自检",

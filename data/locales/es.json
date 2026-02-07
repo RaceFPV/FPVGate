@@ -137,6 +137,7 @@
             "wifi": "WiFi y Conexión",
             "webhooks": "Webhooks",
             "system": "Sistema",
+            "osd": "Pantallas en Vivo",
             "diagnostics": "Diagnósticos"
         },
         "sidebar_header": "Configuración",
@@ -317,6 +318,45 @@
             "enable_battery": "Monitoreo Batería:",
             "low_battery": "Alarma Batería Baja:",
             "battery_voltage": "Voltaje Batería:",
+            "appearance": "Apariencia",
+            "language": "Idioma:",
+            "theme": "Tema:"
+        },
+        "osd": {
+            "title": "Pantallas en Vivo",
+            "description": "Use estos overlays como fuentes de navegador OBS para transmisiones en vivo.",
+            "horizontal": "OSD Horizontal",
+            "horizontal_desc": "Diseño horizontal estándar para streams 16:9",
+            "vertical": "OSD Vertical",
+            "vertical_desc": "Diseño vertical para streams verticales o paneles laterales",
+            "open": "Abrir",
+            "copy_url": "Copiar URL",
+            "obs_setup": "Configuración Fuente Navegador OBS",
+            "obs_step1": "1. Haz clic en \"Abrir\" para ver el OSD en una nueva pestaña",
+            "obs_step2": "2. Haz clic en \"Copiar URL\" para copiar el enlace",
+            "obs_step3": "3. En OBS, añade una Fuente de Navegador y pega la URL",
+            "obs_step4": "4. Establece ancho en 1920 y alto en 1080 (o 1080x1920 para vertical)"
+        },
+        "firmware": {
+            "title": "Firmware",
+            "update": "Actualización Firmware:",
+            "open_page": "Abrir Web Flasher"
+        },
+        "themes": {
+            "title": "Temas",
+            "preset_themes": "Temas Preestablecidos",
+            "theme": "Tema:",
+            "custom_theme": "Colores de Tema Personalizado",
+            "custom_tip": "Crea tu propio tema seleccionando colores. Los cambios se aplican instantáneamente.",
+            "background": "Color de Fondo:",
+            "highlight": "Color de Resalte:",
+            "text": "Color de Texto:",
+            "menu": "Color de Menú/Panel:",
+            "secondary": "Color Secundario:",
+            "reset": "Restablecer a Predeterminado"
+        },
+        "diagnostics": {
+            "title": "Diagnósticos",
             "rssi_detection": "Detección RSSI",
             "rssi_sensitivity": "Sensibilidad RSSI:",
             "sensitivity_options": {
@@ -324,23 +364,6 @@
                 "high": "Alta (1.5x Boost)"
             },
             "sensitivity_tip": "Sensibilidad alta ofrece mejor detección señal débil. Usa Normal si hay activaciones falsas.",
-            "appearance": "Apariencia",
-            "language": "Idioma:",
-            "theme": "Tema:"
-        },
-        "integration": {
-            "title": "Integración",
-            "obs_overlay": "Overlay Streaming OBS:",
-            "open_osd": "Abrir OSD y Copiar URL",
-            "obs_tip": "Abre overlay en nueva pestaña y copia URL para OBS Browser Source"
-        },
-        "firmware": {
-            "title": "Firmware",
-            "update": "Actualización Firmware:",
-            "open_page": "Abrir Página Actualización"
-        },
-        "diagnostics": {
-            "title": "Diagnósticos",
             "hardware_tests": "Pruebas Hardware",
             "description": "Ejecutar pruebas completas hardware y software para verificar todos los componentes FPVGate.",
             "run_test": "Ejecutar Auto-Test Sistema",

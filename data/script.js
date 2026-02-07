@@ -618,9 +618,46 @@ onload = async function (e) {
     // Load and apply theme from device config
     if (configData.theme) {
       const savedTheme = configData.theme;
-      document.documentElement.setAttribute("data-theme", savedTheme);
       const themeSelect = document.getElementById("themeSelect");
+      const customSection = document.getElementById("customThemeSection");
+      
       if (themeSelect) themeSelect.value = savedTheme;
+      
+      // Load custom theme colors if available
+      if (configData.customBgColor) {
+        const bgInput = document.getElementById("customBgColor");
+        if (bgInput) bgInput.value = configData.customBgColor;
+      }
+      if (configData.customPrimaryColor) {
+        const primaryInput = document.getElementById("customPrimaryColor");
+        if (primaryInput) primaryInput.value = configData.customPrimaryColor;
+      }
+      if (configData.customTextColor) {
+        const textInput = document.getElementById("customTextColor");
+        if (textInput) textInput.value = configData.customTextColor;
+      }
+      if (configData.customMenuColor) {
+        const menuInput = document.getElementById("customMenuColor");
+        if (menuInput) menuInput.value = configData.customMenuColor;
+      }
+      if (configData.customSecondaryColor) {
+        const secondaryInput = document.getElementById("customSecondaryColor");
+        if (secondaryInput) secondaryInput.value = configData.customSecondaryColor;
+      }
+      
+      // Show/hide custom section and apply theme
+      if (customSection) {
+        customSection.style.display = savedTheme === "custom" ? "block" : "none";
+      }
+      
+      if (savedTheme === "custom") {
+        document.documentElement.setAttribute("data-theme", "custom");
+        loadCustomThemeColors();
+      } else if (savedTheme !== "lighter") {
+        document.documentElement.setAttribute("data-theme", savedTheme);
+      }
+      
+      updateThemeLogos(savedTheme);
     }
 
     // Load LED settings from config (if available)
@@ -1100,6 +1137,13 @@ async function saveConfig() {
   const batteryMonitorToggle = document.getElementById("batteryMonitorToggle");
   const batteryVoltageDividerInput = document.getElementById("batteryVoltageDivider");
   
+  // Get custom theme colors
+  const customBgColor = document.getElementById("customBgColor");
+  const customPrimaryColor = document.getElementById("customPrimaryColor");
+  const customTextColor = document.getElementById("customTextColor");
+  const customMenuColor = document.getElementById("customMenuColor");
+  const customSecondaryColor = document.getElementById("customSecondaryColor");
+  
   const configData = {
     freq: frequency,
     bandIndex: selectedBandIndex,
@@ -1117,6 +1161,11 @@ async function saveConfig() {
     pilotPhonetic: phoneticInput ? phoneticInput.value : "",
     pilotColor: pilotColorInt,
     theme: themeSelect ? themeSelect.value : "oceanic",
+    customBgColor: customBgColor ? customBgColor.value : "#263238",
+    customPrimaryColor: customPrimaryColor ? customPrimaryColor.value : "#009688",
+    customTextColor: customTextColor ? customTextColor.value : "#B0BEC5",
+    customMenuColor: customMenuColor ? customMenuColor.value : "#37474F",
+    customSecondaryColor: customSecondaryColor ? customSecondaryColor.value : "#607D8B",
     selectedVoice: voiceSelect ? voiceSelect.value : "default",
     lapFormat: lapFormatSelect ? lapFormatSelect.value : "full",
     ssid: ssidInput.value,
@@ -2219,8 +2268,19 @@ function setBandChannelIndex(freq) {
 // Theme functionality
 function changeTheme() {
   const theme = document.getElementById("themeSelect").value;
+  const customSection = document.getElementById("customThemeSection");
+  
+  // Show/hide custom theme section
+  if (customSection) {
+    customSection.style.display = theme === "custom" ? "block" : "none";
+  }
+  
   if (theme === "lighter") {
     document.documentElement.removeAttribute("data-theme");
+  } else if (theme === "custom") {
+    document.documentElement.setAttribute("data-theme", "custom");
+    // Apply custom colors from inputs or saved config
+    loadCustomThemeColors();
   } else {
     document.documentElement.setAttribute("data-theme", theme);
   }
@@ -2228,10 +2288,86 @@ function changeTheme() {
   autoSaveConfig(); // Save to device
 }
 
+function updateCustomTheme() {
+  const bgColor = document.getElementById("customBgColor")?.value || "#263238";
+  const primaryColor = document.getElementById("customPrimaryColor")?.value || "#009688";
+  const textColor = document.getElementById("customTextColor")?.value || "#B0BEC5";
+  const menuColor = document.getElementById("customMenuColor")?.value || "#37474F";
+  const secondaryColor = document.getElementById("customSecondaryColor")?.value || "#607D8B";
+  
+  // Calculate darker version of primary color for hover states
+  const primaryDark = adjustBrightness(primaryColor, -20);
+  const borderColor = menuColor;
+  
+  // Apply custom CSS variables to root
+  const root = document.documentElement;
+  root.style.setProperty("--custom-background", bgColor);
+  root.style.setProperty("--custom-primary", primaryColor);
+  root.style.setProperty("--custom-primary-dark", primaryDark);
+  root.style.setProperty("--custom-text", textColor);
+  root.style.setProperty("--custom-menu", menuColor);
+  root.style.setProperty("--custom-secondary", secondaryColor);
+  root.style.setProperty("--custom-border", borderColor);
+  
+  autoSaveConfig(); // Save to device
+}
+
+function loadCustomThemeColors() {
+  // Load custom colors from inputs (they get populated from config on load)
+  const bgColor = document.getElementById("customBgColor")?.value || "#263238";
+  const primaryColor = document.getElementById("customPrimaryColor")?.value || "#009688";
+  const textColor = document.getElementById("customTextColor")?.value || "#B0BEC5";
+  const menuColor = document.getElementById("customMenuColor")?.value || "#37474F";
+  const secondaryColor = document.getElementById("customSecondaryColor")?.value || "#607D8B";
+  
+  const primaryDark = adjustBrightness(primaryColor, -20);
+  
+  const root = document.documentElement;
+  root.style.setProperty("--custom-background", bgColor);
+  root.style.setProperty("--custom-primary", primaryColor);
+  root.style.setProperty("--custom-primary-dark", primaryDark);
+  root.style.setProperty("--custom-text", textColor);
+  root.style.setProperty("--custom-menu", menuColor);
+  root.style.setProperty("--custom-secondary", secondaryColor);
+  root.style.setProperty("--custom-border", menuColor);
+}
+
+function resetCustomTheme() {
+  // Reset to default custom theme colors
+  const bgInput = document.getElementById("customBgColor");
+  const primaryInput = document.getElementById("customPrimaryColor");
+  const textInput = document.getElementById("customTextColor");
+  const menuInput = document.getElementById("customMenuColor");
+  const secondaryInput = document.getElementById("customSecondaryColor");
+  
+  if (bgInput) bgInput.value = "#263238";
+  if (primaryInput) primaryInput.value = "#009688";
+  if (textInput) textInput.value = "#B0BEC5";
+  if (menuInput) menuInput.value = "#37474F";
+  if (secondaryInput) secondaryInput.value = "#607D8B";
+  
+  updateCustomTheme();
+}
+
+function adjustBrightness(hex, percent) {
+  // Adjust hex color brightness by percent (-100 to 100)
+  const num = parseInt(hex.replace("#", ""), 16);
+  const amt = Math.round(2.55 * percent);
+  const R = Math.max(0, Math.min(255, (num >> 16) + amt));
+  const G = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amt));
+  const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
+  return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1).toUpperCase();
+}
+
 function updateThemeLogos(theme) {
   // Light themes list
   const lightThemes = new Set(["lighter", "github", "onelight", "solarizedlight", "lightowl"]);
-  const isLight = lightThemes.has(theme);
+  // For custom theme, determine if it's light based on background color
+  let isLight = lightThemes.has(theme);
+  if (theme === "custom") {
+    const bgColor = document.getElementById("customBgColor")?.value || "#263238";
+    isLight = isLightColor(bgColor);
+  }
   const favicon = document.getElementById("favicon");
   const headerLogo = document.getElementById("headerLogo");
   const logoPath = isLight ? "logo-black.svg" : "logo-white.svg";
@@ -2242,13 +2378,33 @@ function updateThemeLogos(theme) {
   if (headerLogo) headerLogo.src = logoPath;
 }
 
+function isLightColor(hex) {
+  // Calculate perceived brightness
+  const num = parseInt(hex.replace("#", ""), 16);
+  const R = (num >> 16) & 0xFF;
+  const G = (num >> 8) & 0xFF;
+  const B = num & 0xFF;
+  // Using relative luminance formula
+  const brightness = (R * 299 + G * 587 + B * 114) / 1000;
+  return brightness > 128;
+}
+
 function loadDarkMode() {
   // Theme is now loaded from device config on page load
   // This function is kept for compatibility but may not be needed
   const themeSelect = document.getElementById("themeSelect");
   if (themeSelect && themeSelect.value) {
     const theme = themeSelect.value;
-    if (theme !== "lighter") {
+    const customSection = document.getElementById("customThemeSection");
+    
+    if (customSection) {
+      customSection.style.display = theme === "custom" ? "block" : "none";
+    }
+    
+    if (theme === "custom") {
+      document.documentElement.setAttribute("data-theme", "custom");
+      loadCustomThemeColors();
+    } else if (theme !== "lighter") {
       document.documentElement.setAttribute("data-theme", theme);
     }
     updateThemeLogos(theme);
@@ -3367,19 +3523,31 @@ function clearAllRaces() {
     .catch((error) => console.error("Error clearing races:", error));
 }
 
-// OSD Overlay Function
-function openOSD() {
+// OSD Overlay Functions
+function openHorizontalOSD() {
   const osdUrl = window.location.origin + "/osd.html";
-
-  // Open OSD in new tab
   window.open(osdUrl, "_blank");
+}
 
-  // Copy URL to clipboard
+function openVerticalOSD() {
+  const osdUrl = window.location.origin + "/vert-osd.html";
+  window.open(osdUrl, "_blank");
+}
+
+function copyHorizontalOSDUrl() {
+  const osdUrl = window.location.origin + "/osd.html";
+  copyOSDUrl(osdUrl, event.target);
+}
+
+function copyVerticalOSDUrl() {
+  const osdUrl = window.location.origin + "/vert-osd.html";
+  copyOSDUrl(osdUrl, event.target);
+}
+
+function copyOSDUrl(url, button) {
   navigator.clipboard
-    .writeText(osdUrl)
+    .writeText(url)
     .then(() => {
-      // Show temporary success message
-      const button = event.target;
       const originalText = button.textContent;
       button.textContent = i18n.t("messages.url_copied");
       button.style.backgroundColor = "#27ae60";
@@ -3391,8 +3559,14 @@ function openOSD() {
     })
     .catch((err) => {
       console.error("Failed to copy URL:", err);
-      alert(i18n.t("messages.osd_opened_copy_fail", { url: osdUrl }));
+      alert(i18n.t("messages.osd_opened_copy_fail", { url: url }));
     });
+}
+
+// Legacy function for backwards compatibility
+function openOSD() {
+  openHorizontalOSD();
+  copyHorizontalOSDUrl();
 }
 
 // Config Download/Import Functions
@@ -4661,7 +4835,7 @@ function displayWebhooks(webhooks) {
     html += `
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--accent-color);">
         <div>
-          <div style="font-weight: bold; font-size: 15px;">${ip}</div>
+          <a href="http://${ip}" target="_blank" style="font-weight: bold; font-size: 15px; color: var(--primary-color); text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${ip}</a>
           <div style="font-size: 13px; color: var(--secondary-color); margin-top: 2px;">http://${ip}/Lap, /RaceStart, /RaceStop</div>
         </div>
         <button onclick="removeWebhook('${ip}')" style="padding: 6px 12px; font-size: 14px; background-color: var(--danger-color);">${i18n.t("history.remove")}</button>
