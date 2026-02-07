@@ -2,6 +2,22 @@
 
 All notable changes to FPVGate will be documented in this file.
 
+## [1.5.7] - 2026-02-07
+
+### Added - On Screen Displays
+- New OSD section in settings with quick actions for horizontal and vertical OSD
+- Copy and open actions for OSD URLs, including OBS browser source guidance
+
+### Added - Themes
+- Custom theme with user-defined colors
+- Grouped preset themes for easier selection
+
+### Changed
+- Updated firmware update entry to open the web flasher
+
+### Removed
+- Removed RSSI detection UI block from the settings menu
+
 ## [1.5.6] - 2026-02-01
 
 ### Added - Battery Monitoring

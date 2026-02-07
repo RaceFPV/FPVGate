@@ -2,7 +2,7 @@
 #define VERSION_H
 
 // FPVGate Firmware Version
-#define FPVGATE_VERSION "1.5.6"
+#define FPVGATE_VERSION "1.5.7"
 #define FPVGATE_VERSION_STAGE ""  // Options: "dev", "alpha", "beta", "" (empty for release)
 
 // Build version string helper
