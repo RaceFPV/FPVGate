@@ -13,9 +13,13 @@
 #include <WiFi.h>
 #include <Update.h>
 
-#ifdef ESP32S3
+#ifdef HAS_SD_CARD_SUPPORT
 #include <SD.h>
+#endif
+#ifdef HAS_RGB_LED
 #include "rgbled.h"
+#endif
+#ifdef ESP32S3
 #include "USB.h"
 #endif
 
@@ -41,7 +45,7 @@ bool SelfTest::runAllTests() {
     results.push_back(littleFSTest);
     if (!littleFSTest.passed) allPassed = false;
     
-#ifdef ESP32S3
+#ifdef HAS_SD_CARD_SUPPORT
     // Test SD card
     TestResult sdTest = testSDCard();
     results.push_back(sdTest);
@@ -467,7 +471,7 @@ TestResult SelfTest::testOTA() {
     return result;
 }
 
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
 TestResult SelfTest::testRGBLED(RgbLed* rgbLed) {
     TestResult result;
     result.name = "RGB LED";
@@ -496,7 +500,9 @@ TestResult SelfTest::testRGBLED(RgbLed* rgbLed) {
     result.duration_ms = millis() - start;
     return result;
 }
+#endif
 
+#ifdef ESP32S3
 TestResult SelfTest::testUSB() {
     TestResult result;
     result.name = "USB Serial CDC";

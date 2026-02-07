@@ -9,9 +9,12 @@
 
 #include "debug.h"
 
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
 #include "rgbled.h"
 extern RgbLed* g_rgbLed;
+#endif
+
+#ifdef HAS_SD_CARD_SUPPORT
 #include <SD.h>
 #endif
 
@@ -141,7 +144,7 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 DEBUG("WiFi connected successfully!\n");
                 DEBUG("IP address: %s\n", WiFi.localIP().toString().c_str());
                 DEBUG("SSID: %s\n", WiFi.SSID().c_str());
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
                 if (g_rgbLed) g_rgbLed->setStatus(STATUS_USER_CONNECTED);
 #endif
                 break;
@@ -155,7 +158,7 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
         if (!wifiConnected) {
             changeMode = WIFI_AP;  // if we didnt manage to ever connect to wifi network
             // Signal WiFi connection failure - set orange color briefly
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
             if (g_rgbLed) {
                 g_rgbLed->setColor(CRGB::Orange, RGB_SOLID);
             }
@@ -189,6 +192,13 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 // Start AP with max 4 connections to limit power draw
                 // Channel 6 is typically less crowded, beacon interval 200ms (higher = less power)
                 WiFi.softAP(wifi_ap_ssid.c_str(), wifi_ap_password, 6, 0, 4);
+                
+#ifdef SEEED_XIAO_ESP32S3
+                // Disable WiFi power saving for faster responsiveness on XIAO
+                // The XIAO's chip antenna and power delivery can cause connection delays with PS enabled
+                esp_wifi_set_ps(WIFI_PS_NONE);
+                DEBUG("WiFi power saving disabled for XIAO\n");
+#endif
                 
                 // Set lower beacon interval to reduce power consumption (in multiples of 100ms, default is 100)
                 // Note: Higher values = less frequent beacons = lower power but slightly slower connection
@@ -260,9 +270,8 @@ static void handleRoot(AsyncWebServerRequest *request) {
     if (captivePortal(request)) {  // If captive portal redirect instead of displaying the page.
         return;
     }
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
     // Flash green when user accesses web interface
-    extern RgbLed* g_rgbLed;
     if (g_rgbLed) g_rgbLed->flashGreen();
 #endif
 
@@ -284,7 +293,7 @@ static void handleNotFound(AsyncWebServerRequest *request) {
 
     String path = request->url();
 
-#ifdef ESP32S3
+#ifdef HAS_SD_CARD_SUPPORT
     // Try SD card as a fallback for any unknown path (e.g. /sounds_*/file.mp3)
     if (g_storage && g_storage->isSDAvailable() && SD.exists(path)) {
         const char* contentType = "application/octet-stream";
@@ -442,7 +451,7 @@ EEPROM:\n\
     });
 
     server.on("/timer/lap", HTTP_POST, [this](AsyncWebServerRequest *request) {
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
         if (g_rgbLed) {
             g_rgbLed->flashLap();
         }
@@ -458,7 +467,7 @@ EEPROM:\n\
             if (transportMgr) {
                 transportMgr->broadcastLapEvent(lapTimeMs);
             }
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
             if (g_rgbLed) {
                 g_rgbLed->flashLap();
             }
@@ -492,7 +501,7 @@ EEPROM:\n\
             if (transportMgr) {
                 transportMgr->broadcastLapEvent(lapTimeMs);
             }
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
             if (g_rgbLed) {
                 g_rgbLed->flashLap();
             }
@@ -1147,7 +1156,7 @@ EEPROM:\n\
         led->on(200);
     });
 
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
     // LED control endpoints
     server.on("/led/color", HTTP_POST, [this](AsyncWebServerRequest *request) {
         if (request->hasParam("color", true)) {
@@ -1283,6 +1292,23 @@ EEPROM:\n\
         }
         led->on(200);
     });
+
+    // LED debug status endpoint
+    server.on("/led/debug", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        char buf[256];
+        if (g_rgbLed) {
+            snprintf(buf, sizeof(buf),
+                "{\"preset\":%d,\"mode\":%d,\"override\":%s,\"color\":\"#%06X\"}",
+                (int)conf->getLedPreset(),
+                (int)g_rgbLed->getCurrentMode(),
+                g_rgbLed->isManualOverride() ? "true" : "false",
+                (unsigned int)((g_rgbLed->getCurrentColor().r << 16) | (g_rgbLed->getCurrentColor().g << 8) | g_rgbLed->getCurrentColor().b)
+            );
+        } else {
+            snprintf(buf, sizeof(buf), "{\"error\":\"RGB LED not available\"}");
+        }
+        request->send(200, "application/json", buf);
+    });
 #endif
 
     // Calibration wizard endpoints
@@ -1360,10 +1386,12 @@ EEPROM:\n\
         // Run Transport test
         TestResult transportTest = selftest->testTransport();
         
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
         // Run RGB LED test
         TestResult ledTest = selftest->testRGBLED(g_rgbLed);
+#endif
         
+#ifdef HAS_SD_CARD_SUPPORT
         // Run SD Card test
         TestResult sdTest = selftest->testSDCard();
 #endif
@@ -1392,8 +1420,10 @@ EEPROM:\n\
         addTest(trackTest);
         addTest(webhookTest);
         addTest(transportTest);
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
         addTest(ledTest);
+#endif
+#ifdef HAS_SD_CARD_SUPPORT
         addTest(sdTest);
 #endif
         

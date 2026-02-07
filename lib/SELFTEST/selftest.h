@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <vector>
+#include "config.h"
 
 // Forward declarations
 class Config;
@@ -13,7 +14,7 @@ class LapTimer;
 class Buzzer;
 class RaceHistory;
 
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
 class RgbLed;
 #endif
 
@@ -50,8 +51,10 @@ class SelfTest {
     TestResult testWebhooks();
     TestResult testTransport();
     
-#ifdef ESP32S3
+#ifdef HAS_RGB_LED
     TestResult testRGBLED(RgbLed* rgbLed);
+#endif
+#ifdef ESP32S3
     TestResult testUSB();
 #endif
     
