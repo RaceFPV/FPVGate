@@ -6,6 +6,7 @@
 #include <ESPmDNS.h>
 #include <LittleFS.h>
 #include <esp_wifi.h>
+#include <HTTPClient.h>
 
 #include "debug.h"
 
@@ -119,6 +120,42 @@ void Webserver::sendRssiEvent(uint8_t rssi) {
 void Webserver::sendRaceStateEvent(const char* state) {
     if (!servicesStarted) return;
     events.send(state, "raceState");
+}
+
+// Send sync command to all configured slave timers
+static void sendSyncCommand(Config* config, const char* endpoint) {
+    if (config->getRaceSyncMode() != 1) return;  // Only master sends
+    
+    uint8_t timerCount = config->getSyncedTimerCount();
+    if (timerCount == 0) return;
+    
+    DEBUG("[Sync] Sending %s to %d slave(s)\n", endpoint, timerCount);
+    
+    for (uint8_t i = 0; i < timerCount; i++) {
+        const char* hostname = config->getSyncedTimer(i);
+        if (hostname[0] == '\0') continue;
+        
+        char url[64];
+        snprintf(url, sizeof(url), "http://%s%s", hostname, endpoint);
+        
+        DEBUG("[Sync] -> %s\n", url);
+        
+        HTTPClient http;
+        http.setConnectTimeout(500);
+        http.setTimeout(1000);
+        
+        if (http.begin(url)) {
+            int httpCode = http.POST("");
+            if (httpCode <= 0) {
+                DEBUG("[Sync] FAILED: %s\n", http.errorToString(httpCode).c_str());
+            } else {
+                DEBUG("[Sync] OK (HTTP %d)\n", httpCode);
+            }
+            http.end();
+        } else {
+            DEBUG("[Sync] http.begin() FAILED\n");
+        }
+    }
 }
 
 bool Webserver::isConnected() {
@@ -472,20 +509,51 @@ EEPROM:\n\
         request->send(LittleFS, "/vert-osd.html", "text/html");
     });
 
-    server.on("/timer/start", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    // Helper lambda for CORS response
+    auto sendCorsResponse = [](AsyncWebServerRequest *request, const char* body) {
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", body);
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        request->send(response);
+    };
+    
+    // OPTIONS handler for CORS preflight
+    server.on("/timer/start", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        AsyncWebServerResponse *response = request->beginResponse(204);
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        request->send(response);
+    });
+    
+    server.on("/timer/start", HTTP_POST, [this, sendCorsResponse](AsyncWebServerRequest *request) {
+        // Send sync to slaves first (if master)
+        sendSyncCommand(conf, "/timer/start");
+        // Start local timer
         timer->start();
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("started");
         }
-        request->send(200, "application/json", "{\"status\": \"OK\"}");
+        sendCorsResponse(request, "{\"status\": \"OK\"}");
+    });
+    
+    server.on("/timer/stop", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        AsyncWebServerResponse *response = request->beginResponse(204);
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        request->send(response);
     });
 
-    server.on("/timer/stop", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    server.on("/timer/stop", HTTP_POST, [this, sendCorsResponse](AsyncWebServerRequest *request) {
+        // Send sync to slaves first (if master)
+        sendSyncCommand(conf, "/timer/stop");
+        // Stop local timer
         timer->stop();
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("stopped");
         }
-        request->send(200, "application/json", "{\"status\": \"OK\"}");
+        sendCorsResponse(request, "{\"status\": \"OK\"}");
     });
 
     server.on("/timer/lap", HTTP_POST, [this](AsyncWebServerRequest *request) {
@@ -565,12 +633,22 @@ EEPROM:\n\
     });
     server.addHandler(playbackStopHandler);
 
-    server.on("/timer/clearLaps", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    server.on("/timer/clearLaps", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        AsyncWebServerResponse *response = request->beginResponse(204);
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        request->send(response);
+    });
+    
+    server.on("/timer/clearLaps", HTTP_POST, [this, sendCorsResponse](AsyncWebServerRequest *request) {
+        // Send sync to slaves first (if master)
+        sendSyncCommand(conf, "/timer/clearLaps");
         // Broadcast clearLaps event to all connected clients (including OSD)
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("cleared");
         }
-        request->send(200, "application/json", "{\"status\": \"OK\"}");
+        sendCorsResponse(request, "{\"status\": \"OK\"}");
     });
 
     // Race sync endpoints
@@ -594,7 +672,12 @@ EEPROM:\n\
         
         String output;
         serializeJson(doc, output);
-        request->send(200, "application/json", output);
+        
+        // Add CORS headers for cross-origin sync requests
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", output);
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        request->send(response);
     });
 
     server.on("/timer/rssiStart", HTTP_POST, [this](AsyncWebServerRequest *request) {

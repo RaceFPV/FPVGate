@@ -351,6 +351,120 @@ function setupWiFiEvents() {
       },
       false
     );
+    
+    eventSource.addEventListener(
+      "raceState",
+      function (e) {
+        console.log("[SSE] raceState event:", e.data);
+        handleRaceStateEvent(e.data);
+      },
+      false
+    );
+  }
+}
+
+// Handle race state changes from SSE (for slave mode sync)
+function handleRaceStateEvent(state) {
+  console.log("[Sync] Handling race state:", state);
+  
+  if (state === "started") {
+    // Race started (from master or local)
+    raceRunning = true;
+    lapTimerStartMs = Date.now();
+    startRaceTimer();
+    updateRaceButtons();
+    console.log("[Sync] Race started via SSE");
+  } else if (state === "stopped") {
+    // Race stopped
+    raceRunning = false;
+    stopRaceTimer();
+    updateRaceButtons();
+    console.log("[Sync] Race stopped via SSE");
+  } else if (state === "cleared") {
+    // Laps cleared - reset UI
+    raceRunning = false;
+    stopRaceTimer();
+    resetLapDisplay();
+    updateRaceButtons();
+    console.log("[Sync] Laps cleared via SSE");
+  }
+}
+
+// Reset lap display without sending commands
+function resetLapDisplay() {
+  var tableHeaderRowCount = 1;
+  var rowCount = lapTable.rows.length;
+  for (var i = tableHeaderRowCount; i < rowCount; i++) {
+    lapTable.deleteRow(tableHeaderRowCount);
+  }
+  lapNo = -1;
+  lapTimes = [];
+  updateLapCounter();
+  
+  // Clear lap analysis
+  const analysisContent = document.getElementById("analysisContent");
+  if (analysisContent) {
+    analysisContent.innerHTML = `<p class="no-data">${i18n.t("analysis.no_data")}</p>`;
+  }
+}
+
+// Race running state
+var raceRunning = false;
+
+// Start race timer display (no HTTP call)
+function startRaceTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+  }
+  
+  var millis = 0;
+  var seconds = 0;
+  var minutes = 0;
+  timerInterval = setInterval(function () {
+    millis += 1;
+    if (millis == 100) {
+      millis = 0;
+      seconds++;
+      if (seconds == 60) {
+        seconds = 0;
+        minutes++;
+        if (minutes == 60) {
+          minutes = 0;
+        }
+      }
+    }
+    let m = minutes < 10 ? "0" + minutes : minutes;
+    let s = seconds < 10 ? "0" + seconds : seconds;
+    let ms = millis < 10 ? "0" + millis : millis;
+    timer.innerHTML = `${m}:${s}:${ms}` + i18n.t("race.table.seconds_short");
+  }, 10);
+}
+
+// Stop race timer display (no HTTP call)
+function stopRaceTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+// Update race control buttons based on race state
+function updateRaceButtons() {
+  if (raceRunning) {
+    startRaceButton.disabled = true;
+    stopRaceButton.disabled = false;
+    addLapButton.disabled = false;
+  } else {
+    // Check slave mode - keep buttons disabled if slave
+    if (raceSyncMode === 2) {
+      startRaceButton.disabled = true;
+      stopRaceButton.disabled = true;
+      addLapButton.disabled = true;
+    } else {
+      startRaceButton.disabled = false;
+      stopRaceButton.disabled = true;
+      addLapButton.disabled = true;
+    }
   }
 }
 
@@ -2180,10 +2294,7 @@ async function startRace() {
   // Start polling distance if tracks enabled
   startDistancePolling();
   
-  // If master mode, send start command to all synced timers
-  if (raceSyncMode === 1 && syncedTimers.length > 0) {
-    sendCommandToSyncedTimers("/timer/start");
-  }
+  // Note: Sync commands now sent by master device directly (device-to-device)
 }
 
 function stopRace() {
@@ -2238,10 +2349,7 @@ function stopRace() {
   lastCompletedLapTime = 0;
   updateDistanceDisplay();
   
-  // If master mode, send stop command to all synced timers
-  if (raceSyncMode === 1 && syncedTimers.length > 0) {
-    sendCommandToSyncedTimers("/timer/stop");
-  }
+  // Note: Sync commands now sent by master device directly (device-to-device)
 }
 
 function clearLaps() {
@@ -2292,10 +2400,7 @@ function clearLaps() {
       .then((response) => console.log("/timer/clearLaps:" + JSON.stringify(response)));
   }
   
-  // If master mode, send clearLaps command to all synced timers
-  if (raceSyncMode === 1 && syncedTimers.length > 0) {
-    sendCommandToSyncedTimers("/timer/clearLaps");
-  }
+  // Note: Sync commands now sent by master device directly (device-to-device)
 }
 
 // ============================================
@@ -2313,20 +2418,28 @@ async function sendCommandToSyncedTimers(endpoint) {
       const url = `http://${timer}${endpoint}`;
       console.log(`[Sync] -> ${url}`);
       
-      // Use fetch with no-cors mode to avoid CORS issues, timeout after 2s
+      // Use fetch with timeout - CORS headers are set on the server
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
-      await fetch(url, {
+      const response = await fetch(url, {
         method: "POST",
-        mode: "no-cors",
         signal: controller.signal
       });
       
       clearTimeout(timeoutId);
-      console.log(`[Sync] OK: ${timer}`);
+      
+      if (response.ok) {
+        console.log(`[Sync] OK: ${timer}`);
+      } else {
+        console.warn(`[Sync] ${timer} returned status ${response.status}`);
+      }
     } catch (err) {
-      console.warn(`[Sync] Failed to reach ${timer}:`, err.message);
+      if (err.name === 'AbortError') {
+        console.warn(`[Sync] Timeout reaching ${timer} (5s)`);
+      } else {
+        console.warn(`[Sync] Failed to reach ${timer}:`, err.message);
+      }
       // Continue to next timer - don't block on errors
     }
   }
@@ -2367,16 +2480,18 @@ function updateRaceSyncMode(mode, skipSave = false) {
   }
 }
 
-// Update race buttons and banner for slave mode
+// Update race buttons and banner for slave/master mode
 function updateSlaveModelUI() {
   const slaveBanner = document.getElementById("slaveModeRaceBanner");
+  const masterBanner = document.getElementById("masterModeRaceBanner");
   const startBtn = document.getElementById("startRaceButton");
   const stopBtn = document.getElementById("stopRaceButton");
   const clearBtn = document.getElementById("clearLapsButton");
   
   if (raceSyncMode === 2) {
-    // Slave mode - disable buttons and show banner
+    // Slave mode - disable buttons and show slave banner
     if (slaveBanner) slaveBanner.style.display = "block";
+    if (masterBanner) masterBanner.style.display = "none";
     if (startBtn) {
       startBtn.disabled = true;
       startBtn.style.opacity = "0.5";
@@ -2385,9 +2500,22 @@ function updateSlaveModelUI() {
       clearBtn.disabled = true;
       clearBtn.style.opacity = "0.5";
     }
-  } else {
-    // Not slave mode - enable buttons and hide banner
+  } else if (raceSyncMode === 1) {
+    // Master mode - enable buttons and show master banner
     if (slaveBanner) slaveBanner.style.display = "none";
+    if (masterBanner) masterBanner.style.display = "block";
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.style.opacity = "1";
+    }
+    if (clearBtn) {
+      clearBtn.disabled = false;
+      clearBtn.style.opacity = "1";
+    }
+  } else {
+    // Disabled mode - enable buttons and hide both banners
+    if (slaveBanner) slaveBanner.style.display = "none";
+    if (masterBanner) masterBanner.style.display = "none";
     if (startBtn) {
       startBtn.disabled = false;
       startBtn.style.opacity = "1";
@@ -2440,6 +2568,58 @@ function removeSyncedTimer(hostname) {
   console.log("[Sync] Removed timer:", hostname, "Remaining:", syncedTimers.length);
 }
 
+// Test connection to a synced timer
+async function testSyncedTimer(hostname) {
+  const statusSpan = document.getElementById(`status-${hostname.replace(/\./g, '-')}`);
+  if (statusSpan) {
+    statusSpan.textContent = "Testing...";
+    statusSpan.style.color = "var(--secondary-color)";
+  }
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for test
+    
+    const response = await fetch(`http://${hostname}/timer/ping`, {
+      method: "GET",
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (statusSpan) {
+        statusSpan.textContent = `Online (${data.hostname || 'connected'})`;
+        statusSpan.style.color = "#2ecc71";
+      }
+      console.log(`[Sync] Ping OK: ${hostname}`, data);
+    } else {
+      if (statusSpan) {
+        statusSpan.textContent = "Error: " + response.status;
+        statusSpan.style.color = "#e74c3c";
+      }
+    }
+  } catch (err) {
+    console.warn(`[Sync] Ping failed for ${hostname}:`, err.message);
+    if (statusSpan) {
+      if (err.name === 'AbortError') {
+        statusSpan.textContent = "Timeout (5s)";
+      } else {
+        statusSpan.textContent = "Unreachable";
+      }
+      statusSpan.style.color = "#e74c3c";
+    }
+  }
+}
+
+// Test all synced timers
+async function testAllSyncedTimers() {
+  for (const timer of syncedTimers) {
+    await testSyncedTimer(timer);
+  }
+}
+
 // Render the synced timers list UI
 function renderSyncedTimersList() {
   const container = document.getElementById("syncedTimersList");
@@ -2452,10 +2632,17 @@ function renderSyncedTimersList() {
   
   let html = '';
   syncedTimers.forEach((timer, index) => {
+    const safeId = timer.replace(/\./g, '-');
     html += `
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-secondary); border-radius: 4px; margin-bottom: 8px;">
-        <span>${timer}</span>
-        <button onclick="removeSyncedTimer('${timer}')" style="padding: 4px 8px; background-color: #e74c3c; font-size: 12px;">X</button>
+        <div style="flex: 1;">
+          <span>${timer}</span>
+          <span id="status-${safeId}" style="margin-left: 8px; font-size: 12px; color: var(--secondary-color);"></span>
+        </div>
+        <div style="display: flex; gap: 4px;">
+          <button onclick="testSyncedTimer('${timer}')" style="padding: 4px 8px; background-color: var(--accent-color); font-size: 12px;">Test</button>
+          <button onclick="removeSyncedTimer('${timer}')" style="padding: 4px 8px; background-color: #e74c3c; font-size: 12px;">X</button>
+        </div>
       </div>
     `;
   });

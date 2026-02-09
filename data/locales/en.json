@@ -14,6 +14,8 @@
         "gate1_table": "Gate 1: {s}s",
         "race_complete": "Race complete",
         "slave_mode_indicator": "Slave Mode - Controlled by Master Timer",
+        "slave_mode_short": "SLAVE",
+        "master_mode_short": "MASTER",
         "connected": "{mode}: Connected",
         "disconnected": "Disconnected",
         "status_connected": "Connected",
