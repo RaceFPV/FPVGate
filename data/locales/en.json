@@ -165,7 +165,8 @@
             "infinite": "Infinite",
             "infinite_tip": "Tip: Set to 0 for infinite laps",
             "infinite_label": "Infinite",
-            "min_lap": "Minimum Lap Time:"
+            "min_lap": "Minimum Lap Time:",
+            "beep_volume": "Beep Volume:"
         },
         "tts": {
             "title": "TTS Settings",

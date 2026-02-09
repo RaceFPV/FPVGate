@@ -170,7 +170,7 @@
 #define EEPROM_RESERVED_SIZE 768
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 9U
+#define CONFIG_VERSION 10U
 
 // Race sync mode constants
 #define RACE_SYNC_DISABLED 0
@@ -232,6 +232,7 @@ typedef struct {
     uint8_t raceSyncMode;          // Race sync mode: 0=disabled, 1=master, 2=slave
     char syncedTimers[5][32];      // Up to 5 synced timer hostnames (for master mode)
     uint8_t syncedTimerCount;      // Number of configured synced timers
+    uint8_t beepVolume;            // Buzzer volume 0-100 (percentage)
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
@@ -332,6 +333,10 @@ class Config {
     bool addSyncedTimer(const char* hostname);
     bool removeSyncedTimer(const char* hostname);
     void clearSyncedTimers();
+    
+    // Beep volume
+    uint8_t getBeepVolume();
+    void setBeepVolume(uint8_t volume);
 
    private:
     laptimer_config_t conf;

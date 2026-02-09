@@ -1,18 +1,43 @@
 #include "buzzer.h"
 
+// LEDC channel for PWM buzzer (use channel 0)
+#define BUZZER_LEDC_CHANNEL 0
+#define BUZZER_LEDC_FREQ 2000  // 2kHz tone frequency
+#define BUZZER_LEDC_RESOLUTION 8  // 8-bit resolution (0-255)
+
 void Buzzer::init(uint8_t pin, bool inverted) {
-    pinMode(pin, OUTPUT);
-    initialState = inverted ? HIGH : LOW;
     buzzerPin = pin;
+    initialState = inverted ? HIGH : LOW;
     buzzerState = BUZZER_IDLE;
-    digitalWrite(buzzerPin, initialState);
+    volume = 100;
+    
+    // Setup LEDC for PWM buzzer control
+    ledcSetup(BUZZER_LEDC_CHANNEL, BUZZER_LEDC_FREQ, BUZZER_LEDC_RESOLUTION);
+    ledcAttachPin(buzzerPin, BUZZER_LEDC_CHANNEL);
+    ledcWrite(BUZZER_LEDC_CHANNEL, 0);  // Start silent
+    usePWM = true;
+}
+
+void Buzzer::setVolume(uint8_t vol) {
+    if (vol > 100) vol = 100;
+    volume = vol;
 }
 
 void Buzzer::beep(uint32_t timeMs) {
+    if (volume == 0) return;  // Silent mode
+    
     beepTimeMs = timeMs;
     buzzerState = BUZZER_BEEPING;
     startTimeMs = millis();
-    digitalWrite(buzzerPin, !initialState);
+    
+    if (usePWM) {
+        // Calculate duty cycle based on volume (0-100% -> 0-127 for 50% max duty)
+        // Using 50% duty cycle at max volume for a cleaner tone
+        uint8_t duty = (volume * 127) / 100;
+        ledcWrite(BUZZER_LEDC_CHANNEL, duty);
+    } else {
+        digitalWrite(buzzerPin, !initialState);
+    }
 }
 
 void Buzzer::handleBuzzer(uint32_t currentTimeMs) {
@@ -24,7 +49,11 @@ void Buzzer::handleBuzzer(uint32_t currentTimeMs) {
                 break;  // updated from different core
             }
             if ((currentTimeMs - startTimeMs) > beepTimeMs) {
-                digitalWrite(buzzerPin, initialState);
+                if (usePWM) {
+                    ledcWrite(BUZZER_LEDC_CHANNEL, 0);  // Silent
+                } else {
+                    digitalWrite(buzzerPin, initialState);
+                }
                 buzzerState = BUZZER_IDLE;
             }
             break;

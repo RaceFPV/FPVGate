@@ -1301,6 +1301,20 @@ EEPROM:\n\
         led->on(200);
     });
 
+    // Beep volume control endpoint
+    server.on("/buzzer/volume", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (request->hasParam("volume", true)) {
+            uint8_t volume = request->getParam("volume", true)->value().toInt();
+            if (volume > 100) volume = 100;
+            buz->setVolume(volume);
+            conf->setBeepVolume(volume);
+            request->send(200, "application/json", "{\"status\": \"OK\"}");
+        } else {
+            request->send(400, "application/json", "{\"status\": \"ERROR\", \"message\": \"Missing volume\"}");
+        }
+        led->on(200);
+    });
+
 #ifdef HAS_RGB_LED
     // LED control endpoints
     server.on("/led/color", HTTP_POST, [this](AsyncWebServerRequest *request) {

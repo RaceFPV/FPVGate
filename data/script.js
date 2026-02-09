@@ -694,6 +694,13 @@ onload = async function (e) {
     maxLapsInput.value = configData.maxLaps !== undefined ? configData.maxLaps : 0;
     updateMaxLaps(maxLapsInput, maxLapsInput.value);
 
+    // Load beep volume
+    const beepVolumeInput = document.getElementById("beepVolume");
+    if (beepVolumeInput && configData.beepVolume !== undefined) {
+      beepVolumeInput.value = configData.beepVolume;
+      $(beepVolumeInput).parent().find("span").text(configData.beepVolume + "%");
+    }
+
     // Load pilot callsign, phonetic name, and color from device config
     const callsignInput = document.getElementById("pcallsign");
     const phoneticInput = document.getElementById("pphonetic");
@@ -1587,6 +1594,23 @@ function updateMinLap(obj, value) {
     .find("span")
     .text(parseFloat(value).toFixed(1) + "s");
   // Auto-save when changed
+  autoSaveConfig();
+}
+
+function updateBeepVolume(obj, value) {
+  const vol = parseInt(value);
+  $(obj).parent().find("span").text(vol + "%");
+  // Send to device immediately
+  fetch(deviceUrl + "/buzzer/volume", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "volume=" + vol
+  }).then(response => {
+    if (response.ok) {
+      console.log("Beep volume set to " + vol + "%");
+    }
+  }).catch(err => console.warn("Failed to set beep volume:", err));
+  // Auto-save to config
   autoSaveConfig();
 }
 

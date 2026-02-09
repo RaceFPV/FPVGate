@@ -165,6 +165,7 @@ void setup() {
     // Note: config.init() already called above
     rx.init();
     buzzer.init(PIN_BUZZER, BUZZER_INVERTED);
+    buzzer.setVolume(config.getBeepVolume());  // Apply saved volume
     led.init(PIN_LED, false);
 #ifdef HAS_RGB_LED
     rgbLed.init();

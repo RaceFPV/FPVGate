@@ -12,6 +12,7 @@ class Buzzer {
     void init(uint8_t pin, bool inverted);
     void handleBuzzer(uint32_t currentTimeMs);
     void beep(uint32_t timeMs);
+    void setVolume(uint8_t volume);  // 0-100 percentage
 
    private:
     buzzer_state_e buzzerState = BUZZER_IDLE;
@@ -19,4 +20,6 @@ class Buzzer {
     uint8_t initialState = LOW;
     uint32_t beepTimeMs;
     uint32_t startTimeMs;
+    uint8_t volume = 100;  // Default 100%
+    bool usePWM = false;   // PWM mode flag
 };

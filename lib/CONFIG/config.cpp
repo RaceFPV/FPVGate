@@ -185,6 +185,9 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
     config["batteryAlarmEnabled"] = conf.batteryAlarmEnabled;
     config["batteryVoltageDivider"] = conf.batteryVoltageDivider;
     
+    // Beep volume
+    config["beepVolume"] = conf.beepVolume;
+    
     // Race sync settings
     DEBUG("toJson: sending timerNumber=%d\n", conf.timerNumber);
     config["timerNumber"] = conf.timerNumber;
@@ -456,6 +459,15 @@ void Config::fromJson(JsonObject source) {
         float v = source["batteryVoltageDivider"].as<float>();
         if (conf.batteryVoltageDivider != v) {
             conf.batteryVoltageDivider = v;
+            modified = true;
+        }
+    }
+    
+    // Beep volume
+    if (source.containsKey("beepVolume") && source["beepVolume"] != conf.beepVolume) {
+        uint8_t vol = source["beepVolume"].as<uint8_t>();
+        if (vol <= 100) {
+            conf.beepVolume = vol;
             modified = true;
         }
     }
@@ -949,6 +961,17 @@ void Config::clearSyncedTimers() {
     modified = true;
 }
 
+uint8_t Config::getBeepVolume() {
+    return conf.beepVolume;
+}
+
+void Config::setBeepVolume(uint8_t volume) {
+    if (volume <= 100 && conf.beepVolume != volume) {
+        conf.beepVolume = volume;
+        modified = true;
+    }
+}
+
 void Config::setDefaults(void) {
     DEBUG("Setting EEPROM defaults\n");
     // Reset everything to 0/false and then just set anything that zero is not appropriate
@@ -1000,6 +1023,7 @@ void Config::setDefaults(void) {
     conf.raceSyncMode = RACE_SYNC_DISABLED;  // Disabled by default
     conf.syncedTimerCount = 0;  // No synced timers
     memset(conf.syncedTimers, 0, sizeof(conf.syncedTimers));  // Clear synced timers
+    conf.beepVolume = 100;  // Default 100% volume
     modified = true;
     write();
 }

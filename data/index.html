@@ -416,6 +416,14 @@
                 </div>
               </div>
 
+              <div class="config-item">
+                <label for="beepVolume" data-i18n="settings.race_setup.beep_volume">Beep Volume:</label>
+                <div class="input-with-value">
+                  <span class="val">100%</span>
+                  <input type="range" id="beepVolume" step="5" min="0" max="100" value="100" oninput="updateBeepVolume(this,value)" />
+                </div>
+              </div>
+
               <h3 data-i18n="settings.tts.title">TTS Settings</h3>
 
               <div class="config-item">
