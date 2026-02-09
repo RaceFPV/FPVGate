@@ -2,6 +2,24 @@
 
 All notable changes to FPVGate will be documented in this file.
 
+## [1.6.0] - 2026-02-09
+
+### Added - Race Synchronization System
+- Multi-timer synchronization for distributed race timing setups
+- WebSocket-based real-time sync between master and slave timers
+- Master/Slave mode indicators in the UI header
+- Automatic discovery and connection management
+- Synchronized race start, stop, and lap events across all connected timers
+
+### Added - Audio Controls
+- Beep volume control slider in settings
+- Independent browser audio volume adjustment
+- Persistent volume settings across sessions
+
+### Improved
+- Simplified race sync architecture for better reliability
+- Enhanced status indicators for connection state
+
 ## [1.5.7] - 2026-02-07
 
 ### Added - On Screen Displays

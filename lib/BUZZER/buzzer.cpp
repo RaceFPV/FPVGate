@@ -1,7 +1,7 @@
 #include "buzzer.h"
 
-// LEDC channel for PWM buzzer (use channel 0)
-#define BUZZER_LEDC_CHANNEL 0
+// LEDC channel for PWM buzzer (use channel 7 to avoid FastLED/RMT conflicts)
+#define BUZZER_LEDC_CHANNEL 7
 #define BUZZER_LEDC_FREQ 2000  // 2kHz tone frequency
 #define BUZZER_LEDC_RESOLUTION 8  // 8-bit resolution (0-255)
 
