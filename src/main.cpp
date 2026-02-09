@@ -145,6 +145,10 @@ void setup() {
     // Always enable debug output (WiFi mode only)
     DEBUG_INIT;
     
+    // Debug: Show config state after serial is ready
+    DEBUG("Config state: SSID='%s', timerNumber=%d, version=0x%08X\n", 
+          config.getSsid(), config.getTimerNumber(), config.getVersion());
+    
     // Suppress VFS file-not-found errors (reduces spam from API endpoint checks)
     esp_log_level_set("vfs_api", ESP_LOG_NONE);
     
@@ -299,6 +303,8 @@ void loop() {
             DEBUG("Checking for config backup on SD card...\n");
             if (config.loadFromSD()) {
                 DEBUG("Config restored from SD backup after SD mount\n");
+                // Re-check WiFi mode - if SSID was restored, switch to STA
+                ws.recheckWifiMode();
             }
             
             // Migrate sounds from LittleFS to SD card

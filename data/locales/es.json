@@ -13,6 +13,7 @@
         "gate1": "Puerta 1",
         "gate1_table": "Puerta 1: {s}s",
         "race_complete": "Carrera completada",
+        "slave_mode_indicator": "Modo Esclavo - Controlado por Temporizador Maestro",
         "connected": "{mode}: Conectado",
         "disconnected": "Desconectado",
         "status_connected": "Conectado",
@@ -289,6 +290,26 @@
             "auto_detect": "Modo auto detecta conexión USB, vuelve a WiFi",
             "port_option": "Seleccionar un puerto..."
         },
+        "sync": {
+            "timer_address": "Dirección del Temporizador:",
+            "timer_address_tip": "Nombre de host mDNS para este temporizador (fpvgate.local, fpvgate2.local, etc.)",
+            "title": "Sincronización de Carrera",
+            "description": "Sincronizar comandos de carrera entre múltiples temporizadores FPVGate.",
+            "mode": "Modo Sync:",
+            "disabled": "Desactivado",
+            "master": "Maestro",
+            "slave": "Esclavo",
+            "disabled_desc": "El temporizador opera independientemente",
+            "master_desc": "Este temporizador controla otros temporizadores",
+            "slave_desc": "Este temporizador es controlado por un maestro",
+            "synced_timers": "Temporizadores Sincronizados",
+            "add_timer": "Añadir Temporizador",
+            "add_placeholder": "ej. fpvgate2.local",
+            "no_timers": "No hay temporizadores sincronizados configurados",
+            "master_note": "Los comandos Iniciar/Detener/Limpiar se enviarán a todos los temporizadores sincronizados.",
+            "slave_active": "Modo Esclavo Activo",
+            "slave_note": "Este temporizador es controlado por un temporizador maestro. Los controles de carrera están desactivados."
+        },
         "webhooks": {
             "title": "Webhooks",
             "description": "Enviar solicitudes HTTP POST a controladores LED externos durante carrera.",
@@ -445,7 +466,10 @@
         "webhook_test_sent": "¡Flash de prueba enviado a todos los webhooks configurados!\\n\\nVerifica tu controlador LED.",
         "error_generic": "Error: {n}",
         "url_copied": "✓ ¡URL Copiada!",
-        "invalid_ip": "Formato dirección IP inválido (ej. 192.168.0.75)"
+        "invalid_ip": "Formato dirección IP inválido (ej. 192.168.0.75)",
+        "enter_timer_hostname": "Por favor ingresa un nombre de host del temporizador",
+        "timer_already_added": "Este temporizador ya está en la lista",
+        "max_timers_reached": "Máximo de 5 temporizadores sincronizados permitidos"
     },
     "osd": {
         "lap": "Vuelta {n}",

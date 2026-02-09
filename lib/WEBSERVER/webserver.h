@@ -19,6 +19,7 @@ class Webserver : public TransportInterface {
    public:
     void init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMonitor, Buzzer *buzzer, Led *l, RaceHistory *raceHist, Storage *stor, SelfTest *test, RX5808 *rx5808, TrackManager *trackMgr, WebhookManager *webhookMgr);
     void setTransportManager(TransportManager *tm);
+    void recheckWifiMode();  // Re-evaluate WiFi mode after config changes
     void handleWebUpdate(uint32_t currentTimeMs);
     
     // TransportInterface implementation

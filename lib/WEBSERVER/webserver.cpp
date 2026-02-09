@@ -20,6 +20,7 @@ extern RgbLed* g_rgbLed;
 
 // Global storage pointer for static functions
 static Storage* g_storage = nullptr;
+static Config* g_config = nullptr;
 
 static const uint8_t DNS_PORT = 53;
 static IPAddress netMsk(255, 255, 255, 0);
@@ -28,7 +29,8 @@ static IPAddress ipAddress;
 static AsyncWebServer server(80);
 static AsyncEventSource events("/events");
 
-static const char *wifi_hostname = "FPVGate";
+// Dynamic hostname based on timerNumber config
+static char wifi_hostname[16] = "fpvgate";
 static const char *wifi_ap_ssid_prefix = "FPVGate";
 static const char *wifi_ap_password = "fpvgate1";
 static const char *wifi_ap_address = "192.168.4.1";
@@ -39,6 +41,7 @@ void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMoni
     ipAddress.fromString(wifi_ap_address);
 
     conf = config;
+    g_config = config;  // Set global pointer for static functions
     timer = lapTimer;
     monitor = batMonitor;
     buz = buzzer;
@@ -47,6 +50,15 @@ void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMoni
     storage = stor;
     g_storage = stor;  // Set global pointer for static functions
     selftest = test;
+    
+    // Build hostname based on timerNumber
+    uint8_t timerNum = conf->getTimerNumber();
+    if (timerNum == 0) {
+        strcpy(wifi_hostname, "fpvgate");
+    } else {
+        snprintf(wifi_hostname, sizeof(wifi_hostname), "fpvgate%d", timerNum);
+    }
+    DEBUG("Timer hostname configured: %s.local\n", wifi_hostname);
     rx = rx5808;
     trackManager = trackMgr;
     webhooks = webhookMgr;
@@ -76,6 +88,17 @@ void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMoni
 
 void Webserver::setTransportManager(TransportManager *tm) {
     transportMgr = tm;
+}
+
+void Webserver::recheckWifiMode() {
+    // Re-evaluate WiFi mode based on current config
+    // Called after config is restored from SD backup
+    if (wifiMode == WIFI_AP && conf->getSsid()[0] != 0) {
+        // Config now has SSID but we're in AP mode - switch to STA
+        DEBUG("Config has SSID, switching from AP to STA mode\n");
+        changeMode = WIFI_STA;
+        changeTimeMs = millis();
+    }
 }
 
 // TransportInterface implementation
@@ -252,18 +275,33 @@ static String toStringIp(IPAddress ip) {
 }
 
 static bool captivePortal(AsyncWebServerRequest *request) {
-    extern const char *wifi_hostname;
-
-    // Allow fpvgate.local, IP addresses, and hostname.local without redirecting
-    if (!isIp(request->host()) && 
-        request->host() != (String(wifi_hostname) + ".local") &&
-        request->host() != "fpvgate.local" &&
-        request->host() != "www.fpvgate.local") {
-        DEBUG("Request redirected to captive portal\n");
-        request->redirect(String("http://") + toStringIp(request->client()->localIP()));
-        return true;
+    // Allow configured hostname.local, fpvgate.local, fpvgateN.local, IP addresses
+    String host = request->host();
+    
+    if (isIp(host)) {
+        return false;  // IP addresses always allowed
     }
-    return false;
+    
+    // Allow the configured hostname
+    if (host == (String(wifi_hostname) + ".local") ||
+        host == "www." + String(wifi_hostname) + ".local") {
+        return false;
+    }
+    
+    // Always allow fpvgate.local and fpvgateN.local (N=1-8)
+    if (host == "fpvgate.local" || host == "www.fpvgate.local") {
+        return false;
+    }
+    for (int i = 1; i <= 8; i++) {
+        String allowed = "fpvgate" + String(i) + ".local";
+        if (host == allowed || host == "www." + allowed) {
+            return false;
+        }
+    }
+    
+    DEBUG("Request redirected to captive portal\n");
+    request->redirect(String("http://") + toStringIp(request->client()->localIP()));
+    return true;
 }
 
 static void handleRoot(AsyncWebServerRequest *request) {
@@ -533,6 +571,30 @@ EEPROM:\n\
             transportMgr->broadcastRaceStateEvent("cleared");
         }
         request->send(200, "application/json", "{\"status\": \"OK\"}");
+    });
+
+    // Race sync endpoints
+    server.on("/timer/syncStatus", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        DynamicJsonDocument doc(256);
+        doc["timerNumber"] = conf->getTimerNumber();
+        doc["raceSyncMode"] = conf->getRaceSyncMode();
+        doc["hostname"] = wifi_hostname;
+        
+        String output;
+        serializeJson(doc, output);
+        request->send(200, "application/json", output);
+    });
+
+    server.on("/timer/ping", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        // Simple ping endpoint for master to verify slave connectivity
+        DynamicJsonDocument doc(128);
+        doc["status"] = "OK";
+        doc["hostname"] = wifi_hostname;
+        doc["raceSyncMode"] = conf->getRaceSyncMode();
+        
+        String output;
+        serializeJson(doc, output);
+        request->send(200, "application/json", output);
     });
 
     server.on("/timer/rssiStart", HTTP_POST, [this](AsyncWebServerRequest *request) {

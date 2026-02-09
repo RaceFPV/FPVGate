@@ -13,6 +13,7 @@
         "gate1": "1号门口",
         "gate1_table": "1号门口: {s}秒",
         "race_complete": "比赛结束",
+        "slave_mode_indicator": "从机模式 - 由主计时器控制",
         "connected": "{mode}: 已连接",
         "disconnected": "未连接",
         "status_connected": "已连接",
@@ -288,6 +289,26 @@
             "placeholder_pwd": "输入 WiFi 密码",
             "auto_detect": "自动模式检测 USB 连接，失败则回退到 WiFi"
         },
+        "sync": {
+            "timer_address": "计时器地址:",
+            "timer_address_tip": "此计时器的 mDNS 主机名 (fpvgate.local, fpvgate2.local 等)",
+            "title": "比赛同步",
+            "description": "在多个 FPVGate 计时器之间同步比赛命令。",
+            "mode": "同步模式:",
+            "disabled": "禁用",
+            "master": "主机",
+            "slave": "从机",
+            "disabled_desc": "计时器独立运行",
+            "master_desc": "此计时器控制其他计时器",
+            "slave_desc": "此计时器由主机控制",
+            "synced_timers": "已同步计时器",
+            "add_timer": "添加计时器",
+            "add_placeholder": "例如 fpvgate2.local",
+            "no_timers": "未配置同步计时器",
+            "master_note": "开始/停止/清除命令将发送到所有同步的计时器。",
+            "slave_active": "从机模式已激活",
+            "slave_note": "此计时器由主计时器控制。比赛控制已禁用。"
+        },
         "webhooks": {
             "title": "Webhooks",
             "description": "在比赛事件期间向外部 LED 控制器发送 HTTP POST 请求。",
@@ -444,7 +465,10 @@
         "webhook_test_sent": "测试指令已发送到所有配置的 Webhooks！\n\n请检查您的 LED 控制器以验证。",
         "error_generic": "错误: {n}",
         "url_copied": "✓ URL 已复制！",
-        "invalid_ip": "IP 地址格式无效（例如 192.168.0.75）"
+        "invalid_ip": "IP 地址格式无效（例如 192.168.0.75）",
+        "enter_timer_hostname": "请输入计时器主机名",
+        "timer_already_added": "此计时器已在列表中",
+        "max_timers_reached": "最多允许 5 个同步计时器"
     },
     "osd": {
         "lap": "第 {n} 圈",

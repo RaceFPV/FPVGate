@@ -13,6 +13,7 @@
         "gate1": "Porte 1",
         "gate1_table": "Porte 1: {s}s",
         "race_complete": "Course terminée",
+        "slave_mode_indicator": "Mode Esclave - Contrôlé par le Minuteur Maître",
         "connected": "{mode}: Connecté",
         "disconnected": "Déconnecté",
         "status_connected": "Connecté",
@@ -289,6 +290,26 @@
             "auto_detect": "Mode auto détecte connexion USB, bascule vers WiFi",
             "port_option": "Sélectionner un port..."
         },
+        "sync": {
+            "timer_address": "Adresse du Minuteur:",
+            "timer_address_tip": "Nom d'hôte mDNS pour ce minuteur (fpvgate.local, fpvgate2.local, etc.)",
+            "title": "Synchronisation de Course",
+            "description": "Synchroniser les commandes de course entre plusieurs minuteurs FPVGate.",
+            "mode": "Mode Sync:",
+            "disabled": "Désactivé",
+            "master": "Maître",
+            "slave": "Esclave",
+            "disabled_desc": "Le minuteur fonctionne indépendamment",
+            "master_desc": "Ce minuteur contrôle d'autres minuteurs",
+            "slave_desc": "Ce minuteur est contrôlé par un maître",
+            "synced_timers": "Minuteurs Synchronisés",
+            "add_timer": "Ajouter Minuteur",
+            "add_placeholder": "ex. fpvgate2.local",
+            "no_timers": "Aucun minuteur synchronisé configuré",
+            "master_note": "Les commandes Démarrer/Arrêter/Effacer seront envoyées à tous les minuteurs synchronisés.",
+            "slave_active": "Mode Esclave Actif",
+            "slave_note": "Ce minuteur est contrôlé par un minuteur maître. Les contrôles de course sont désactivés."
+        },
         "webhooks": {
             "title": "Webhooks",
             "description": "Envoyer requêtes HTTP POST aux contrôleurs LED externes pendant la course.",
@@ -445,7 +466,10 @@
         "webhook_test_sent": "Flash de test envoyé à tous les webhooks configurés!\\n\\nVérifiez votre contrôleur LED.",
         "error_generic": "Erreur: {n}",
         "url_copied": "✓ URL Copiée!",
-        "invalid_ip": "Format adresse IP invalide (ex. 192.168.0.75)"
+        "invalid_ip": "Format adresse IP invalide (ex. 192.168.0.75)",
+        "enter_timer_hostname": "Veuillez entrer un nom d'hôte de minuteur",
+        "timer_already_added": "Ce minuteur est déjà dans la liste",
+        "max_timers_reached": "Maximum de 5 minuteurs synchronisés autorisés"
     },
     "osd": {
         "lap": "Tour {n}",

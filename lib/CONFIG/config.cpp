@@ -79,12 +79,15 @@ void Config::load(void) {
     if ((conf.version & CONFIG_MAGIC_MASK) == CONFIG_MAGIC) {
         version = conf.version & ~CONFIG_MAGIC_MASK;
     }
+    
+    DEBUG("EEPROM load: version=0x%08X, timerNumber=%d\n", conf.version, conf.timerNumber);
 
     // If version is not current, try to restore from SD backup
     if (version != CONFIG_VERSION) {
         DEBUG("EEPROM config invalid (version=%u, expected=%u)\n", version, CONFIG_VERSION);
         if (loadFromSD()) {
             DEBUG("Successfully restored config from SD card backup\n");
+            DEBUG("After SD restore: timerNumber=%d\n", conf.timerNumber);
             modified = true;  // Mark as modified to write back to EEPROM
             write();  // Write restored config to EEPROM
         } else {
@@ -104,7 +107,7 @@ void Config::load(void) {
 void Config::write(void) {
     if (!modified) return;
 
-    DEBUG("Writing to EEPROM\n");
+    DEBUG("Writing to EEPROM (timerNumber=%d)\n", conf.timerNumber);
 
     EEPROM.put(0, conf);
     EEPROM.commit();
@@ -121,7 +124,7 @@ void Config::write(void) {
 
 void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMonitor) {
     // Use https://arduinojson.org/v6/assistant to estimate memory
-    DynamicJsonDocument config(512);
+    DynamicJsonDocument config(768);
     config["freq"] = conf.frequency;
     
     // Use stored band/channel indices if valid, otherwise compute from frequency
@@ -182,6 +185,16 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
     config["batteryAlarmEnabled"] = conf.batteryAlarmEnabled;
     config["batteryVoltageDivider"] = conf.batteryVoltageDivider;
     
+    // Race sync settings
+    DEBUG("toJson: sending timerNumber=%d\n", conf.timerNumber);
+    config["timerNumber"] = conf.timerNumber;
+    config["raceSyncMode"] = conf.raceSyncMode;
+    config["syncedTimerCount"] = conf.syncedTimerCount;
+    JsonArray syncTimers = config.createNestedArray("syncedTimers");
+    for (uint8_t i = 0; i < conf.syncedTimerCount; i++) {
+        syncTimers.add(conf.syncedTimers[i]);
+    }
+    
     // Add battery voltage if monitor exists
     if (batteryMonitor) {
         uint16_t batteryVoltage = batteryMonitor->getBatteryVoltage();
@@ -220,6 +233,11 @@ void Config::toJsonString(char* buf) {
 }
 
 void Config::fromJson(JsonObject source) {
+    // Ensure version is always set correctly when modifying config
+    if ((conf.version & CONFIG_MAGIC_MASK) != CONFIG_MAGIC) {
+        conf.version = CONFIG_VERSION | CONFIG_MAGIC;
+    }
+    
     if (source["freq"] != conf.frequency) {
         conf.frequency = source["freq"];
         modified = true;
@@ -438,6 +456,58 @@ void Config::fromJson(JsonObject source) {
         float v = source["batteryVoltageDivider"].as<float>();
         if (conf.batteryVoltageDivider != v) {
             conf.batteryVoltageDivider = v;
+            modified = true;
+        }
+    }
+    
+    // Race sync settings
+    if (source.containsKey("timerNumber") && source["timerNumber"] != conf.timerNumber) {
+        uint8_t num = source["timerNumber"].as<uint8_t>();
+        DEBUG("fromJson: timerNumber changing from %d to %d\n", conf.timerNumber, num);
+        if (num <= 8) {
+            conf.timerNumber = num;
+            modified = true;
+        }
+    }
+    if (source.containsKey("raceSyncMode") && source["raceSyncMode"] != conf.raceSyncMode) {
+        uint8_t mode = source["raceSyncMode"].as<uint8_t>();
+        if (mode <= 2) {
+            conf.raceSyncMode = mode;
+            modified = true;
+        }
+    }
+    if (source.containsKey("syncedTimers")) {
+        JsonArray syncArray = source["syncedTimers"].as<JsonArray>();
+        
+        bool changed = false;
+        
+        // Compare count
+        if (syncArray.size() != conf.syncedTimerCount) {
+            changed = true;
+        } else {
+            // Compare entries
+            uint8_t i = 0;
+            for (JsonVariant timer : syncArray) {
+                const char* timerStr = timer.as<const char*>() ? timer.as<const char*>() : "";
+                if (strcmp(conf.syncedTimers[i], timerStr) != 0) {
+                    changed = true;
+                    break;
+                }
+                i++;
+            }
+        }
+        
+        if (changed) {
+            memset(conf.syncedTimers, 0, sizeof(conf.syncedTimers));
+            conf.syncedTimerCount = 0;
+            
+            for (JsonVariant timer : syncArray) {
+                if (conf.syncedTimerCount < 5) {
+                    const char* timerStr = timer.as<const char*>() ? timer.as<const char*>() : "";
+                    strlcpy(conf.syncedTimers[conf.syncedTimerCount], timerStr, 32);
+                    conf.syncedTimerCount++;
+                }
+            }
             modified = true;
         }
     }
@@ -803,6 +873,82 @@ void Config::setBatteryVoltageDivider(float ratio) {
     }
 }
 
+// Race sync getters and setters
+uint8_t Config::getTimerNumber() {
+    return conf.timerNumber;
+}
+
+void Config::setTimerNumber(uint8_t number) {
+    if (number <= 8 && conf.timerNumber != number) {
+        conf.timerNumber = number;
+        modified = true;
+    }
+}
+
+uint8_t Config::getRaceSyncMode() {
+    return conf.raceSyncMode;
+}
+
+void Config::setRaceSyncMode(uint8_t mode) {
+    if (mode <= 2 && conf.raceSyncMode != mode) {
+        conf.raceSyncMode = mode;
+        modified = true;
+    }
+}
+
+uint8_t Config::getSyncedTimerCount() {
+    return conf.syncedTimerCount;
+}
+
+const char* Config::getSyncedTimer(uint8_t index) {
+    if (index < conf.syncedTimerCount) {
+        return conf.syncedTimers[index];
+    }
+    return nullptr;
+}
+
+bool Config::addSyncedTimer(const char* hostname) {
+    if (conf.syncedTimerCount >= 5) {
+        DEBUG("Max synced timers reached\n");
+        return false;
+    }
+    
+    // Check if hostname already exists
+    for (uint8_t i = 0; i < conf.syncedTimerCount; i++) {
+        if (strcmp(conf.syncedTimers[i], hostname) == 0) {
+            DEBUG("Synced timer already exists\n");
+            return false;
+        }
+    }
+    
+    strlcpy(conf.syncedTimers[conf.syncedTimerCount], hostname, 32);
+    conf.syncedTimerCount++;
+    modified = true;
+    return true;
+}
+
+bool Config::removeSyncedTimer(const char* hostname) {
+    for (uint8_t i = 0; i < conf.syncedTimerCount; i++) {
+        if (strcmp(conf.syncedTimers[i], hostname) == 0) {
+            // Shift remaining timers down
+            for (uint8_t j = i; j < conf.syncedTimerCount - 1; j++) {
+                strlcpy(conf.syncedTimers[j], conf.syncedTimers[j + 1], 32);
+            }
+            conf.syncedTimerCount--;
+            memset(conf.syncedTimers[conf.syncedTimerCount], 0, 32);  // Clear last entry
+            modified = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+void Config::clearSyncedTimers() {
+    memset(conf.syncedTimers, 0, sizeof(conf.syncedTimers));
+    conf.syncedTimerCount = 0;
+    modified = true;
+}
+
 void Config::setDefaults(void) {
     DEBUG("Setting EEPROM defaults\n");
     // Reset everything to 0/false and then just set anything that zero is not appropriate
@@ -850,6 +996,10 @@ void Config::setDefaults(void) {
     conf.lowBatteryAlarmPerCell = 3.5f;  // Default 3.5V per cell
     conf.batteryAlarmEnabled = 0;  // Disabled by default
     conf.batteryVoltageDivider = 2.0f;  // Default 2:1 voltage divider
+    conf.timerNumber = 0;  // Default fpvgate.local
+    conf.raceSyncMode = RACE_SYNC_DISABLED;  // Disabled by default
+    conf.syncedTimerCount = 0;  // No synced timers
+    memset(conf.syncedTimers, 0, sizeof(conf.syncedTimers));  // Clear synced timers
     modified = true;
     write();
 }

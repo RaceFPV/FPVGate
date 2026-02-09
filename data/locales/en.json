@@ -13,6 +13,7 @@
         "gate1": "Gate 1",
         "gate1_table": "Gate 1: {s}s",
         "race_complete": "Race complete",
+        "slave_mode_indicator": "Slave Mode - Controlled by Master Timer",
         "connected": "{mode}: Connected",
         "disconnected": "Disconnected",
         "status_connected": "Connected",
@@ -300,6 +301,26 @@
             "placeholder_pwd": "Enter WiFi password",
             "auto_detect": "Auto mode detects USB connection, falls back to WiFi"
         },
+        "sync": {
+            "timer_address": "Timer Address:",
+            "timer_address_tip": "mDNS hostname for this timer (fpvgate.local, fpvgate2.local, etc.)",
+            "title": "Race Synchronization",
+            "description": "Synchronize race commands across multiple FPVGate timers.",
+            "mode": "Sync Mode:",
+            "disabled": "Disabled",
+            "master": "Master",
+            "slave": "Slave",
+            "disabled_desc": "Timer operates independently",
+            "master_desc": "This timer controls other timers",
+            "slave_desc": "This timer is controlled by a master",
+            "synced_timers": "Synced Timers",
+            "add_timer": "Add Timer",
+            "add_placeholder": "e.g. fpvgate2.local",
+            "no_timers": "No synced timers configured",
+            "master_note": "Start/Stop/Clear commands will be sent to all synced timers.",
+            "slave_active": "Slave Mode Active",
+            "slave_note": "This timer is controlled by a master timer. Race controls are disabled."
+        },
         "webhooks": {
             "title": "Webhooks",
             "description": "Send HTTP POST requests to external LED controllers during race events.",
@@ -467,7 +488,10 @@
         "webhook_test_sent": "Test flash sent to all configured webhooks!\n\nCheck your LED controller to verify.",
         "error_generic": "Error: {n}",
         "url_copied": "✓ URL Copied!",
-        "invalid_ip": "Invalid IP address format (e.g. 192.168.0.75)"
+        "invalid_ip": "Invalid IP address format (e.g. 192.168.0.75)",
+        "enter_timer_hostname": "Please enter a timer hostname",
+        "timer_already_added": "This timer is already in the list",
+        "max_timers_reached": "Maximum of 5 synced timers allowed"
     },
     "osd": {
         "lap": "Lap {n}",

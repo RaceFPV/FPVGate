@@ -113,6 +113,12 @@ var currentLapStartTime = 0; // When current lap started (ms)
 var lastCompletedLapTime = 0; // Duration of previous lap (ms)
 var trackLapLength = 0.0; // Length of one lap (meters)
 
+// Race sync state
+var timerNumber = 0; // 0=fpvgate.local, 1-8=fpvgateN.local
+var raceSyncMode = 0; // 0=disabled, 1=master, 2=slave
+var syncedTimers = []; // Array of synced timer hostnames (for master mode)
+var configLoaded = false; // Flag to prevent saving before initial config load
+
 var timerInterval;
 var lapTimerStartMs = 0; // Start time for current lap timer
 const timer = document.getElementById("timer");
@@ -1102,6 +1108,12 @@ function autoSaveConfig() {
 }
 
 async function saveConfig() {
+  // Don't save until initial config has been loaded from device
+  if (!configLoaded) {
+    console.log("[Config] Skipping save - config not yet loaded from device");
+    return;
+  }
+  
   // Get pilot settings
   const callsignInput = document.getElementById("pcallsign");
   const phoneticInput = document.getElementById("pphonetic");
@@ -1175,6 +1187,9 @@ async function saveConfig() {
     lowBatteryAlarmPerCell: lowBatteryAlarmPerCellInput ? parseFloat(lowBatteryAlarmPerCellInput.value) : 3.5,
     batteryAlarmEnabled: batteryMonitorToggle ? (batteryMonitorToggle.checked ? 1 : 0) : 0,
     batteryVoltageDivider: batteryVoltageDividerInput ? parseFloat(batteryVoltageDividerInput.value) : 2.0,
+    timerNumber: timerNumber,
+    raceSyncMode: raceSyncMode,
+    syncedTimers: syncedTimers,
   };
 
   if (usbConnected && transportManager) {
@@ -2109,6 +2124,12 @@ function highlightFastestLap() {
 }
 
 async function startRace() {
+  // If slave mode, don't allow local race control
+  if (raceSyncMode === 2) {
+    console.log("[Race] Slave mode - race control disabled");
+    return;
+  }
+  
   updateLapCounter();
   startRaceButton.disabled = true;
   startRaceButton.classList.add("active");
@@ -2158,9 +2179,19 @@ async function startRace() {
 
   // Start polling distance if tracks enabled
   startDistancePolling();
+  
+  // If master mode, send start command to all synced timers
+  if (raceSyncMode === 1 && syncedTimers.length > 0) {
+    sendCommandToSyncedTimers("/timer/start");
+  }
 }
 
 function stopRace() {
+  // If slave mode, don't allow local race control
+  if (raceSyncMode === 2) {
+    console.log("[Race] Slave mode - race control disabled");
+    return;
+  }
   // Clear any queued audio to prevent race start sounds
   if (audioAnnouncer) {
     audioAnnouncer.clearQueue();
@@ -2206,9 +2237,19 @@ function stopRace() {
   currentLapStartTime = 0;
   lastCompletedLapTime = 0;
   updateDistanceDisplay();
+  
+  // If master mode, send stop command to all synced timers
+  if (raceSyncMode === 1 && syncedTimers.length > 0) {
+    sendCommandToSyncedTimers("/timer/stop");
+  }
 }
 
 function clearLaps() {
+  // If slave mode, don't allow local race control
+  if (raceSyncMode === 2) {
+    console.log("[Race] Slave mode - race control disabled");
+    return;
+  }
   // Auto-save race if there are laps before clearing
   if (lapTimes.length > 0) {
     saveCurrentRace();
@@ -2250,6 +2291,176 @@ function clearLaps() {
       .then((response) => response.json())
       .then((response) => console.log("/timer/clearLaps:" + JSON.stringify(response)));
   }
+  
+  // If master mode, send clearLaps command to all synced timers
+  if (raceSyncMode === 1 && syncedTimers.length > 0) {
+    sendCommandToSyncedTimers("/timer/clearLaps");
+  }
+}
+
+// ============================================
+// Race Sync Functions
+// ============================================
+
+// Send HTTP POST to all synced timers
+async function sendCommandToSyncedTimers(endpoint) {
+  if (syncedTimers.length === 0) return;
+  
+  console.log(`[Sync] Sending ${endpoint} to ${syncedTimers.length} synced timers`);
+  
+  for (const timer of syncedTimers) {
+    try {
+      const url = `http://${timer}${endpoint}`;
+      console.log(`[Sync] -> ${url}`);
+      
+      // Use fetch with no-cors mode to avoid CORS issues, timeout after 2s
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      
+      await fetch(url, {
+        method: "POST",
+        mode: "no-cors",
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      console.log(`[Sync] OK: ${timer}`);
+    } catch (err) {
+      console.warn(`[Sync] Failed to reach ${timer}:`, err.message);
+      // Continue to next timer - don't block on errors
+    }
+  }
+}
+
+// Update timer number in config
+function updateTimerNumber() {
+  const select = document.getElementById("timerNumber");
+  if (select) {
+    timerNumber = parseInt(select.value);
+    console.log("[Sync] Timer number set to:", timerNumber);
+    autoSaveConfig();  // Save immediately when timer address changes
+  }
+}
+
+// Update race sync mode
+function updateRaceSyncMode(mode, skipSave = false) {
+  raceSyncMode = mode;
+  console.log("[Sync] Race sync mode set to:", mode);
+  
+  // Update UI visibility
+  const masterOptions = document.getElementById("masterSyncOptions");
+  const slaveIndicator = document.getElementById("slaveModeIndicator");
+  
+  if (masterOptions) {
+    masterOptions.style.display = mode === 1 ? "block" : "none";
+  }
+  if (slaveIndicator) {
+    slaveIndicator.style.display = mode === 2 ? "block" : "none";
+  }
+  
+  // Update race tab UI for slave mode
+  updateSlaveModelUI();
+  
+  // Save config when user changes mode (not when loading from config)
+  if (!skipSave) {
+    autoSaveConfig();
+  }
+}
+
+// Update race buttons and banner for slave mode
+function updateSlaveModelUI() {
+  const slaveBanner = document.getElementById("slaveModeRaceBanner");
+  const startBtn = document.getElementById("startRaceButton");
+  const stopBtn = document.getElementById("stopRaceButton");
+  const clearBtn = document.getElementById("clearLapsButton");
+  
+  if (raceSyncMode === 2) {
+    // Slave mode - disable buttons and show banner
+    if (slaveBanner) slaveBanner.style.display = "block";
+    if (startBtn) {
+      startBtn.disabled = true;
+      startBtn.style.opacity = "0.5";
+    }
+    if (clearBtn) {
+      clearBtn.disabled = true;
+      clearBtn.style.opacity = "0.5";
+    }
+  } else {
+    // Not slave mode - enable buttons and hide banner
+    if (slaveBanner) slaveBanner.style.display = "none";
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.style.opacity = "1";
+    }
+    if (clearBtn) {
+      clearBtn.disabled = false;
+      clearBtn.style.opacity = "1";
+    }
+  }
+}
+
+// Add a synced timer to the list
+function addSyncedTimer() {
+  const input = document.getElementById("syncTimerInput");
+  if (!input) return;
+  
+  let hostname = input.value.trim();
+  if (!hostname) {
+    alert(i18n.t("messages.enter_timer_hostname") || "Please enter a timer hostname");
+    return;
+  }
+  
+  // Add .local if not present
+  if (!hostname.includes(".")) {
+    hostname += ".local";
+  }
+  
+  // Check if already in list
+  if (syncedTimers.includes(hostname)) {
+    alert(i18n.t("messages.timer_already_added") || "Timer already added");
+    return;
+  }
+  
+  // Max 5 timers
+  if (syncedTimers.length >= 5) {
+    alert(i18n.t("messages.max_timers_reached") || "Maximum 5 synced timers allowed");
+    return;
+  }
+  
+  syncedTimers.push(hostname);
+  input.value = "";
+  renderSyncedTimersList();
+  console.log("[Sync] Added timer:", hostname, "Total:", syncedTimers.length);
+}
+
+// Remove a synced timer from the list
+function removeSyncedTimer(hostname) {
+  syncedTimers = syncedTimers.filter(t => t !== hostname);
+  renderSyncedTimersList();
+  console.log("[Sync] Removed timer:", hostname, "Remaining:", syncedTimers.length);
+}
+
+// Render the synced timers list UI
+function renderSyncedTimersList() {
+  const container = document.getElementById("syncedTimersList");
+  if (!container) return;
+  
+  if (syncedTimers.length === 0) {
+    container.innerHTML = `<p style="color: var(--secondary-color); text-align: center; padding: 16px" data-i18n="settings.sync.no_timers">${i18n.t("settings.sync.no_timers") || "No synced timers configured"}</p>`;
+    return;
+  }
+  
+  let html = '';
+  syncedTimers.forEach((timer, index) => {
+    html += `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-secondary); border-radius: 4px; margin-bottom: 8px;">
+        <span>${timer}</span>
+        <button onclick="removeSyncedTimer('${timer}')" style="padding: 4px 8px; background-color: #e74c3c; font-size: 12px;">X</button>
+      </div>
+    `;
+  });
+  
+  container.innerHTML = html;
 }
 
 // EventSource initialization moved to setupWiFiEvents() function above
@@ -5065,6 +5276,34 @@ function openSettingsModal() {
           webhooksCheckbox.checked = webhooksEnabled;
           toggleWebhooks(webhooksEnabled);
         }
+        
+        // Race Sync Settings
+        if (config.timerNumber !== undefined) {
+          timerNumber = config.timerNumber;
+          const timerSelect = document.getElementById("timerNumber");
+          if (timerSelect) {
+            timerSelect.value = String(config.timerNumber);
+            console.log("[Sync] Loaded timerNumber:", config.timerNumber, "dropdown value:", timerSelect.value);
+          }
+        }
+        
+        if (config.raceSyncMode !== undefined) {
+          raceSyncMode = config.raceSyncMode;
+          const radioButtons = document.querySelectorAll('input[name="raceSyncMode"]');
+          radioButtons.forEach(radio => {
+            radio.checked = parseInt(radio.value) === config.raceSyncMode;
+          });
+          updateRaceSyncMode(config.raceSyncMode, true);  // skipSave=true when loading
+        }
+        
+        if (config.syncedTimers && Array.isArray(config.syncedTimers)) {
+          syncedTimers = config.syncedTimers.slice(); // Copy array
+          renderSyncedTimersList();
+        }
+        
+        // Mark config as loaded - now saves are allowed
+        configLoaded = true;
+        console.log("[Config] Initial config loaded from device");
       })
       .catch((error) => console.error("Error loading config:", error));
 

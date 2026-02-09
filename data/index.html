@@ -52,6 +52,9 @@
       <div id="race" class="tabcontent">
         <span id="timer" data-i18n="race.timer_default">00:00:00s</span>
         <div id="lapCounter" style="text-align: center; font-size: 18px; font-weight: bold; color: var(--primary-color); margin: 8px 0" data-i18n="race.lap_counter">Lap 0</div>
+        <div id="slaveModeRaceBanner" style="display: none; text-align: center; padding: 12px; margin: 8px 0; background-color: var(--bg-secondary); border-radius: 8px; border: 2px solid var(--primary-color)">
+          <span style="font-weight: bold; color: var(--primary-color)" data-i18n="race.slave_mode_indicator">Slave Mode - Controlled by Master</span>
+        </div>
         <div class="racebuttons">
           <button id="startRaceButton" onclick="startRace()" data-i18n="race.start_race">Start Race</button>
           <button id="stopRaceButton" onclick="stopRace()" disabled data-i18n="race.stop_race">Stop Race</button>
@@ -727,6 +730,69 @@
               <div class="config-item">
                 <label for="pwd" data-i18n="settings.wifi.password">WiFi Password:</label>
                 <input type="password" id="pwd" maxlength="32" placeholder="Enter WiFi password" data-i18n-placeholder="settings.wifi.placeholder_pwd" />
+              </div>
+
+              <h3 data-i18n="settings.sync.timer_address">Timer Address</h3>
+              <div class="config-item">
+                <label for="timerNumber" data-i18n="settings.sync.timer_address">Timer Address:</label>
+                <select id="timerNumber" onchange="updateTimerNumber()">
+                  <option value="0">fpvgate.local (default)</option>
+                  <option value="1">fpvgate1.local</option>
+                  <option value="2">fpvgate2.local</option>
+                  <option value="3">fpvgate3.local</option>
+                  <option value="4">fpvgate4.local</option>
+                  <option value="5">fpvgate5.local</option>
+                  <option value="6">fpvgate6.local</option>
+                  <option value="7">fpvgate7.local</option>
+                  <option value="8">fpvgate8.local</option>
+                </select>
+              </div>
+              <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.sync.timer_address_tip">Set unique address if using multiple FPVGate devices on same network</div>
+
+              <h3 data-i18n="settings.sync.title">Race Synchronization</h3>
+              <div style="margin-bottom: 16px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 14px">
+                <p style="margin: 0" data-i18n="settings.sync.description">Synchronize race start/stop across multiple FPVGate devices on the same network.</p>
+              </div>
+
+              <div class="config-item">
+                <label data-i18n="settings.sync.mode">Sync Mode:</label>
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 8px">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+                    <input type="radio" name="raceSyncMode" value="0" checked onchange="updateRaceSyncMode(0)" />
+                    <span data-i18n="settings.sync.disabled">Disabled</span>
+                    <span style="color: var(--secondary-color); font-size: 12px" data-i18n="settings.sync.disabled_desc">- This timer operates independently</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+                    <input type="radio" name="raceSyncMode" value="1" onchange="updateRaceSyncMode(1)" />
+                    <span data-i18n="settings.sync.master">Master</span>
+                    <span style="color: var(--secondary-color); font-size: 12px" data-i18n="settings.sync.master_desc">- Control race on this timer and all synced timers</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+                    <input type="radio" name="raceSyncMode" value="2" onchange="updateRaceSyncMode(2)" />
+                    <span data-i18n="settings.sync.slave">Slave</span>
+                    <span style="color: var(--secondary-color); font-size: 12px" data-i18n="settings.sync.slave_desc">- Race controlled by master (buttons disabled)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div id="masterSyncOptions" style="display: none; margin-left: 24px; margin-top: 12px">
+                <h4 style="margin-bottom: 12px" data-i18n="settings.sync.synced_timers">Synced Timers</h4>
+                <div class="config-item">
+                  <label for="syncTimerInput" data-i18n="settings.sync.add_timer">Add Timer:</label>
+                  <input type="text" id="syncTimerInput" placeholder="e.g., fpvgate2.local" maxlength="31" style="flex: 1" data-i18n-placeholder="settings.sync.add_placeholder" />
+                </div>
+                <button onclick="addSyncedTimer()" style="width: 100%; margin-top: 8px" data-i18n="settings.sync.add_timer">Add Timer</button>
+                <div id="syncedTimersList" style="margin-top: 16px">
+                  <p style="color: var(--secondary-color); text-align: center; padding: 16px" data-i18n="settings.sync.no_timers">No synced timers configured</p>
+                </div>
+                <div style="margin-top: 12px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 13px">
+                  <p style="margin: 0; color: var(--secondary-color)" data-i18n="settings.sync.master_note">When you start/stop a race, commands will be sent to all synced timers. Max 5 timers.</p>
+                </div>
+              </div>
+
+              <div id="slaveModeIndicator" style="display: none; margin-top: 12px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--primary-color)">
+                <p style="margin: 0; font-weight: bold; color: var(--primary-color)" data-i18n="settings.sync.slave_active">Slave Mode Active</p>
+                <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--secondary-color)" data-i18n="settings.sync.slave_note">Race start/stop buttons are disabled. This device will respond to commands from a master timer.</p>
               </div>
 
               <div style="display: flex; gap: 12px; margin-top: 16px">

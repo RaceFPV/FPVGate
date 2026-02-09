@@ -13,6 +13,7 @@
         "gate1": "Tor 1",
         "gate1_table": "Tor 1: {s}s",
         "race_complete": "Rennen abgeschlossen",
+        "slave_mode_indicator": "Slave-Modus - Gesteuert vom Master-Timer",
         "connected": "{mode}: Verbunden",
         "disconnected": "Getrennt",
         "status_connected": "Verbunden",
@@ -289,6 +290,26 @@
             "auto_detect": "Auto-Modus erkennt USB-Verbindung, fällt auf WiFi zurück",
             "port_option": "Port auswählen..."
         },
+        "sync": {
+            "timer_address": "Timer-Adresse:",
+            "timer_address_tip": "mDNS-Hostname für diesen Timer (fpvgate.local, fpvgate2.local, usw.)",
+            "title": "Rennsynchronisierung",
+            "description": "Rennbefehle über mehrere FPVGate-Timer synchronisieren.",
+            "mode": "Sync-Modus:",
+            "disabled": "Deaktiviert",
+            "master": "Master",
+            "slave": "Slave",
+            "disabled_desc": "Timer arbeitet unabhängig",
+            "master_desc": "Dieser Timer steuert andere Timer",
+            "slave_desc": "Dieser Timer wird von einem Master gesteuert",
+            "synced_timers": "Synchronisierte Timer",
+            "add_timer": "Timer Hinzufügen",
+            "add_placeholder": "z.B. fpvgate2.local",
+            "no_timers": "Keine synchronisierten Timer konfiguriert",
+            "master_note": "Start/Stop/Löschen-Befehle werden an alle synchronisierten Timer gesendet.",
+            "slave_active": "Slave-Modus Aktiv",
+            "slave_note": "Dieser Timer wird von einem Master-Timer gesteuert. Rennsteuerungen sind deaktiviert."
+        },
         "webhooks": {
             "title": "Webhooks",
             "description": "HTTP-POST-Anfragen an externe LED-Controller während Rennen senden.",
@@ -445,7 +466,10 @@
         "webhook_test_sent": "Test-Blitz an alle konfigurierten Webhooks gesendet!\\n\\nÜberprüfe deinen LED-Controller.",
         "error_generic": "Fehler: {n}",
         "url_copied": "✓ URL Kopiert!",
-        "invalid_ip": "Ungültiges IP-Adressformat (z.B. 192.168.0.75)"
+        "invalid_ip": "Ungültiges IP-Adressformat (z.B. 192.168.0.75)",
+        "enter_timer_hostname": "Bitte Timer-Hostnamen eingeben",
+        "timer_already_added": "Dieser Timer ist bereits in der Liste",
+        "max_timers_reached": "Maximal 5 synchronisierte Timer erlaubt"
     },
     "osd": {
         "lap": "Runde {n}",

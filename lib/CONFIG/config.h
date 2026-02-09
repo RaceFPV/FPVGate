@@ -167,10 +167,15 @@
 #define WIFI_MODE LOW          // GND on switch pin = WiFi/Standalone mode
 #define ROTORHAZARD_MODE HIGH  // HIGH (floating/pullup) = RotorHazard node mode
 
-#define EEPROM_RESERVED_SIZE 512
+#define EEPROM_RESERVED_SIZE 768
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 8U
+#define CONFIG_VERSION 9U
+
+// Race sync mode constants
+#define RACE_SYNC_DISABLED 0
+#define RACE_SYNC_MASTER 1
+#define RACE_SYNC_SLAVE 2
 
 #define EEPROM_CHECK_TIME_MS 1000
 
@@ -223,6 +228,10 @@ typedef struct {
     float lowBatteryAlarmPerCell;  // Alarm voltage per cell (3.0v-4.2v)
     uint8_t batteryAlarmEnabled;   // Battery alarm enabled (0=disabled, 1=enabled)
     float batteryVoltageDivider;   // Voltage divider ratio (e.g., 2.0 for 2:1, 5.5 for 11:2)
+    uint8_t timerNumber;           // Timer address number (0=fpvgate.local, 1-8=fpvgateN.local)
+    uint8_t raceSyncMode;          // Race sync mode: 0=disabled, 1=master, 2=slave
+    char syncedTimers[5][32];      // Up to 5 synced timer hostnames (for master mode)
+    uint8_t syncedTimerCount;      // Number of configured synced timers
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
@@ -311,6 +320,18 @@ class Config {
     void setLowBatteryAlarmPerCell(float voltage);
     void setBatteryAlarmEnabled(uint8_t enabled);
     void setBatteryVoltageDivider(float ratio);
+    
+    // Race sync getters and setters
+    uint8_t getTimerNumber();
+    void setTimerNumber(uint8_t number);
+    uint8_t getRaceSyncMode();
+    void setRaceSyncMode(uint8_t mode);
+    uint8_t getSyncedTimerCount();
+    const char* getSyncedTimer(uint8_t index);
+    uint32_t getVersion() { return conf.version; }
+    bool addSyncedTimer(const char* hostname);
+    bool removeSyncedTimer(const char* hostname);
+    void clearSyncedTimers();
 
    private:
     laptimer_config_t conf;
