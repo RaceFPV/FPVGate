@@ -14,6 +14,7 @@ class AudioAnnouncer {
         this.isPlaying = false;
         this.audioEnabled = false;
         this.rate = 1.3;  // Faster playback for quicker announcements
+        this.volume = 1.0;  // Volume 0.0-1.0
         this.piperTTS = null;
         this.piperLoaded = false;
         this.ttsEngine = 'piper';  // Default to Piper TTS
@@ -111,6 +112,7 @@ class AudioAnnouncer {
             if (this.audioCache.has(audioPath)) {
                 const audio = this.audioCache.get(audioPath).cloneNode();
                 audio.playbackRate = this.rate;
+                audio.volume = this.volume;
                 audio.preservesPitch = false; // Better quality at higher speeds
                 
                 // Resolve early for seamless transitions with slight overlap
@@ -142,6 +144,7 @@ class AudioAnnouncer {
             const audio = new Audio();
             audio.preload = 'auto';
             audio.playbackRate = this.rate;
+            audio.volume = this.volume;
             audio.preservesPitch = false;
             audio.src = audioPath;
             
@@ -192,6 +195,7 @@ class AudioAnnouncer {
                 const audio = new Audio();
                 audio.src = URL.createObjectURL(wav);
                 audio.playbackRate = this.rate;
+                audio.volume = this.volume;
                 audio.onended = () => {
                     URL.revokeObjectURL(audio.src);
                     resolve();
@@ -717,6 +721,19 @@ class AudioAnnouncer {
         // Stop any ongoing speech
         if ('speechSynthesis' in window) {
             speechSynthesis.cancel();
+        }
+    }
+
+    /**
+     * Set volume for all audio (0.0-1.0)
+     */
+    setVolume(vol) {
+        this.volume = Math.max(0, Math.min(1, vol));
+        console.log('[AudioAnnouncer] Volume set to:', this.volume);
+        
+        // Update cached audio elements
+        for (const audio of this.audioCache.values()) {
+            audio.volume = this.volume;
         }
     }
 

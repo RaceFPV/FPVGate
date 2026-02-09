@@ -694,11 +694,14 @@ onload = async function (e) {
     maxLapsInput.value = configData.maxLaps !== undefined ? configData.maxLaps : 0;
     updateMaxLaps(maxLapsInput, maxLapsInput.value);
 
-    // Load beep volume
+    // Load beep volume from localStorage (browser audio volume)
     const beepVolumeInput = document.getElementById("beepVolume");
-    if (beepVolumeInput && configData.beepVolume !== undefined) {
-      beepVolumeInput.value = configData.beepVolume;
-      $(beepVolumeInput).parent().find("span").text(configData.beepVolume + "%");
+    const savedBeepVolume = localStorage.getItem('beepVolume');
+    if (beepVolumeInput) {
+      const vol = savedBeepVolume !== null ? parseInt(savedBeepVolume) : 100;
+      beepVolumeInput.value = vol;
+      $(beepVolumeInput).parent().find("span").text(vol + "%");
+      setBeepVolume(vol / 100);
     }
 
     // Load pilot callsign, phonetic name, and color from device config
@@ -1600,18 +1603,10 @@ function updateMinLap(obj, value) {
 function updateBeepVolume(obj, value) {
   const vol = parseInt(value);
   $(obj).parent().find("span").text(vol + "%");
-  // Send to device immediately
-  fetch(deviceUrl + "/buzzer/volume", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: "volume=" + vol
-  }).then(response => {
-    if (response.ok) {
-      console.log("Beep volume set to " + vol + "%");
-    }
-  }).catch(err => console.warn("Failed to set beep volume:", err));
-  // Auto-save to config
-  autoSaveConfig();
+  // Set browser audio volume (0-100 -> 0.0-1.0)
+  setBeepVolume(vol / 100);
+  // Save to localStorage for persistence
+  localStorage.setItem('beepVolume', vol);
 }
 
 function updateAlarmThreshold(obj, value) {
@@ -1644,11 +1639,29 @@ function updateMaxLaps(obj, value) {
 
 // Shared AudioContext for beeps (reused to avoid iOS issues)
 var beepAudioContext = null;
+var beepGainNode = null;
+var beepVolume = 1.0;  // 0.0 to 1.0
+
+function setBeepVolume(volume) {
+  beepVolume = Math.max(0, Math.min(1, volume));
+  if (beepGainNode) {
+    beepGainNode.gain.value = beepVolume;
+  }
+  // Also set audio announcer volume
+  if (typeof audioAnnouncer !== 'undefined' && audioAnnouncer) {
+    audioAnnouncer.setVolume(beepVolume);
+  }
+  console.log("[Audio] Volume set to " + (beepVolume * 100).toFixed(0) + "%");
+}
 
 function beep(duration, frequency, type) {
   // Create or reuse AudioContext
   if (!beepAudioContext) {
     beepAudioContext = new AudioContext();
+    // Create gain node for volume control
+    beepGainNode = beepAudioContext.createGain();
+    beepGainNode.gain.value = beepVolume;
+    beepGainNode.connect(beepAudioContext.destination);
   }
 
   // iOS/Safari: ensure AudioContext is running
@@ -1670,7 +1683,8 @@ function playBeepTone(duration, frequency, type) {
   var oscillator = beepAudioContext.createOscillator();
   oscillator.type = type;
   oscillator.frequency.value = frequency;
-  oscillator.connect(beepAudioContext.destination);
+  // Connect through gain node for volume control
+  oscillator.connect(beepGainNode);
   oscillator.start();
   // Beep for specified duration
   setTimeout(function () {
