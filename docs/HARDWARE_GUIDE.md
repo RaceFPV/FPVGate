@@ -381,7 +381,7 @@ SD Card Root
 
 | Buzzer Pin | ESP32 Pin |
 |------------|-----------|
-| **Signal (+)** | GPIO8 |
+| **Signal (+)** | GPIO5 |
 | **Ground (-)** | GND |
 
 **Polarity:**
@@ -549,7 +549,7 @@ SD Card Root
 |------|-----------|--------|-----------|
 | **GPIO3** | RX5808 | RSSI | Input (analog) |
 | **GPIO7** | LED Strip | Data | Output |
-| **GPIO8** | Buzzer | PWM | Output |
+| **GPIO5** | Buzzer | PWM | Output |
 | **GPIO10** | SD Card | CS | Output |
 | **GPIO11** | SD Card | MOSI | Output |
 | **GPIO12** | SD Card | SCK | Output |

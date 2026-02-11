@@ -33,14 +33,19 @@ class I18n {
   async loadLocale(lang) {
     if (this.locales[lang]) return;
     try {
-      const response = await fetch(`./locales/${lang}.json`);
+      // Use absolute path for mobile browser compatibility (Safari/Firefox)
+      const response = await fetch(`/locales/${lang}.json`, {
+        cache: 'no-cache'
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       this.locales[lang] = await response.json();
+      console.log(`[i18n] Loaded locale: ${lang}`);
     } catch (error) {
-      console.error(`Failed to load locale: ${lang}`, error);
+      console.error(`[i18n] Failed to load locale: ${lang}`, error);
       if (lang !== this.fallbackLang) {
+        console.log(`[i18n] Falling back to: ${this.fallbackLang}`);
         await this.loadLocale(this.fallbackLang);
       }
     }
