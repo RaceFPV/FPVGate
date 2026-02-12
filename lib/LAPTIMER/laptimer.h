@@ -10,6 +10,29 @@
 // Forward declarations to avoid circular dependency
 struct Track;
 class WebhookManager;
+class SweepManager;
+
+// Constants
+#define LAPTIMER_LAP_HISTORY 10
+#define LAPTIMER_RSSI_HISTORY 100
+#define LAPTIMER_CALIBRATION_HISTORY 5000  // Increased buffer for longer recordings
+
+// Multi-pilot lap data structure
+typedef struct {
+    uint32_t lapTimes[LAPTIMER_LAP_HISTORY];
+    uint32_t startTimeMs;
+    uint32_t raceStartTimeMs;
+    uint8_t lapCount;
+    bool lapCountWraparound;
+    uint8_t rssiPeak;
+    uint32_t rssiPeakTimeMs;
+    bool enteredGate;
+    bool gateExited;
+    uint8_t enterHoldSamples;
+    uint32_t enterHoldStartMs;
+    bool lapAvailable;
+    uint32_t lastLapTime;  // Most recent lap time for this pilot
+} pilot_lap_data_t;
 
 typedef enum {
     STOPPED,
@@ -17,10 +40,6 @@ typedef enum {
     RUNNING,
     CALIBRATION_WIZARD
 } laptimer_state_e;
-
-#define LAPTIMER_LAP_HISTORY 10
-#define LAPTIMER_RSSI_HISTORY 100
-#define LAPTIMER_CALIBRATION_HISTORY 5000  // Increased buffer for longer recordings
 
 class LapTimer {
    public:
@@ -44,6 +63,17 @@ class LapTimer {
     float getTotalDistance();
     float getDistanceRemaining();
     Track* getSelectedTrack();
+    
+    // Multi-pilot methods
+    void setSweepManager(SweepManager* sweep);
+    void setActivePilot(uint8_t pilot);  // 0 or 1
+    uint8_t getActivePilot();
+    uint32_t getLapTime(uint8_t pilotIndex);  // Get specific pilot's last lap
+    uint8_t getLapCount(uint8_t pilotIndex);  // Get specific pilot's lap count
+    uint32_t* getLapTimes(uint8_t pilotIndex);  // Get pilot's lap times array
+    bool isLapAvailable(uint8_t pilotIndex);  // Check if pilot has new lap
+    void clearLapAvailable(uint8_t pilotIndex);  // Clear lap available flag
+    uint8_t getLastPilotWithLap();  // Get which pilot triggered the last lap (for events)
 
    private:
     laptimer_state_e state = STOPPED;
@@ -92,6 +122,16 @@ class LapTimer {
     Track* selectedTrack;
     float totalDistanceTravelled;
     float distanceRemaining;
+    
+    // Multi-pilot support
+    SweepManager* sweepMgr;
+    uint8_t activePilot;              // 0 = pilot1, 1 = pilot2 (only used in multi-pilot mode)
+    uint8_t lastLapPilot;             // Which pilot triggered the most recent lap
+    pilot_lap_data_t pilotData[2];    // Per-pilot lap tracking data
+    
+    // Get RSSI thresholds for current pilot (multi-pilot aware)
+    uint8_t getCurrentEnterRssi();
+    uint8_t getCurrentExitRssi();
 
     void lapPeakCapture();
     bool lapPeakCaptured();
@@ -99,6 +139,10 @@ class LapTimer {
 
     void startLap();
     void finishLap();
+    
+    // Multi-pilot helpers
+    void initPilotData(uint8_t pilotIndex);
+    void finishLapMultiPilot(uint8_t pilotIndex);
 };
 
 #endif

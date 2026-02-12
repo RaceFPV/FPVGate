@@ -49,6 +49,7 @@ class USBTransport : public TransportInterface {
     
     // TransportInterface implementation
     void sendLapEvent(uint32_t lapTimeMs) override;
+    void sendLapEvent(uint32_t lapTimeMs, uint8_t pilotIndex) override;
     void sendRssiEvent(uint8_t rssi) override;
     void sendRaceStateEvent(const char* state) override;
     bool isConnected() override;

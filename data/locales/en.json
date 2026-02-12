@@ -37,7 +37,10 @@
             "lap_singular": "1 lap",
             "lap_plural": "{n} laps",
             "seconds_short": "s"
-        }
+        },
+        "laps_label": "laps",
+        "best_lap": "Best:",
+        "gate1_short": "G1: {s}s"
     },
     "analysis": {
         "title": "Lap Analysis",
@@ -138,13 +141,23 @@
         "wizard_exit_rssi": "Calculated Exit RSSI:",
         "wizard_note_title": "Note:",
         "wizard_results_note": "These values have been calculated based on your lap data with safety margins. You can apply them now and fine-tune manually if needed.",
-        "wizard_apply": "Apply Thresholds"
+        "wizard_apply": "Apply Thresholds",
+        "multipilot_mode": "Multi-Pilot Calibration Mode",
+        "multipilot_instructions": "Select a pilot to calibrate their RSSI thresholds. The receiver will lock to that pilot's frequency until you click Resume Sweep.",
+        "pilot1": "Pilot 1",
+        "pilot2": "Pilot 2",
+        "enter_exit": "Enter/Exit:",
+        "activate_pilot1": "Activate Pilot 1",
+        "activate_pilot2": "Activate Pilot 2",
+        "resume_sweep": "Resume Automatic Sweep",
+        "saving_pilot": "Saving to Pilot {n}"
     },
     "settings": {
         "title": "Settings",
         "tabs": {
             "general": "Lap & Announcer Settings",
             "pilot": "Pilot Info",
+            "multipilot": "Multi-Pilot Sweep",
             "tracks": "Track Data",
             "led": "LED Setup",
             "wifi": "WiFi & Connection",
@@ -207,6 +220,21 @@
                 "piper": "PiperTTS (Lower Latency)"
             },
             "examples": "Examples: \"Louis Lap 5, 12.34\" / \"Lap 5, 12.34\" / \"12.34\""
+        },
+        "multipilot": {
+            "title": "Multi-Pilot Sweep Mode",
+            "description": "Time two pilots with a single receiver module.",
+            "sub_description": "The receiver will alternate between pilot frequencies. This reduces timing accuracy but allows budget multi-pilot operation.",
+            "enable": "Enable Multi-Pilot Sweep:",
+            "enable_tip": "When enabled, standard pilot settings are disabled",
+            "dwell_time": "Dwell Time (ms):",
+            "dwell_tip": "Time spent on each frequency before switching (lower = faster but less accurate)",
+            "pilot1_title": "Pilot 1",
+            "pilot2_title": "Pilot 2",
+            "pilot_name": "Pilot Name:",
+            "callsign": "Callsign:",
+            "frequency": "Frequency:",
+            "save": "Save Multi-Pilot Settings"
         },
         "pilot": {
             "title": "Pilot Info",

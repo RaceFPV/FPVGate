@@ -9,6 +9,7 @@
 #include <HTTPClient.h>
 
 #include "debug.h"
+#include "sweep.h"
 
 #ifdef HAS_RGB_LED
 #include "rgbled.h"
@@ -22,6 +23,7 @@ extern RgbLed* g_rgbLed;
 // Global storage pointer for static functions
 static Storage* g_storage = nullptr;
 static Config* g_config = nullptr;
+static SweepManager* g_sweepMgr = nullptr;  // For multi-pilot calibration
 
 static const uint8_t DNS_PORT = 53;
 static IPAddress netMsk(255, 255, 255, 0);
@@ -91,6 +93,10 @@ void Webserver::setTransportManager(TransportManager *tm) {
     transportMgr = tm;
 }
 
+void Webserver::setSweepManager(SweepManager *sm) {
+    g_sweepMgr = sm;
+}
+
 void Webserver::recheckWifiMode() {
     // Re-evaluate WiFi mode based on current config
     // Called after config is restored from SD backup
@@ -107,6 +113,14 @@ void Webserver::sendLapEvent(uint32_t lapTimeMs) {
     if (!servicesStarted) return;
     char buf[16];
     snprintf(buf, sizeof(buf), "%u", lapTimeMs);
+    events.send(buf, "lap");
+}
+
+void Webserver::sendLapEvent(uint32_t lapTimeMs, uint8_t pilotIndex) {
+    if (!servicesStarted) return;
+    // Send JSON with pilot info: {"time":12345,"pilot":0}
+    char buf[48];
+    snprintf(buf, sizeof(buf), "{\"time\":%u,\"pilot\":%u}", lapTimeMs, pilotIndex);
     events.send(buf, "lap");
 }
 
@@ -725,7 +739,98 @@ EEPROM:\n\
         led->on(200);
     });
 
-    // Serve audio files from SD card voice directories (sounds_default, sounds_rachel, etc.)
+    // Multi-pilot configuration endpoint
+    AsyncCallbackJsonWebHandler *multiPilotConfigHandler = new AsyncCallbackJsonWebHandler("/config/multipilot", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+#ifdef DEBUG_OUT
+        DEBUG("Multi-pilot config received:\n");
+        serializeJsonPretty(jsonObj, DEBUG_OUT);
+        DEBUG("\n");
+#endif
+        
+        if (jsonObj.containsKey("multiPilotEnabled")) {
+            conf->setMultiPilotEnabled(jsonObj["multiPilotEnabled"].as<uint8_t>());
+        }
+        if (jsonObj.containsKey("sweepDwellMs")) {
+            conf->setSweepDwellMs(jsonObj["sweepDwellMs"].as<uint16_t>());
+        }
+        if (jsonObj.containsKey("pilot1")) {
+            JsonObject p1 = jsonObj["pilot1"].as<JsonObject>();
+            pilot_config_t pilot1;
+            strncpy(pilot1.name, p1["name"] | "Pilot 1", sizeof(pilot1.name) - 1);
+            pilot1.name[sizeof(pilot1.name) - 1] = '\0';
+            strncpy(pilot1.callsign, p1["callsign"] | "P1", sizeof(pilot1.callsign) - 1);
+            pilot1.callsign[sizeof(pilot1.callsign) - 1] = '\0';
+            pilot1.bandIndex = p1["bandIndex"] | 4;
+            pilot1.channelIndex = p1["channelIndex"] | 0;
+            pilot1.frequency = p1["frequency"] | 5800;
+            pilot1.enterRssi = conf->getPilot1()->enterRssi;  // Preserve calibration
+            pilot1.exitRssi = conf->getPilot1()->exitRssi;
+            conf->setPilot1(&pilot1);
+        }
+        if (jsonObj.containsKey("pilot2")) {
+            JsonObject p2 = jsonObj["pilot2"].as<JsonObject>();
+            pilot_config_t pilot2;
+            strncpy(pilot2.name, p2["name"] | "Pilot 2", sizeof(pilot2.name) - 1);
+            pilot2.name[sizeof(pilot2.name) - 1] = '\0';
+            strncpy(pilot2.callsign, p2["callsign"] | "P2", sizeof(pilot2.callsign) - 1);
+            pilot2.callsign[sizeof(pilot2.callsign) - 1] = '\0';
+            pilot2.bandIndex = p2["bandIndex"] | 4;
+            pilot2.channelIndex = p2["channelIndex"] | 1;
+            pilot2.frequency = p2["frequency"] | 5860;
+            pilot2.enterRssi = conf->getPilot2()->enterRssi;  // Preserve calibration
+            pilot2.exitRssi = conf->getPilot2()->exitRssi;
+            conf->setPilot2(&pilot2);
+        }
+        
+        // SweepManager reads config directly, no need to reinitialize
+        // The new frequencies will be picked up on the next sweep cycle
+        
+        request->send(200, "application/json", "{\"status\": \"OK\"}");
+        led->on(200);
+    });
+
+    // Pilot threshold calibration endpoint (for multi-pilot mode)
+    AsyncCallbackJsonWebHandler *pilotThresholdsHandler = new AsyncCallbackJsonWebHandler("/config/pilotThresholds", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        
+        if (!jsonObj.containsKey("pilot") || !jsonObj.containsKey("enterRssi") || !jsonObj.containsKey("exitRssi")) {
+            request->send(400, "application/json", "{\"status\": \"ERROR\", \"message\": \"Missing parameters\"}");
+            return;
+        }
+        
+        uint8_t pilotIndex = jsonObj["pilot"].as<uint8_t>();
+        uint8_t enterRssi = jsonObj["enterRssi"].as<uint8_t>();
+        uint8_t exitRssi = jsonObj["exitRssi"].as<uint8_t>();
+        
+        DEBUG("Setting pilot %d thresholds: enter=%d, exit=%d\n", pilotIndex + 1, enterRssi, exitRssi);
+        
+        if (pilotIndex == 0) {
+            pilot_config_t pilot1 = *conf->getPilot1();
+            pilot1.enterRssi = enterRssi;
+            pilot1.exitRssi = exitRssi;
+            conf->setPilot1(&pilot1);
+        } else if (pilotIndex == 1) {
+            pilot_config_t pilot2 = *conf->getPilot2();
+            pilot2.enterRssi = enterRssi;
+            pilot2.exitRssi = exitRssi;
+            conf->setPilot2(&pilot2);
+        } else {
+            request->send(400, "application/json", "{\"status\": \"ERROR\", \"message\": \"Invalid pilot index\"}");
+            return;
+        }
+        
+        // Also update the lap timer's active pilot thresholds
+        if (timer) {
+            timer->setActivePilot(pilotIndex);
+        }
+        
+        request->send(200, "application/json", "{\"status\": \"OK\"}");
+        led->on(200);
+        buz->beep(50);
+    });
+
+    // Serve audio files from SD card voice directories
     // Use onRequestBody to handle the route before serveStatic catches it
     server.on("/sounds_default/*", HTTP_GET, [this](AsyncWebServerRequest *request) {
         String path = request->url();
@@ -902,6 +1007,8 @@ EEPROM:\n\
 
     server.addHandler(&events);
     server.addHandler(configJsonHandler);
+    server.addHandler(multiPilotConfigHandler);
+    server.addHandler(pilotThresholdsHandler);
 
     // Race history endpoints
     server.on("/races", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -1495,6 +1602,44 @@ EEPROM:\n\
         json += "]}";
         
         request->send(200, "application/json", json);
+        led->on(200);
+    });
+
+    // Multi-pilot calibration: activate specific pilot's frequency
+    server.on("/calibration/activatePilot", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!conf->getMultiPilotEnabled()) {
+            request->send(400, "application/json", "{\"status\": \"ERROR\", \"message\": \"Multi-pilot mode not enabled\"}");
+            return;
+        }
+        
+        if (request->hasParam("pilot", true)) {
+            uint8_t pilotIndex = request->getParam("pilot", true)->value().toInt();
+            if (pilotIndex > 1) pilotIndex = 0;
+            
+            // Activate the pilot's frequency via sweep manager
+            if (g_sweepMgr) {
+                g_sweepMgr->activatePilot(pilotIndex);
+            }
+            
+            // Also set the timer's active pilot so RSSI thresholds match
+            timer->setActivePilot(pilotIndex);
+            
+            char response[64];
+            snprintf(response, sizeof(response), "{\"status\": \"OK\", \"pilot\": %d}", pilotIndex + 1);
+            request->send(200, "application/json", response);
+            led->on(200);
+            buz->beep(100);
+        } else {
+            request->send(400, "application/json", "{\"status\": \"ERROR\", \"message\": \"Missing pilot parameter\"}");
+        }
+    });
+
+    // Multi-pilot calibration: resume automatic sweeping
+    server.on("/calibration/resumeSweep", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (g_sweepMgr) {
+            g_sweepMgr->resume();
+        }
+        request->send(200, "application/json", "{\"status\": \"OK\"}");
         led->on(200);
     });
 

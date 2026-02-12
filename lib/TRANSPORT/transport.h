@@ -9,8 +9,14 @@ class TransportInterface {
    public:
     virtual ~TransportInterface() {}
     
-    // Send lap time event to all connected clients
+    // Send lap time event to all connected clients (single pilot)
     virtual void sendLapEvent(uint32_t lapTimeMs) = 0;
+    
+    // Send lap time event with pilot index (for multi-pilot mode)
+    virtual void sendLapEvent(uint32_t lapTimeMs, uint8_t pilotIndex) {
+        // Default implementation ignores pilot index for backwards compatibility
+        sendLapEvent(lapTimeMs);
+    }
     
     // Send RSSI value to all connected clients (if streaming enabled)
     virtual void sendRssiEvent(uint8_t rssi) = 0;
@@ -37,11 +43,20 @@ class TransportManager {
         }
     }
     
-    // Broadcast lap event to all transports
+    // Broadcast lap event to all transports (single pilot)
     void broadcastLapEvent(uint32_t lapTimeMs) {
         for (uint8_t i = 0; i < transportCount; i++) {
             if (transports[i] && transports[i]->isConnected()) {
                 transports[i]->sendLapEvent(lapTimeMs);
+            }
+        }
+    }
+    
+    // Broadcast lap event with pilot index (for multi-pilot mode)
+    void broadcastLapEvent(uint32_t lapTimeMs, uint8_t pilotIndex) {
+        for (uint8_t i = 0; i < transportCount; i++) {
+            if (transports[i] && transports[i]->isConnected()) {
+                transports[i]->sendLapEvent(lapTimeMs, pilotIndex);
             }
         }
     }

@@ -167,10 +167,10 @@
 #define WIFI_MODE LOW          // GND on switch pin = WiFi/Standalone mode
 #define ROTORHAZARD_MODE HIGH  // HIGH (floating/pullup) = RotorHazard node mode
 
-#define EEPROM_RESERVED_SIZE 768
+#define EEPROM_RESERVED_SIZE 1024
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 10U
+#define CONFIG_VERSION 11U
 
 // Race sync mode constants
 #define RACE_SYNC_DISABLED 0
@@ -183,6 +183,22 @@
 #define BATTERY_TYPE_LIPO 0
 #define BATTERY_TYPE_LIPOHV 1
 #define BATTERY_TYPE_LIION 2
+
+// Multi-pilot sweep mode constants
+#define SWEEP_DWELL_MIN_MS 70      // Minimum dwell time per pilot (tune time + settling)
+#define SWEEP_DWELL_DEFAULT_MS 100 // Default dwell time per pilot
+#define SWEEP_DWELL_MAX_MS 500     // Maximum dwell time per pilot
+
+// Pilot configuration for multi-pilot sweep mode
+typedef struct {
+    char name[21];              // Pilot name
+    char callsign[21];          // Pilot callsign (for announcements)
+    uint8_t bandIndex;          // Band index (0-21)
+    uint8_t channelIndex;       // Channel index (0-7)
+    uint16_t frequency;         // VTX frequency in MHz
+    uint8_t enterRssi;          // Gate enter RSSI threshold
+    uint8_t exitRssi;           // Gate exit RSSI threshold
+} pilot_config_t;
 
 typedef struct {
     uint32_t version;
@@ -233,6 +249,11 @@ typedef struct {
     char syncedTimers[5][32];      // Up to 5 synced timer hostnames (for master mode)
     uint8_t syncedTimerCount;      // Number of configured synced timers
     uint8_t beepVolume;            // Buzzer volume 0-100 (percentage)
+    // Multi-pilot sweep mode settings
+    uint8_t multiPilotEnabled;     // Multi-pilot sweep mode (0=disabled, 1=enabled)
+    uint16_t sweepDwellMs;         // Dwell time per pilot in ms (70-500)
+    pilot_config_t pilot1;         // Pilot 1 configuration
+    pilot_config_t pilot2;         // Pilot 2 configuration
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
@@ -337,6 +358,16 @@ class Config {
     // Beep volume
     uint8_t getBeepVolume();
     void setBeepVolume(uint8_t volume);
+    
+    // Multi-pilot sweep mode getters and setters
+    uint8_t getMultiPilotEnabled();
+    void setMultiPilotEnabled(uint8_t enabled);
+    uint16_t getSweepDwellMs();
+    void setSweepDwellMs(uint16_t dwellMs);
+    pilot_config_t* getPilot1();
+    pilot_config_t* getPilot2();
+    void setPilot1(const pilot_config_t* pilot);
+    void setPilot2(const pilot_config_t* pilot);
 
    private:
     laptimer_config_t conf;

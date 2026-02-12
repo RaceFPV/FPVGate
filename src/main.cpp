@@ -8,6 +8,7 @@
 #include "trackmanager.h"
 #include "usb.h"
 #include "webhook.h"
+#include "sweep.h"
 // DISABLED FOR NOW: #include "nodemode.h"  // Uncomment to re-enable RotorHazard support
 #include <ElegantOTA.h>
 #ifdef HAS_RGB_LED
@@ -63,6 +64,7 @@ RgbLed* g_rgbLed = &rgbLed;
 void* g_rgbLed = nullptr;
 #endif
 static LapTimer timer;
+static SweepManager sweepMgr;  // Multi-pilot frequency sweep manager
 #ifdef HAS_BATTERY_MONITOR
 static BatteryMonitor monitor;  // Enabled for T-Energy S3 or testing
 #endif
@@ -81,7 +83,16 @@ static void parallelTask(void *pvArgs) {
         ws.handleWebUpdate(currentTimeMs);
         usbTransport.update(currentTimeMs);
         config.handleEeprom(currentTimeMs);
-        rx.handleFrequencyChange(currentTimeMs, config.getFrequency());
+        
+        // Always call handleFrequencyChange to handle tuning timeouts and RSSI stability
+        // In multi-pilot mode, pass currentFrequency (managed by SweepManager)
+        // In single-pilot mode, pass frequency from config
+        if (config.getMultiPilotEnabled()) {
+            // SweepManager controls frequency, but we still need to handle tuning timeouts
+            rx.handleFrequencyChange(currentTimeMs, rx.getCurrentFrequency());
+        } else {
+            rx.handleFrequencyChange(currentTimeMs, config.getFrequency());
+        }
 #ifdef HAS_BATTERY_MONITOR
         monitor.checkBatteryState(currentTimeMs, config.getAlarmThreshold());
 #endif
@@ -180,6 +191,10 @@ void setup() {
     rgbLed.setPreset((led_preset_e)config.getLedPreset());
 #endif
     timer.init(&config, &rx, &buzzer, &led, &webhookManager);
+    
+    // Initialize sweep manager for multi-pilot mode
+    sweepMgr.init(&config, &rx);
+    timer.setSweepManager(&sweepMgr);
 #ifdef HAS_BATTERY_MONITOR
     // Initialize battery monitoring with config voltage divider ratio
     float voltageDivider = config.getBatteryVoltageDivider();
@@ -245,6 +260,9 @@ void setup() {
     // Set TransportManager in webserver for event broadcasting
     ws.setTransportManager(&transportManager);
     
+    // Set SweepManager in webserver for multi-pilot calibration
+    ws.setSweepManager(&sweepMgr);
+    
     DEBUG("Transport system initialized (WiFi + USB)\n");
     
     led.on(400);
@@ -275,13 +293,39 @@ void loop() {
     // LED Flashing removed - LED_BUILTIN (GPIO48) conflicts with FastLED RMT channels
     // External LEDs on GPIO5 are handled by rgbLed instead
     
+    // Handle multi-pilot frequency sweeping (only active when multiPilotEnabled)
+    // This must be called before handleLapTimerUpdate
+    if (config.getMultiPilotEnabled()) {
+        sweepMgr.handleSweep(currentTimeMs);
+        
+        // Update active pilot in timer when sweep manager switches
+        if (sweepMgr.didPilotSwitch()) {
+            timer.setActivePilot(sweepMgr.getActivePilot());
+        }
+    }
+    
     // Timing always runs
     timer.handleLapTimerUpdate(currentTimeMs);
     
     // Broadcast lap events to all transports (WiFi + USB)
-    if (timer.isLapAvailable()) {
-        uint32_t lapTime = timer.getLapTime();
-        transportManager.broadcastLapEvent(lapTime);
+    // In single-pilot mode: use existing isLapAvailable()
+    // In multi-pilot mode: check both pilots
+    if (config.getMultiPilotEnabled()) {
+        // Check each pilot for lap events
+        for (uint8_t p = 0; p < 2; p++) {
+            if (timer.isLapAvailable(p)) {
+                uint32_t lapTime = timer.getLapTime(p);
+                // Broadcast with pilot index for multi-pilot display
+                transportManager.broadcastLapEvent(lapTime, p);
+                timer.clearLapAvailable(p);
+            }
+        }
+    } else {
+        // Single pilot mode - original behavior
+        if (timer.isLapAvailable()) {
+            uint32_t lapTime = timer.getLapTime();
+            transportManager.broadcastLapEvent(lapTime);
+        }
     }
     
     // Process queued webhooks (non-blocking)

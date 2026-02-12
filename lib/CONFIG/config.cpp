@@ -124,7 +124,7 @@ void Config::write(void) {
 
 void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMonitor) {
     // Use https://arduinojson.org/v6/assistant to estimate memory
-    DynamicJsonDocument config(768);
+    DynamicJsonDocument config(1536);  // Increased for multi-pilot data
     config["freq"] = conf.frequency;
     
     // Use stored band/channel indices if valid, otherwise compute from frequency
@@ -204,6 +204,30 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
         float voltage = batteryVoltage / 10.0f;
         config["batteryVoltage"] = voltage;
     }
+    
+    // Multi-pilot sweep mode settings
+    config["multiPilotEnabled"] = conf.multiPilotEnabled;
+    config["sweepDwellMs"] = conf.sweepDwellMs;
+    
+    // Pilot 1 configuration
+    JsonObject pilot1 = config.createNestedObject("pilot1");
+    pilot1["name"] = conf.pilot1.name;
+    pilot1["callsign"] = conf.pilot1.callsign;
+    pilot1["bandIndex"] = conf.pilot1.bandIndex;
+    pilot1["channelIndex"] = conf.pilot1.channelIndex;
+    pilot1["frequency"] = conf.pilot1.frequency;
+    pilot1["enterRssi"] = conf.pilot1.enterRssi;
+    pilot1["exitRssi"] = conf.pilot1.exitRssi;
+    
+    // Pilot 2 configuration
+    JsonObject pilot2 = config.createNestedObject("pilot2");
+    pilot2["name"] = conf.pilot2.name;
+    pilot2["callsign"] = conf.pilot2.callsign;
+    pilot2["bandIndex"] = conf.pilot2.bandIndex;
+    pilot2["channelIndex"] = conf.pilot2.channelIndex;
+    pilot2["frequency"] = conf.pilot2.frequency;
+    pilot2["enterRssi"] = conf.pilot2.enterRssi;
+    pilot2["exitRssi"] = conf.pilot2.exitRssi;
     
     serializeJson(config, destination);
 }
@@ -520,6 +544,97 @@ void Config::fromJson(JsonObject source) {
                     conf.syncedTimerCount++;
                 }
             }
+            modified = true;
+        }
+    }
+    
+    // Multi-pilot sweep mode settings
+    if (source.containsKey("multiPilotEnabled") && source["multiPilotEnabled"] != conf.multiPilotEnabled) {
+        conf.multiPilotEnabled = source["multiPilotEnabled"].as<uint8_t>();
+        modified = true;
+    }
+    if (source.containsKey("sweepDwellMs")) {
+        uint16_t dwell = source["sweepDwellMs"].as<uint16_t>();
+        if (dwell >= SWEEP_DWELL_MIN_MS && dwell <= SWEEP_DWELL_MAX_MS && dwell != conf.sweepDwellMs) {
+            conf.sweepDwellMs = dwell;
+            modified = true;
+        }
+    }
+    
+    // Pilot 1 configuration
+    if (source.containsKey("pilot1")) {
+        JsonObject p1 = source["pilot1"].as<JsonObject>();
+        if (p1.containsKey("name")) {
+            const char* v = p1["name"] | "";
+            if (strcmp(v, conf.pilot1.name) != 0) {
+                strlcpy(conf.pilot1.name, v, sizeof(conf.pilot1.name));
+                modified = true;
+            }
+        }
+        if (p1.containsKey("callsign")) {
+            const char* v = p1["callsign"] | "";
+            if (strcmp(v, conf.pilot1.callsign) != 0) {
+                strlcpy(conf.pilot1.callsign, v, sizeof(conf.pilot1.callsign));
+                modified = true;
+            }
+        }
+        if (p1.containsKey("bandIndex") && p1["bandIndex"] != conf.pilot1.bandIndex) {
+            conf.pilot1.bandIndex = p1["bandIndex"].as<uint8_t>();
+            modified = true;
+        }
+        if (p1.containsKey("channelIndex") && p1["channelIndex"] != conf.pilot1.channelIndex) {
+            conf.pilot1.channelIndex = p1["channelIndex"].as<uint8_t>();
+            modified = true;
+        }
+        if (p1.containsKey("frequency") && p1["frequency"] != conf.pilot1.frequency) {
+            conf.pilot1.frequency = p1["frequency"].as<uint16_t>();
+            modified = true;
+        }
+        if (p1.containsKey("enterRssi") && p1["enterRssi"] != conf.pilot1.enterRssi) {
+            conf.pilot1.enterRssi = p1["enterRssi"].as<uint8_t>();
+            modified = true;
+        }
+        if (p1.containsKey("exitRssi") && p1["exitRssi"] != conf.pilot1.exitRssi) {
+            conf.pilot1.exitRssi = p1["exitRssi"].as<uint8_t>();
+            modified = true;
+        }
+    }
+    
+    // Pilot 2 configuration
+    if (source.containsKey("pilot2")) {
+        JsonObject p2 = source["pilot2"].as<JsonObject>();
+        if (p2.containsKey("name")) {
+            const char* v = p2["name"] | "";
+            if (strcmp(v, conf.pilot2.name) != 0) {
+                strlcpy(conf.pilot2.name, v, sizeof(conf.pilot2.name));
+                modified = true;
+            }
+        }
+        if (p2.containsKey("callsign")) {
+            const char* v = p2["callsign"] | "";
+            if (strcmp(v, conf.pilot2.callsign) != 0) {
+                strlcpy(conf.pilot2.callsign, v, sizeof(conf.pilot2.callsign));
+                modified = true;
+            }
+        }
+        if (p2.containsKey("bandIndex") && p2["bandIndex"] != conf.pilot2.bandIndex) {
+            conf.pilot2.bandIndex = p2["bandIndex"].as<uint8_t>();
+            modified = true;
+        }
+        if (p2.containsKey("channelIndex") && p2["channelIndex"] != conf.pilot2.channelIndex) {
+            conf.pilot2.channelIndex = p2["channelIndex"].as<uint8_t>();
+            modified = true;
+        }
+        if (p2.containsKey("frequency") && p2["frequency"] != conf.pilot2.frequency) {
+            conf.pilot2.frequency = p2["frequency"].as<uint16_t>();
+            modified = true;
+        }
+        if (p2.containsKey("enterRssi") && p2["enterRssi"] != conf.pilot2.enterRssi) {
+            conf.pilot2.enterRssi = p2["enterRssi"].as<uint8_t>();
+            modified = true;
+        }
+        if (p2.containsKey("exitRssi") && p2["exitRssi"] != conf.pilot2.exitRssi) {
+            conf.pilot2.exitRssi = p2["exitRssi"].as<uint8_t>();
             modified = true;
         }
     }
@@ -1024,6 +1139,29 @@ void Config::setDefaults(void) {
     conf.syncedTimerCount = 0;  // No synced timers
     memset(conf.syncedTimers, 0, sizeof(conf.syncedTimers));  // Clear synced timers
     conf.beepVolume = 100;  // Default 100% volume
+    
+    // Multi-pilot sweep mode defaults (disabled by default)
+    conf.multiPilotEnabled = 0;  // Disabled by default
+    conf.sweepDwellMs = SWEEP_DWELL_DEFAULT_MS;  // Default 100ms per pilot
+    
+    // Pilot 1 defaults (same as main pilot settings)
+    strlcpy(conf.pilot1.name, "Pilot 1", sizeof(conf.pilot1.name));
+    strlcpy(conf.pilot1.callsign, "Pilot 1", sizeof(conf.pilot1.callsign));
+    conf.pilot1.bandIndex = 4;  // RaceBand
+    conf.pilot1.channelIndex = 0;  // Channel 1
+    conf.pilot1.frequency = 5658;  // R1
+    conf.pilot1.enterRssi = 72;
+    conf.pilot1.exitRssi = 68;
+    
+    // Pilot 2 defaults
+    strlcpy(conf.pilot2.name, "Pilot 2", sizeof(conf.pilot2.name));
+    strlcpy(conf.pilot2.callsign, "Pilot 2", sizeof(conf.pilot2.callsign));
+    conf.pilot2.bandIndex = 4;  // RaceBand
+    conf.pilot2.channelIndex = 1;  // Channel 2
+    conf.pilot2.frequency = 5695;  // R2
+    conf.pilot2.enterRssi = 72;
+    conf.pilot2.exitRssi = 68;
+    
     modified = true;
     write();
 }
@@ -1117,4 +1255,49 @@ bool Config::loadFromSD() {
 #else
     return false;
 #endif
+}
+
+// Multi-pilot sweep mode getters and setters
+uint8_t Config::getMultiPilotEnabled() {
+    return conf.multiPilotEnabled;
+}
+
+void Config::setMultiPilotEnabled(uint8_t enabled) {
+    if (conf.multiPilotEnabled != enabled) {
+        conf.multiPilotEnabled = enabled;
+        modified = true;
+    }
+}
+
+uint16_t Config::getSweepDwellMs() {
+    return conf.sweepDwellMs;
+}
+
+void Config::setSweepDwellMs(uint16_t dwellMs) {
+    if (dwellMs >= SWEEP_DWELL_MIN_MS && dwellMs <= SWEEP_DWELL_MAX_MS && conf.sweepDwellMs != dwellMs) {
+        conf.sweepDwellMs = dwellMs;
+        modified = true;
+    }
+}
+
+pilot_config_t* Config::getPilot1() {
+    return &conf.pilot1;
+}
+
+pilot_config_t* Config::getPilot2() {
+    return &conf.pilot2;
+}
+
+void Config::setPilot1(const pilot_config_t* pilot) {
+    if (memcmp(&conf.pilot1, pilot, sizeof(pilot_config_t)) != 0) {
+        memcpy(&conf.pilot1, pilot, sizeof(pilot_config_t));
+        modified = true;
+    }
+}
+
+void Config::setPilot2(const pilot_config_t* pilot) {
+    if (memcmp(&conf.pilot2, pilot, sizeof(pilot_config_t)) != 0) {
+        memcpy(&conf.pilot2, pilot, sizeof(pilot_config_t));
+        modified = true;
+    }
 }

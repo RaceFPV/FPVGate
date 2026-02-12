@@ -42,6 +42,18 @@ void USBTransport::sendLapEvent(uint32_t lapTimeMs) {
     Serial.println();
 }
 
+void USBTransport::sendLapEvent(uint32_t lapTimeMs, uint8_t pilotIndex) {
+    if (!isConnected()) return;
+    
+    DynamicJsonDocument doc(128);
+    doc["event"] = "lap";
+    doc["time"] = lapTimeMs;
+    doc["pilot"] = pilotIndex;
+    
+    serializeJson(doc, Serial);
+    Serial.println();
+}
+
 void USBTransport::sendRssiEvent(uint8_t rssi) {
     if (!isConnected() || !rssiStreamingEnabled) return;
     

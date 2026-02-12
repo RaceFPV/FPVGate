@@ -60,14 +60,79 @@
           <button id="addLapButton" onclick="addManualLap()" disabled data-i18n="race.add_lap">Add Lap</button>
           <button id="clearLapsButton" onclick="clearLaps()" data-i18n="race.clear_laps">Clear Laps</button>
         </div>
-        <table id="lapTable">
-          <tr>
-            <th data-i18n="race.table.lap_no">Lap No</th>
-            <th data-i18n="race.table.lap_time">Lap Time</th>
-            <th data-i18n="race.table.gap">Gap</th>
-            <th data-i18n="race.table.total_time">Total Time</th>
-          </tr>
-        </table>
+        
+        <!-- Single Pilot Lap Table (default) -->
+        <div id="singlePilotRace">
+          <table id="lapTable">
+            <tr>
+              <th data-i18n="race.table.lap_no">Lap No</th>
+              <th data-i18n="race.table.lap_time">Lap Time</th>
+              <th data-i18n="race.table.gap">Gap</th>
+              <th data-i18n="race.table.total_time">Total Time</th>
+            </tr>
+          </table>
+        </div>
+        
+        <!-- Multi-Pilot Race Display (shown when multi-pilot enabled) -->
+        <div id="multiPilotRace" style="display: none;">
+          <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+            <!-- Pilot 1 Card -->
+            <div id="racePilot1Card" style="flex: 1; min-width: 280px; background: var(--bg-secondary); border-radius: 12px; padding: 16px; border-left: 4px solid #4CAF50;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div>
+                  <h3 id="racePilot1Name" style="margin: 0; color: #4CAF50;">Pilot 1</h3>
+                  <span id="racePilot1Freq" style="font-size: 12px; color: var(--secondary-color);">5658 MHz</span>
+                </div>
+                <div style="text-align: right;">
+                  <div id="racePilot1LapCount" style="font-size: 24px; font-weight: bold; color: #4CAF50;">0</div>
+                  <div style="font-size: 12px; color: var(--secondary-color);" data-i18n="race.laps_label">laps</div>
+                </div>
+              </div>
+              <div id="racePilot1LastLap" style="font-size: 32px; font-weight: bold; text-align: center; margin: 16px 0; color: var(--text-primary);">--</div>
+              <div style="display: flex; justify-content: space-between; font-size: 14px; color: var(--secondary-color);">
+                <span data-i18n="race.best_lap">Best:</span>
+                <span id="racePilot1Best">--</span>
+              </div>
+              <div style="max-height: 200px; overflow-y: auto; margin-top: 12px;">
+                <table id="lapTablePilot1" class="pilot-lap-table" style="width: 100%; font-size: 13px;">
+                  <tr>
+                    <th>#</th>
+                    <th data-i18n="race.table.lap_time">Time</th>
+                    <th data-i18n="race.table.gap">Gap</th>
+                  </tr>
+                </table>
+              </div>
+            </div>
+            
+            <!-- Pilot 2 Card -->
+            <div id="racePilot2Card" style="flex: 1; min-width: 280px; background: var(--bg-secondary); border-radius: 12px; padding: 16px; border-left: 4px solid #2196F3;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div>
+                  <h3 id="racePilot2Name" style="margin: 0; color: #2196F3;">Pilot 2</h3>
+                  <span id="racePilot2Freq" style="font-size: 12px; color: var(--secondary-color);">5695 MHz</span>
+                </div>
+                <div style="text-align: right;">
+                  <div id="racePilot2LapCount" style="font-size: 24px; font-weight: bold; color: #2196F3;">0</div>
+                  <div style="font-size: 12px; color: var(--secondary-color);" data-i18n="race.laps_label">laps</div>
+                </div>
+              </div>
+              <div id="racePilot2LastLap" style="font-size: 32px; font-weight: bold; text-align: center; margin: 16px 0; color: var(--text-primary);">--</div>
+              <div style="display: flex; justify-content: space-between; font-size: 14px; color: var(--secondary-color);">
+                <span data-i18n="race.best_lap">Best:</span>
+                <span id="racePilot2Best">--</span>
+              </div>
+              <div style="max-height: 200px; overflow-y: auto; margin-top: 12px;">
+                <table id="lapTablePilot2" class="pilot-lap-table" style="width: 100%; font-size: 13px;">
+                  <tr>
+                    <th>#</th>
+                    <th data-i18n="race.table.lap_time">Time</th>
+                    <th data-i18n="race.table.gap">Gap</th>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div id="lapAnalysis" class="lap-analysis">
           <h3 data-i18n="analysis.title">Lap Analysis</h3>
@@ -171,7 +236,51 @@
           <p style="margin: 0; color: var(--secondary-color); font-size: 14px" data-i18n="calib.subtitle">Tune your gate detection thresholds</p>
         </div>
 
-        <!-- Channel Selection Card -->
+        <!-- Multi-Pilot Calibration Panel (shown when multi-pilot mode is enabled) -->
+        <div id="multiPilotCalibPanel" style="display: none; margin-bottom: 16px;">
+          <div class="calib-card" style="background: linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(33, 150, 243, 0.1)); border: 2px solid var(--primary-color);">
+            <div class="calib-card-header">
+              <span data-i18n="calib.multipilot_mode">Multi-Pilot Calibration Mode</span>
+              <span id="calibActivePilotBadge" style="padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; background: var(--primary-color); color: white;">Sweeping</span>
+            </div>
+            <p style="margin: 0 0 16px 0; font-size: 14px; color: var(--secondary-color);" data-i18n="calib.multipilot_instructions">Select a pilot to calibrate their RSSI thresholds. The receiver will lock to that pilot's frequency until you click Resume Sweep.</p>
+            
+            <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+              <!-- Pilot 1 Panel -->
+              <div id="calibPilot1Panel" style="flex: 1; min-width: 250px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid #4CAF50;">
+                <h4 style="margin: 0 0 8px 0; color: #4CAF50;" data-i18n="calib.pilot1">Pilot 1</h4>
+                <div style="font-size: 14px; margin-bottom: 8px;">
+                  <span id="calibPilot1Name" style="font-weight: bold;">Pilot 1</span>
+                  <span id="calibPilot1Freq" style="color: var(--secondary-color); margin-left: 8px;">5658 MHz</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 12px;">
+                  <span style="font-size: 12px; color: var(--secondary-color);" data-i18n="calib.enter_exit">Enter/Exit:</span>
+                  <span id="calibPilot1Thresholds" style="font-size: 14px; font-weight: bold;">120 / 100</span>
+                </div>
+                <button onclick="activateCalibPilot(0)" id="calibActivatePilot1Btn" style="width: 100%; padding: 10px; background: #4CAF50; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer;" data-i18n="calib.activate_pilot1">Activate Pilot 1</button>
+              </div>
+              
+              <!-- Pilot 2 Panel -->
+              <div id="calibPilot2Panel" style="flex: 1; min-width: 250px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border-left: 4px solid #2196F3;">
+                <h4 style="margin: 0 0 8px 0; color: #2196F3;" data-i18n="calib.pilot2">Pilot 2</h4>
+                <div style="font-size: 14px; margin-bottom: 8px;">
+                  <span id="calibPilot2Name" style="font-weight: bold;">Pilot 2</span>
+                  <span id="calibPilot2Freq" style="color: var(--secondary-color); margin-left: 8px;">5695 MHz</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 12px;">
+                  <span style="font-size: 12px; color: var(--secondary-color);" data-i18n="calib.enter_exit">Enter/Exit:</span>
+                  <span id="calibPilot2Thresholds" style="font-size: 14px; font-weight: bold;">120 / 100</span>
+                </div>
+                <button onclick="activateCalibPilot(1)" id="calibActivatePilot2Btn" style="width: 100%; padding: 10px; background: #2196F3; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer;" data-i18n="calib.activate_pilot2">Activate Pilot 2</button>
+              </div>
+            </div>
+            
+            <button onclick="resumeCalibSweep()" id="calibResumeSweepBtn" style="width: 100%; margin-top: 16px; padding: 12px; background: var(--secondary-color); border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer;" data-i18n="calib.resume_sweep">Resume Automatic Sweep</button>
+          </div>
+        </div>
+
+        <!-- Channel Selection Card (hidden in multi-pilot mode) -->
+        <div id="singlePilotChannelCard">
         <div class="calib-card">
           <div class="calib-card-header">
             <span data-i18n="calib.channel_selection">Channel Selection</span>
@@ -206,6 +315,7 @@
               </select>
             </div>
           </div>
+        </div>
         </div>
 
         <!-- RSSI Graph Card -->
@@ -242,7 +352,7 @@
               <div class="calib-threshold-hint" data-i18n="calib.exit_hint">Reset when signal drops below this</div>
             </div>
           </div>
-          <button onclick="saveConfig()" class="calib-save-btn" data-i18n="calib.save_thresholds">Save Thresholds</button>
+          <button onclick="savePilotThresholds()" class="calib-save-btn" data-i18n="calib.save_thresholds">Save Thresholds</button>
         </div>
       </div>
 
@@ -368,6 +478,9 @@
             </div>
             <div class="settings-nav-item" onclick="switchSettingsSection('pilot')">
               <span data-i18n="settings.tabs.pilot">Pilot Info</span>
+            </div>
+            <div class="settings-nav-item" onclick="switchSettingsSection('multipilot')">
+              <span data-i18n="settings.tabs.multipilot">Multi-Pilot Sweep</span>
             </div>
             <div class="settings-nav-item" onclick="switchSettingsSection('tracks')">
               <span data-i18n="settings.tabs.tracks">Track Data</span>
@@ -554,6 +667,140 @@
                   <option value="#FF69B4" data-i18n="settings.pilot.colors.hot_pink">Hot Pink</option>
                 </select>
                 <span id="colorPreview" style="display: inline-block; width: 30px; height: 30px; margin-left: 10px; border: 2px solid var(--border-color); border-radius: 4px; background-color: #ff0000"></span>
+              </div>
+            </div>
+
+            <!-- Multi-Pilot Sweep Section -->
+            <div id="settings-multipilot" class="settings-section">
+              <h2 data-i18n="settings.multipilot.title">Multi-Pilot Sweep Mode</h2>
+
+              <div style="margin-bottom: 16px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 14px">
+                <p style="margin: 0 0 8px 0"><strong data-i18n="settings.multipilot.description">Time two pilots with a single receiver module.</strong></p>
+                <p style="margin: 0; color: var(--secondary-color)" data-i18n="settings.multipilot.sub_description">The receiver will alternate between pilot frequencies. This reduces timing accuracy but allows budget multi-pilot operation.</p>
+              </div>
+
+              <div class="config-item">
+                <label for="multiPilotEnabled" data-i18n="settings.multipilot.enable">Enable Multi-Pilot Sweep:</label>
+                <div style="flex: 1">
+                  <label class="switch">
+                    <input type="checkbox" id="multiPilotEnabled" onchange="toggleMultiPilot(this.checked)" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.multipilot.enable_tip">When enabled, standard pilot settings are disabled</div>
+
+              <div id="multiPilotContent" style="display: none">
+                <div class="config-item">
+                  <label for="sweepDwellMs" data-i18n="settings.multipilot.dwell_time">Dwell Time (ms):</label>
+                  <div class="input-with-value">
+                    <span class="val" id="sweepDwellMsValue">100</span>
+                    <input type="range" id="sweepDwellMs" step="10" min="70" max="500" value="100" oninput="updateSweepDwell(this.value)" />
+                  </div>
+                </div>
+                <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.multipilot.dwell_tip">Time spent on each frequency before switching (lower = faster but less accurate)</div>
+
+                <!-- Pilot 1 Configuration -->
+                <div style="margin-top: 24px; padding: 16px; background-color: var(--bg-secondary); border-radius: 8px; border-left: 4px solid #4CAF50">
+                  <h3 style="margin: 0 0 16px 0; color: #4CAF50" data-i18n="settings.multipilot.pilot1_title">Pilot 1</h3>
+                  
+                  <div class="config-item">
+                    <label for="mp1Name" data-i18n="settings.multipilot.pilot_name">Pilot Name:</label>
+                    <input type="text" id="mp1Name" maxlength="20" placeholder="Pilot 1 Name" onchange="saveMultiPilotConfig()" />
+                  </div>
+                  
+                  <div class="config-item">
+                    <label for="mp1Callsign" data-i18n="settings.multipilot.callsign">Callsign:</label>
+                    <input type="text" id="mp1Callsign" maxlength="20" placeholder="Display Name" onchange="saveMultiPilotConfig()" />
+                  </div>
+                  
+                  <div class="config-item">
+                    <label for="mp1System" data-i18n="settings.pilot.system">System:</label>
+                    <select id="mp1System" onchange="updateMultiPilotBands(1)">
+                      <option value="analog">Analog</option>
+                      <option value="hdzero">HDZero</option>
+                      <option value="walksnail">Walksnail</option>
+                      <option value="dji">DJI</option>
+                    </select>
+                  </div>
+                  
+                  <div class="config-item">
+                    <label for="mp1Band" data-i18n="settings.pilot.band">Band:</label>
+                    <select id="mp1Band" onchange="updateMultiPilotFreq(1)"></select>
+                  </div>
+                  
+                  <div class="config-item">
+                    <label for="mp1Channel" data-i18n="settings.pilot.channel">Channel:</label>
+                    <select id="mp1Channel" onchange="updateMultiPilotFreq(1)">
+                      <option value="0">1</option>
+                      <option value="1">2</option>
+                      <option value="2">3</option>
+                      <option value="3">4</option>
+                      <option value="4">5</option>
+                      <option value="5">6</option>
+                      <option value="6">7</option>
+                      <option value="7">8</option>
+                    </select>
+                  </div>
+                  
+                  <div class="config-item">
+                    <label data-i18n="settings.multipilot.frequency">Frequency:</label>
+                    <span id="mp1Freq" style="font-weight: bold; color: var(--primary-color)">5800 MHz</span>
+                  </div>
+                </div>
+
+                <!-- Pilot 2 Configuration -->
+                <div style="margin-top: 16px; padding: 16px; background-color: var(--bg-secondary); border-radius: 8px; border-left: 4px solid #2196F3">
+                  <h3 style="margin: 0 0 16px 0; color: #2196F3" data-i18n="settings.multipilot.pilot2_title">Pilot 2</h3>
+                  
+                  <div class="config-item">
+                    <label for="mp2Name" data-i18n="settings.multipilot.pilot_name">Pilot Name:</label>
+                    <input type="text" id="mp2Name" maxlength="20" placeholder="Pilot 2 Name" onchange="saveMultiPilotConfig()" />
+                  </div>
+                  
+                  <div class="config-item">
+                    <label for="mp2Callsign" data-i18n="settings.multipilot.callsign">Callsign:</label>
+                    <input type="text" id="mp2Callsign" maxlength="20" placeholder="Display Name" onchange="saveMultiPilotConfig()" />
+                  </div>
+                  
+                  <div class="config-item">
+                    <label for="mp2System" data-i18n="settings.pilot.system">System:</label>
+                    <select id="mp2System" onchange="updateMultiPilotBands(2)">
+                      <option value="analog">Analog</option>
+                      <option value="hdzero">HDZero</option>
+                      <option value="walksnail">Walksnail</option>
+                      <option value="dji">DJI</option>
+                    </select>
+                  </div>
+                  
+                  <div class="config-item">
+                    <label for="mp2Band" data-i18n="settings.pilot.band">Band:</label>
+                    <select id="mp2Band" onchange="updateMultiPilotFreq(2)"></select>
+                  </div>
+                  
+                  <div class="config-item">
+                    <label for="mp2Channel" data-i18n="settings.pilot.channel">Channel:</label>
+                    <select id="mp2Channel" onchange="updateMultiPilotFreq(2)">
+                      <option value="0">1</option>
+                      <option value="1">2</option>
+                      <option value="2">3</option>
+                      <option value="3">4</option>
+                      <option value="4">5</option>
+                      <option value="5">6</option>
+                      <option value="6">7</option>
+                      <option value="7">8</option>
+                    </select>
+                  </div>
+                  
+                  <div class="config-item">
+                    <label data-i18n="settings.multipilot.frequency">Frequency:</label>
+                    <span id="mp2Freq" style="font-weight: bold; color: var(--primary-color)">5800 MHz</span>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 16px">
+                  <button onclick="saveMultiPilotConfig()" style="flex: 1" data-i18n="settings.multipilot.save">Save Multi-Pilot Settings</button>
+                </div>
               </div>
             </div>
 

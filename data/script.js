@@ -100,6 +100,12 @@ var lapNo = -1;
 var lapTimes = [];
 var maxLaps = 0;
 
+// Multi-pilot lap tracking
+var pilot1LapNo = -1;
+var pilot1LapTimes = [];
+var pilot2LapNo = -1;
+var pilot2LapTimes = [];
+
 // Track data for current race
 var currentTrackId = 0;
 var currentTrackName = "";
@@ -345,9 +351,25 @@ function setupWiFiEvents() {
     eventSource.addEventListener(
       "lap",
       function (e) {
-        var lap = (parseFloat(e.data) / 1000).toFixed(2);
-        addLap(lap);
-        console.log("lap raw:", e.data, " formatted:", lap);
+        // Check if this is a multi-pilot lap event (JSON with pilot info)
+        let lapTimeMs, pilotIndex = null;
+        try {
+          const data = JSON.parse(e.data);
+          lapTimeMs = data.time;
+          pilotIndex = data.pilot;
+        } catch (err) {
+          // Legacy format - just the lap time
+          lapTimeMs = parseFloat(e.data);
+        }
+        
+        var lap = (lapTimeMs / 1000).toFixed(2);
+        
+        if (multiPilotEnabled && pilotIndex !== null) {
+          addLapMultiPilot(lap, pilotIndex);
+        } else {
+          addLap(lap);
+        }
+        console.log("lap raw:", e.data, " formatted:", lap, "pilot:", pilotIndex);
       },
       false
     );
@@ -480,9 +502,23 @@ function setupUSBEvents() {
   });
 
   transportManager.on("lap", (data) => {
-    var lap = (parseFloat(data) / 1000).toFixed(2);
-    addLap(lap);
-    console.log("USB lap raw:", data, " formatted:", lap);
+    // Check if this is a multi-pilot lap event
+    let lapTimeMs, pilotIndex = null;
+    if (typeof data === 'object' && data.time !== undefined) {
+      lapTimeMs = data.time;
+      pilotIndex = data.pilot;
+    } else {
+      lapTimeMs = parseFloat(data);
+    }
+    
+    var lap = (lapTimeMs / 1000).toFixed(2);
+    
+    if (multiPilotEnabled && pilotIndex !== null) {
+      addLapMultiPilot(lap, pilotIndex);
+    } else {
+      addLap(lap);
+    }
+    console.log("USB lap raw:", data, " formatted:", lap, "pilot:", pilotIndex);
   });
 
   transportManager.on("disconnect", () => {
@@ -1143,6 +1179,16 @@ function openTab(evt, tabName) {
   evt.currentTarget.className += " active";
 
   // if event comes from calibration tab, signal to start sending RSSI events
+  if (tabName === "calib") {
+    // Load config to check multi-pilot mode and update calibration UI
+    fetch("/config")
+      .then((response) => response.json())
+      .then((config) => {
+        updateCalibPilotInfo(config);
+      })
+      .catch((err) => console.error("Failed to load config for calib:", err));
+  }
+  
   if (tabName === "calib" && !rssiSending) {
     if (usbConnected && transportManager) {
       transportManager
@@ -1210,6 +1256,14 @@ function updateEnterRssi(obj, value) {
     exitRssiInput.value = exitRssi;
     exitRssiSpan.textContent = exitRssi;
   }
+  
+  // If in multi-pilot calibration mode with a pilot activated, update that pilot's threshold display
+  if (multiPilotEnabled && calibActivePilot >= 0) {
+    const thresholdSpan = document.getElementById(`calibPilot${calibActivePilot + 1}Thresholds`);
+    if (thresholdSpan) {
+      thresholdSpan.textContent = enterRssi + " / " + exitRssi;
+    }
+  }
 }
 
 function updateExitRssi(obj, value) {
@@ -1219,6 +1273,14 @@ function updateExitRssi(obj, value) {
     enterRssi = Math.min(255, exitRssi + 1);
     enterRssiInput.value = enterRssi;
     enterRssiSpan.textContent = enterRssi;
+  }
+  
+  // If in multi-pilot calibration mode with a pilot activated, update that pilot's threshold display
+  if (multiPilotEnabled && calibActivePilot >= 0) {
+    const thresholdSpan = document.getElementById(`calibPilot${calibActivePilot + 1}Thresholds`);
+    if (thresholdSpan) {
+      thresholdSpan.textContent = enterRssi + " / " + exitRssi;
+    }
   }
 }
 
@@ -2401,6 +2463,7 @@ function clearLaps() {
     saveCurrentRace();
   }
 
+  // Clear single-pilot table
   var tableHeaderRowCount = 1;
   var rowCount = lapTable.rows.length;
   for (var i = tableHeaderRowCount; i < rowCount; i++) {
@@ -2409,6 +2472,39 @@ function clearLaps() {
   lapNo = -1;
   lapTimes = [];
   updateLapCounter();
+  
+  // Clear multi-pilot data
+  pilot1LapNo = -1;
+  pilot1LapTimes = [];
+  pilot2LapNo = -1;
+  pilot2LapTimes = [];
+  
+  // Clear pilot 1 table
+  const table1 = document.getElementById("lapTablePilot1");
+  if (table1) {
+    while (table1.rows.length > 1) table1.deleteRow(1);
+  }
+  
+  // Clear pilot 2 table
+  const table2 = document.getElementById("lapTablePilot2");
+  if (table2) {
+    while (table2.rows.length > 1) table2.deleteRow(1);
+  }
+  
+  // Reset multi-pilot display elements
+  const p1LastLap = document.getElementById("racePilot1LastLap");
+  const p2LastLap = document.getElementById("racePilot2LastLap");
+  const p1LapCount = document.getElementById("racePilot1LapCount");
+  const p2LapCount = document.getElementById("racePilot2LapCount");
+  const p1Best = document.getElementById("racePilot1Best");
+  const p2Best = document.getElementById("racePilot2Best");
+  
+  if (p1LastLap) p1LastLap.textContent = "--";
+  if (p2LastLap) p2LastLap.textContent = "--";
+  if (p1LapCount) p1LapCount.textContent = "0";
+  if (p2LapCount) p2LapCount.textContent = "0";
+  if (p1Best) p1Best.textContent = "--";
+  if (p2Best) p2Best.textContent = "--";
 
   // Clear lap analysis
   document.getElementById("analysisContent").innerHTML = `<p class="no-data">${i18n.t("analysis.no_data")}</p>`;
@@ -5374,6 +5470,533 @@ function testWebhook() {
     });
 }
 
+// Multi-Pilot Sweep Mode functions
+var multiPilotEnabled = false;
+
+function toggleMultiPilot(enabled) {
+  multiPilotEnabled = enabled;
+  const content = document.getElementById("multiPilotContent");
+  if (content) {
+    content.style.display = enabled ? "block" : "none";
+  }
+  
+  // Toggle race display mode
+  const singlePilotRace = document.getElementById("singlePilotRace");
+  const multiPilotRace = document.getElementById("multiPilotRace");
+  if (singlePilotRace) singlePilotRace.style.display = enabled ? "none" : "block";
+  if (multiPilotRace) multiPilotRace.style.display = enabled ? "block" : "none";
+  
+  // Hide lap analysis in multi-pilot mode (per-pilot stats shown in cards)
+  const lapAnalysis = document.getElementById("lapAnalysis");
+  if (lapAnalysis) lapAnalysis.style.display = enabled ? "none" : "block";
+  
+  // Initialize band selectors when enabling
+  if (enabled) {
+    updateMultiPilotBands(1);
+    updateMultiPilotBands(2);
+  }
+  
+  saveMultiPilotConfig();
+}
+
+// Add lap for a specific pilot in multi-pilot mode
+function addLapMultiPilot(lapStr, pilotIndex) {
+  const newLap = parseFloat(lapStr);
+  const pilotNum = pilotIndex + 1;  // 1-indexed for display
+  
+  // Track lap data per pilot
+  let pilotLapNo, pilotLapTimes, tableId, lastLapId, lapCountId, bestLapId, pilotColor;
+  
+  if (pilotIndex === 0) {
+    pilot1LapNo += 1;
+    pilot1LapTimes.push(newLap);
+    pilotLapNo = pilot1LapNo;
+    pilotLapTimes = pilot1LapTimes;
+    tableId = "lapTablePilot1";
+    lastLapId = "racePilot1LastLap";
+    lapCountId = "racePilot1LapCount";
+    bestLapId = "racePilot1Best";
+    pilotColor = "#4CAF50";
+  } else {
+    pilot2LapNo += 1;
+    pilot2LapTimes.push(newLap);
+    pilotLapNo = pilot2LapNo;
+    pilotLapTimes = pilot2LapTimes;
+    tableId = "lapTablePilot2";
+    lastLapId = "racePilot2LastLap";
+    lapCountId = "racePilot2LapCount";
+    bestLapId = "racePilot2Best";
+    pilotColor = "#2196F3";
+  }
+  
+  // Update last lap display
+  const lastLapEl = document.getElementById(lastLapId);
+  if (lastLapEl) {
+    if (pilotLapNo === 0) {
+      lastLapEl.textContent = i18n.t("race.gate1_short", { s: lapStr });
+    } else {
+      lastLapEl.textContent = lapStr + i18n.t("race.table.seconds_short");
+    }
+  }
+  
+  // Update lap count
+  const lapCountEl = document.getElementById(lapCountId);
+  if (lapCountEl) {
+    lapCountEl.textContent = Math.max(0, pilotLapNo);
+  }
+  
+  // Calculate and update best lap (excluding gate 1)
+  if (pilotLapNo >= 1) {
+    const regularLaps = pilotLapTimes.slice(1);  // Exclude gate 1
+    if (regularLaps.length > 0) {
+      const bestLap = Math.min(...regularLaps).toFixed(2);
+      const bestLapEl = document.getElementById(bestLapId);
+      if (bestLapEl) bestLapEl.textContent = bestLap + i18n.t("race.table.seconds_short");
+    }
+  }
+  
+  // Calculate gap from previous lap
+  let gap = "";
+  if (pilotLapNo > 1) {
+    gap = (newLap - pilotLapTimes[pilotLapTimes.length - 2]).toFixed(2);
+    if (gap > 0) gap = "+" + gap;
+  }
+  
+  // Add row to pilot's table
+  const table = document.getElementById(tableId);
+  if (table) {
+    const row = table.insertRow();
+    
+    const cell1 = row.insertCell(0);  // Lap #
+    const cell2 = row.insertCell(1);  // Time
+    const cell3 = row.insertCell(2);  // Gap
+    
+    cell1.textContent = pilotLapNo;
+    
+    if (pilotLapNo === 0) {
+      cell2.innerHTML = i18n.t("race.gate1_short", { s: lapStr });
+      cell3.textContent = "-";
+    } else {
+      cell2.textContent = lapStr + i18n.t("race.table.seconds_short");
+      cell3.textContent = gap || "-";
+    }
+    
+    // Highlight best lap
+    if (pilotLapNo >= 1) {
+      const regularLaps = pilotLapTimes.slice(1);
+      const bestLapValue = Math.min(...regularLaps);
+      if (newLap === bestLapValue && pilotLapNo > 0) {
+        row.style.backgroundColor = pilotColor + "20";  // Light tint of pilot color
+        row.style.fontWeight = "bold";
+      }
+    }
+    
+    // Scroll to show new row
+    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  
+  // Audio announcement
+  switch (announcerSelect.options[announcerSelect.selectedIndex].value) {
+    case "beep":
+      beep(100, pilotIndex === 0 ? 440 : 330, "square");  // Different tones per pilot
+      break;
+    case "1lap":
+      const pilotName = pilotIndex === 0 ? 
+        (document.getElementById("mp1Name")?.value || "Pilot 1") :
+        (document.getElementById("mp2Name")?.value || "Pilot 2");
+      if (pilotLapNo === 0) {
+        queueSpeak(`<p>${pilotName} ${i18n.t("settings.tts.gate1", { n: lapStr })}</p>`);
+      } else {
+        queueSpeak(`<p>${pilotName} ${i18n.t("race.lap_counter", { n: pilotLapNo })}, ${lapStr}</p>`);
+      }
+      break;
+  }
+  
+  console.log(`[MultiPilot] Pilot ${pilotNum} lap ${pilotLapNo}: ${lapStr}s`);
+}
+
+function updateMultiPilotBands(pilotNum) {
+  const systemSelect = document.getElementById(`mp${pilotNum}System`);
+  const bandSelect = document.getElementById(`mp${pilotNum}Band`);
+  
+  if (!systemSelect || !bandSelect) return;
+  
+  const system = systemSelect.value;
+  const filteredBands = bandDefinitions.filter(b => b.system === system);
+  
+  bandSelect.innerHTML = '';
+  filteredBands.forEach(band => {
+    const option = document.createElement('option');
+    option.value = band.index;
+    option.textContent = band.label;
+    bandSelect.appendChild(option);
+  });
+  
+  updateMultiPilotFreq(pilotNum);
+}
+
+function updateMultiPilotFreq(pilotNum) {
+  const bandSelect = document.getElementById(`mp${pilotNum}Band`);
+  const channelSelect = document.getElementById(`mp${pilotNum}Channel`);
+  const freqSpan = document.getElementById(`mp${pilotNum}Freq`);
+  
+  if (!bandSelect || !channelSelect || !freqSpan) return;
+  
+  const bandIndex = parseInt(bandSelect.value);
+  const channelIndex = parseInt(channelSelect.value);
+  
+  if (bandIndex >= 0 && bandIndex < freqLookup.length && 
+      channelIndex >= 0 && channelIndex < freqLookup[bandIndex].length) {
+    const freq = freqLookup[bandIndex][channelIndex];
+    freqSpan.textContent = freq > 0 ? `${freq} MHz` : "N/A";
+  }
+  
+  // Auto-save on change
+  saveMultiPilotConfig();
+}
+
+function updateSweepDwell(value) {
+  const valueSpan = document.getElementById("sweepDwellMsValue");
+  if (valueSpan) {
+    valueSpan.textContent = value;
+  }
+  saveMultiPilotConfig();
+}
+
+function saveMultiPilotConfig() {
+  if (!configLoaded) return;
+  
+  const multiPilotToggle = document.getElementById("multiPilotEnabled");
+  const sweepDwellInput = document.getElementById("sweepDwellMs");
+  
+  // Get pilot 1 data
+  const mp1Band = document.getElementById("mp1Band");
+  const mp1Channel = document.getElementById("mp1Channel");
+  const p1BandIndex = mp1Band ? parseInt(mp1Band.value) : 4;
+  const p1ChannelIndex = mp1Channel ? parseInt(mp1Channel.value) : 0;
+  const p1Freq = (p1BandIndex >= 0 && p1BandIndex < freqLookup.length) ? 
+    freqLookup[p1BandIndex][p1ChannelIndex] : 5800;
+  
+  // Get pilot 2 data
+  const mp2Band = document.getElementById("mp2Band");
+  const mp2Channel = document.getElementById("mp2Channel");
+  const p2BandIndex = mp2Band ? parseInt(mp2Band.value) : 4;
+  const p2ChannelIndex = mp2Channel ? parseInt(mp2Channel.value) : 1;
+  const p2Freq = (p2BandIndex >= 0 && p2BandIndex < freqLookup.length) ? 
+    freqLookup[p2BandIndex][p2ChannelIndex] : 5860;
+  
+  const configData = {
+    multiPilotEnabled: multiPilotToggle && multiPilotToggle.checked ? 1 : 0,
+    sweepDwellMs: sweepDwellInput ? parseInt(sweepDwellInput.value) : 100,
+    pilot1: {
+      name: document.getElementById("mp1Name")?.value || "Pilot 1",
+      callsign: document.getElementById("mp1Callsign")?.value || "P1",
+      bandIndex: p1BandIndex,
+      channelIndex: p1ChannelIndex,
+      frequency: p1Freq
+    },
+    pilot2: {
+      name: document.getElementById("mp2Name")?.value || "Pilot 2",
+      callsign: document.getElementById("mp2Callsign")?.value || "P2",
+      bandIndex: p2BandIndex,
+      channelIndex: p2ChannelIndex,
+      frequency: p2Freq
+    }
+  };
+  
+  console.log("[MultiPilot] Saving config:", configData);
+  
+  fetch("/config/multipilot", {
+    method: "POST",
+    headers: {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(configData),
+  })
+    .then((response) => response.json())
+    .then((response) => console.log("/config/multipilot:", response))
+    .catch((error) => console.error("Error saving multi-pilot config:", error));
+}
+
+// Multi-pilot calibration state
+var calibActivePilot = -1;  // -1 = sweeping, 0 = pilot1, 1 = pilot2
+var pilotThresholds = {
+  pilot1: { enterRssi: 120, exitRssi: 100 },
+  pilot2: { enterRssi: 120, exitRssi: 100 }
+};
+
+function activateCalibPilot(pilotIndex) {
+  console.log("[Calib] Activating pilot:", pilotIndex);
+  
+  fetch("/calibration/activatePilot", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "pilot=" + pilotIndex,
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.status === "OK") {
+        calibActivePilot = pilotIndex;
+        updateCalibPilotUI();
+        
+        // Load this pilot's thresholds into the sliders
+        const pilotKey = pilotIndex === 0 ? "pilot1" : "pilot2";
+        const pilotEnter = pilotThresholds[pilotKey].enterRssi;
+        const pilotExit = pilotThresholds[pilotKey].exitRssi;
+        
+        enterRssi = pilotEnter;
+        exitRssi = pilotExit;
+        
+        const enterInput = document.getElementById("enter");
+        const exitInput = document.getElementById("exit");
+        const enterSpan = document.getElementById("enterSpan");
+        const exitSpan = document.getElementById("exitSpan");
+        
+        if (enterInput) enterInput.value = pilotEnter;
+        if (exitInput) exitInput.value = pilotExit;
+        if (enterSpan) enterSpan.textContent = pilotEnter;
+        if (exitSpan) exitSpan.textContent = pilotExit;
+        
+        console.log("[Calib] Pilot", pilotIndex + 1, "activated, thresholds loaded:", pilotEnter, "/", pilotExit);
+      } else {
+        console.error("[Calib] Failed to activate pilot:", data.message);
+      }
+    })
+    .catch((error) => console.error("[Calib] Error activating pilot:", error));
+}
+
+function resumeCalibSweep() {
+  console.log("[Calib] Resuming sweep");
+  
+  fetch("/calibration/resumeSweep", {
+    method: "POST",
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.status === "OK") {
+        calibActivePilot = -1;
+        updateCalibPilotUI();
+        console.log("[Calib] Sweep resumed");
+      }
+    })
+    .catch((error) => console.error("[Calib] Error resuming sweep:", error));
+}
+
+function updateCalibPilotUI() {
+  const badge = document.getElementById("calibActivePilotBadge");
+  const btn1 = document.getElementById("calibActivatePilot1Btn");
+  const btn2 = document.getElementById("calibActivatePilot2Btn");
+  const panel1 = document.getElementById("calibPilot1Panel");
+  const panel2 = document.getElementById("calibPilot2Panel");
+  
+  if (calibActivePilot === -1) {
+    // Sweeping mode
+    if (badge) {
+      badge.textContent = "Sweeping";
+      badge.style.background = "var(--primary-color)";
+    }
+    if (btn1) btn1.style.opacity = "1";
+    if (btn2) btn2.style.opacity = "1";
+    if (panel1) panel1.style.borderLeftColor = "#4CAF50";
+    if (panel2) panel2.style.borderLeftColor = "#2196F3";
+  } else if (calibActivePilot === 0) {
+    // Pilot 1 active
+    if (badge) {
+      badge.textContent = "Pilot 1 Active";
+      badge.style.background = "#4CAF50";
+    }
+    if (btn1) btn1.style.opacity = "0.5";
+    if (btn2) btn2.style.opacity = "1";
+    if (panel1) panel1.style.borderLeftColor = "#4CAF50";
+    if (panel2) panel2.style.borderLeftColor = "var(--secondary-color)";
+  } else if (calibActivePilot === 1) {
+    // Pilot 2 active
+    if (badge) {
+      badge.textContent = "Pilot 2 Active";
+      badge.style.background = "#2196F3";
+    }
+    if (btn1) btn1.style.opacity = "1";
+    if (btn2) btn2.style.opacity = "0.5";
+    if (panel1) panel1.style.borderLeftColor = "var(--secondary-color)";
+    if (panel2) panel2.style.borderLeftColor = "#2196F3";
+  }
+}
+
+// Save thresholds to the currently active pilot in multi-pilot mode
+function savePilotThresholds() {
+  if (!multiPilotEnabled || calibActivePilot < 0) {
+    // Not in multi-pilot mode or no pilot active, use normal save
+    saveConfig();
+    return;
+  }
+  
+  const pilotKey = calibActivePilot === 0 ? "pilot1" : "pilot2";
+  console.log(`[Calib] Saving thresholds to ${pilotKey}: enter=${enterRssi}, exit=${exitRssi}`);
+  
+  // Update local storage of pilot thresholds
+  pilotThresholds[pilotKey].enterRssi = enterRssi;
+  pilotThresholds[pilotKey].exitRssi = exitRssi;
+  
+  fetch("/config/pilotThresholds", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      pilot: calibActivePilot,
+      enterRssi: enterRssi,
+      exitRssi: exitRssi
+    }),
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.status === "OK") {
+        console.log(`[Calib] Pilot ${calibActivePilot + 1} thresholds saved`);
+        // Update the display
+        const thresholdSpan = document.getElementById(`calibPilot${calibActivePilot + 1}Thresholds`);
+        if (thresholdSpan) {
+          thresholdSpan.textContent = enterRssi + " / " + exitRssi;
+        }
+      }
+    })
+    .catch((error) => console.error("[Calib] Error saving pilot thresholds:", error));
+}
+
+function updateCalibPilotInfo(config) {
+  // Update calibration panel with pilot info from config
+  if (config.pilot1) {
+    const name1 = document.getElementById("calibPilot1Name");
+    const freq1 = document.getElementById("calibPilot1Freq");
+    const thresh1 = document.getElementById("calibPilot1Thresholds");
+    if (name1) name1.textContent = config.pilot1.callsign || config.pilot1.name || "Pilot 1";
+    if (freq1) freq1.textContent = (config.pilot1.frequency || 5658) + " MHz";
+    if (thresh1) thresh1.textContent = (config.pilot1.enterRssi || 120) + " / " + (config.pilot1.exitRssi || 100);
+    
+    // Store pilot 1 thresholds for calibration switching
+    pilotThresholds.pilot1.enterRssi = config.pilot1.enterRssi || 120;
+    pilotThresholds.pilot1.exitRssi = config.pilot1.exitRssi || 100;
+    
+    // Update race display pilot 1 info
+    const raceName1 = document.getElementById("racePilot1Name");
+    const raceFreq1 = document.getElementById("racePilot1Freq");
+    if (raceName1) raceName1.textContent = config.pilot1.callsign || config.pilot1.name || "Pilot 1";
+    if (raceFreq1) raceFreq1.textContent = (config.pilot1.frequency || 5658) + " MHz";
+  }
+  
+  if (config.pilot2) {
+    const name2 = document.getElementById("calibPilot2Name");
+    const freq2 = document.getElementById("calibPilot2Freq");
+    const thresh2 = document.getElementById("calibPilot2Thresholds");
+    if (name2) name2.textContent = config.pilot2.callsign || config.pilot2.name || "Pilot 2";
+    if (freq2) freq2.textContent = (config.pilot2.frequency || 5695) + " MHz";
+    if (thresh2) thresh2.textContent = (config.pilot2.enterRssi || 120) + " / " + (config.pilot2.exitRssi || 100);
+    
+    // Store pilot 2 thresholds for calibration switching
+    pilotThresholds.pilot2.enterRssi = config.pilot2.enterRssi || 120;
+    pilotThresholds.pilot2.exitRssi = config.pilot2.exitRssi || 100;
+    
+    // Update race display pilot 2 info
+    const raceName2 = document.getElementById("racePilot2Name");
+    const raceFreq2 = document.getElementById("racePilot2Freq");
+    if (raceName2) raceName2.textContent = config.pilot2.callsign || config.pilot2.name || "Pilot 2";
+    if (raceFreq2) raceFreq2.textContent = (config.pilot2.frequency || 5695) + " MHz";
+  }
+  
+  // Show/hide multi-pilot calibration panel
+  const multiPilotPanel = document.getElementById("multiPilotCalibPanel");
+  const singlePilotCard = document.getElementById("singlePilotChannelCard");
+  
+  if (config.multiPilotEnabled === 1) {
+    if (multiPilotPanel) multiPilotPanel.style.display = "block";
+    if (singlePilotCard) singlePilotCard.style.display = "none";
+  } else {
+    if (multiPilotPanel) multiPilotPanel.style.display = "none";
+    if (singlePilotCard) singlePilotCard.style.display = "block";
+  }
+}
+
+function loadMultiPilotConfig(config) {
+  // Multi-Pilot settings
+  const multiPilotToggle = document.getElementById("multiPilotEnabled");
+  if (multiPilotToggle && config.multiPilotEnabled !== undefined) {
+    multiPilotToggle.checked = config.multiPilotEnabled === 1;
+    toggleMultiPilot(config.multiPilotEnabled === 1);
+  }
+  
+  // Update calibration panel info
+  updateCalibPilotInfo(config);
+  
+  const sweepDwellInput = document.getElementById("sweepDwellMs");
+  const sweepDwellValue = document.getElementById("sweepDwellMsValue");
+  if (sweepDwellInput && config.sweepDwellMs !== undefined) {
+    sweepDwellInput.value = config.sweepDwellMs;
+    if (sweepDwellValue) sweepDwellValue.textContent = config.sweepDwellMs;
+  }
+  
+  // Load pilot 1 config
+  if (config.pilot1) {
+    const mp1Name = document.getElementById("mp1Name");
+    const mp1Callsign = document.getElementById("mp1Callsign");
+    
+    if (mp1Name) mp1Name.value = config.pilot1.name || "";
+    if (mp1Callsign) mp1Callsign.value = config.pilot1.callsign || "";
+    
+    // Set system based on band index
+    if (config.pilot1.bandIndex !== undefined) {
+      const bandDef = bandDefinitions.find(b => b.index === config.pilot1.bandIndex);
+      if (bandDef) {
+        const mp1System = document.getElementById("mp1System");
+        if (mp1System) {
+          mp1System.value = bandDef.system;
+          updateMultiPilotBands(1);
+        }
+        const mp1Band = document.getElementById("mp1Band");
+        if (mp1Band) mp1Band.value = config.pilot1.bandIndex;
+      }
+    }
+    
+    if (config.pilot1.channelIndex !== undefined) {
+      const mp1Channel = document.getElementById("mp1Channel");
+      if (mp1Channel) mp1Channel.value = config.pilot1.channelIndex;
+    }
+    
+    updateMultiPilotFreq(1);
+  }
+  
+  // Load pilot 2 config
+  if (config.pilot2) {
+    const mp2Name = document.getElementById("mp2Name");
+    const mp2Callsign = document.getElementById("mp2Callsign");
+    
+    if (mp2Name) mp2Name.value = config.pilot2.name || "";
+    if (mp2Callsign) mp2Callsign.value = config.pilot2.callsign || "";
+    
+    // Set system based on band index
+    if (config.pilot2.bandIndex !== undefined) {
+      const bandDef = bandDefinitions.find(b => b.index === config.pilot2.bandIndex);
+      if (bandDef) {
+        const mp2System = document.getElementById("mp2System");
+        if (mp2System) {
+          mp2System.value = bandDef.system;
+          updateMultiPilotBands(2);
+        }
+        const mp2Band = document.getElementById("mp2Band");
+        if (mp2Band) mp2Band.value = config.pilot2.bandIndex;
+      }
+    }
+    
+    if (config.pilot2.channelIndex !== undefined) {
+      const mp2Channel = document.getElementById("mp2Channel");
+      if (mp2Channel) mp2Channel.value = config.pilot2.channelIndex;
+    }
+    
+    updateMultiPilotFreq(2);
+  }
+}
+
 // Load tracks when settings modal opens
 function openSettingsModal() {
   const modal = document.getElementById("settingsModal");
@@ -5525,6 +6148,9 @@ function openSettingsModal() {
           syncedTimers = config.syncedTimers.slice(); // Copy array
           renderSyncedTimersList();
         }
+        
+        // Multi-Pilot settings
+        loadMultiPilotConfig(config);
         
         // Mark config as loaded - now saves are allowed
         configLoaded = true;

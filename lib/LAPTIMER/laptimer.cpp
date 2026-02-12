@@ -1,6 +1,7 @@
 #include "laptimer.h"
 #include "trackmanager.h"
 #include "webhook.h"
+#include "sweep.h"
 
 #include "debug.h"
 
@@ -48,6 +49,7 @@ void LapTimer::init(Config *config, RX5808 *rx5808, Buzzer *buzzer, Led *l, Webh
     buz = buzzer;
     led = l;
     webhooks = webhook;
+    sweepMgr = nullptr;  // Set via setSweepManager() if multi-pilot enabled
 
     filter.setMeasurementNoise(rssi_filter_q * 0.01f);
     filter.setProcessNoise(rssi_filter_r * 0.0001f);
@@ -55,6 +57,12 @@ void LapTimer::init(Config *config, RX5808 *rx5808, Buzzer *buzzer, Led *l, Webh
     selectedTrack = nullptr;
     totalDistanceTravelled = 0.0f;
     distanceRemaining = 0.0f;
+    
+    // Multi-pilot init
+    activePilot = 0;
+    lastLapPilot = 0;
+    initPilotData(0);
+    initPilotData(1);
 
     stop();
     memset(rssi, 0, sizeof(rssi));
@@ -76,9 +84,10 @@ void LapTimer::init(Config *config, RX5808 *rx5808, Buzzer *buzzer, Led *l, Webh
 void LapTimer::start() {
     DEBUG("\n=== RACE STARTED ===\n");
     DEBUG("Current Thresholds:\n");
-    DEBUG("  Enter RSSI: %u\n", conf->getEnterRssi());
-    DEBUG("  Exit RSSI: %u\n", conf->getExitRssi());
+    DEBUG("  Enter RSSI: %u\n", getCurrentEnterRssi());
+    DEBUG("  Exit RSSI: %u\n", getCurrentExitRssi());
     DEBUG("  Min Lap Time: %u ms\n", conf->getMinLapMs());
+    DEBUG("  Multi-pilot mode: %s\n", conf->getMultiPilotEnabled() ? "ENABLED" : "disabled");
     DEBUG("\nCurrent RSSI: %u\n", rssi[rssiCount]);
     DEBUG("====================\n\n");
 
@@ -103,6 +112,18 @@ void LapTimer::start() {
 
     totalDistanceTravelled = 0.0f;
     distanceRemaining = 0.0f;
+    
+    // Reset multi-pilot data if enabled
+    if (conf->getMultiPilotEnabled()) {
+        activePilot = 0;
+        lastLapPilot = 0;
+        for (int i = 0; i < 2; i++) {
+            initPilotData(i);
+            pilotData[i].raceStartTimeMs = raceStartTimeMs;
+            pilotData[i].startTimeMs = raceStartTimeMs;
+        }
+        DEBUG("Multi-pilot: Both pilots initialized for race\n");
+    }
 
     buz->beep(500);
     led->on(500);
@@ -136,6 +157,13 @@ void LapTimer::stop() {
     distanceRemaining = 0.0f;
 
     memset(lapTimes, 0, sizeof(lapTimes));
+    
+    // Reset multi-pilot data
+    initPilotData(0);
+    initPilotData(1);
+    activePilot = 0;
+    lastLapPilot = 0;
+    
     buz->beep(500);
     led->on(500);
 
@@ -208,8 +236,8 @@ void LapTimer::handleLapTimerUpdate(uint32_t currentTimeMs) {
 #if LAPTIMER_RACE_DEBUG
     if (state == RUNNING) {
         const uint8_t cur = rssi[rssiCount];
-        const uint8_t enter = conf->getEnterRssi();
-        const uint8_t exitT = conf->getExitRssi();
+        const uint8_t enter = getCurrentEnterRssi();
+        const uint8_t exitT = getCurrentExitRssi();
 
         if (prevAvgRssi < enter && cur >= enter) {
             DEBUG("[RACE] ENTER crossed: cur=%u raw=%u kal=%u med=%u ma=%u lp=%u out=%u t=%lu(ms since lap start)\n",
@@ -253,16 +281,44 @@ void LapTimer::handleLapTimerUpdate(uint32_t currentTimeMs) {
             break;
 
         case RUNNING: {
-            bool isGate1 = (lapCount == 0 && !lapCountWraparound);
-            bool minLapElapsed = (currentTimeMs - startTimeMs) > conf->getMinLapMs();
+            bool isGate1, minLapElapsed;
+            
+            if (conf->getMultiPilotEnabled()) {
+                // Multi-pilot mode: use per-pilot lap count and start time
+                pilot_lap_data_t* pd = &pilotData[activePilot];
+                isGate1 = (pd->lapCount == 0 && !pd->lapCountWraparound);
+                minLapElapsed = (currentTimeMs - pd->startTimeMs) > conf->getMinLapMs();
+            } else {
+                // Single pilot mode: use global vars
+                isGate1 = (lapCount == 0 && !lapCountWraparound);
+                minLapElapsed = (currentTimeMs - startTimeMs) > conf->getMinLapMs();
+            }
 
             if (isGate1 || minLapElapsed) {
                 lapPeakCapture();
                 if (lapPeakCaptured()) {
                     DEBUG("Lap triggered! Time: %u ms (Gate 1: %s)\n",
                           currentTimeMs - startTimeMs, isGate1 ? "YES" : "NO");
-                    finishLap();
-                    startLap();
+                    
+                    if (conf->getMultiPilotEnabled()) {
+                        // Copy global peak values to per-pilot data before finishing lap
+                        pilot_lap_data_t* pd = &pilotData[activePilot];
+                        pd->rssiPeak = rssiPeak;
+                        pd->rssiPeakTimeMs = rssiPeakTimeMs;
+                        
+                        finishLapMultiPilot(activePilot);
+                        
+                        // Reset global detection state for next lap
+                        rssiPeak = 0;
+                        rssiPeakTimeMs = 0;
+                        enteredGate = false;
+                        gateExited = true;
+                        enterHoldSamples = 0;
+                        enterHoldStartMs = 0;
+                    } else {
+                        finishLap();
+                        startLap();
+                    }
                 }
             }
             break;
@@ -287,8 +343,8 @@ void LapTimer::handleLapTimerUpdate(uint32_t currentTimeMs) {
 
 void LapTimer::lapPeakCapture() {
     const uint8_t cur = rssi[rssiCount];
-    const uint8_t enter = conf->getEnterRssi();
-    const uint8_t exitT = conf->getExitRssi();
+    const uint8_t enter = getCurrentEnterRssi();
+    const uint8_t exitT = getCurrentExitRssi();
     const uint32_t now = millis();
 
     // Debounce: require consecutive samples at/above enter before peak tracking
@@ -325,8 +381,8 @@ void LapTimer::lapPeakCapture() {
 }
 
 bool LapTimer::lapPeakCaptured() {
-    const uint8_t enter = conf->getEnterRssi();
-    const uint8_t exitT = conf->getExitRssi();
+    const uint8_t enter = getCurrentEnterRssi();
+    const uint8_t exitT = getCurrentExitRssi();
 
     bool validPeak = (rssiPeak > 0) &&
                      (rssiPeak >= enter) &&
@@ -506,4 +562,175 @@ float LapTimer::getDistanceRemaining() {
 
 Track* LapTimer::getSelectedTrack() {
     return selectedTrack;
+}
+
+// ============================================================================
+// Multi-pilot support methods
+// ============================================================================
+
+void LapTimer::setSweepManager(SweepManager* sweep) {
+    sweepMgr = sweep;
+    DEBUG("LapTimer: SweepManager connected\n");
+}
+
+void LapTimer::setActivePilot(uint8_t pilot) {
+    if (pilot <= 1 && pilot != activePilot) {
+        // Save current state to old pilot before switching
+        if (state == RUNNING && conf->getMultiPilotEnabled()) {
+            pilot_lap_data_t* oldPd = &pilotData[activePilot];
+            oldPd->enteredGate = enteredGate;
+            oldPd->gateExited = gateExited;
+            oldPd->rssiPeak = rssiPeak;
+            oldPd->rssiPeakTimeMs = rssiPeakTimeMs;
+            oldPd->enterHoldSamples = enterHoldSamples;
+            oldPd->enterHoldStartMs = enterHoldStartMs;
+        }
+        
+        activePilot = pilot;
+        DEBUG("LapTimer: Active pilot set to %u\n", pilot + 1);
+        
+        // Load new pilot's state
+        if (state == RUNNING && conf->getMultiPilotEnabled()) {
+            pilot_lap_data_t* newPd = &pilotData[pilot];
+            enteredGate = newPd->enteredGate;
+            gateExited = newPd->gateExited;
+            rssiPeak = newPd->rssiPeak;
+            rssiPeakTimeMs = newPd->rssiPeakTimeMs;
+            enterHoldSamples = newPd->enterHoldSamples;
+            enterHoldStartMs = newPd->enterHoldStartMs;
+            startTimeMs = newPd->startTimeMs;  // Use pilot's lap start time
+        }
+    }
+}
+
+uint8_t LapTimer::getActivePilot() {
+    return activePilot;
+}
+
+void LapTimer::initPilotData(uint8_t pilotIndex) {
+    if (pilotIndex > 1) return;
+    
+    pilot_lap_data_t* pd = &pilotData[pilotIndex];
+    memset(pd->lapTimes, 0, sizeof(pd->lapTimes));
+    pd->startTimeMs = 0;
+    pd->raceStartTimeMs = 0;
+    pd->lapCount = 0;
+    pd->lapCountWraparound = false;
+    pd->rssiPeak = 0;
+    pd->rssiPeakTimeMs = 0;
+    pd->enteredGate = false;
+    pd->gateExited = true;
+    pd->enterHoldSamples = 0;
+    pd->enterHoldStartMs = 0;
+    pd->lapAvailable = false;
+    pd->lastLapTime = 0;
+}
+
+uint8_t LapTimer::getCurrentEnterRssi() {
+    // In multi-pilot mode, use the active pilot's threshold
+    if (conf->getMultiPilotEnabled()) {
+        if (activePilot == 0) {
+            return conf->getPilot1()->enterRssi;
+        } else {
+            return conf->getPilot2()->enterRssi;
+        }
+    }
+    // Single pilot mode - use main config
+    return conf->getEnterRssi();
+}
+
+uint8_t LapTimer::getCurrentExitRssi() {
+    // In multi-pilot mode, use the active pilot's threshold
+    if (conf->getMultiPilotEnabled()) {
+        if (activePilot == 0) {
+            return conf->getPilot1()->exitRssi;
+        } else {
+            return conf->getPilot2()->exitRssi;
+        }
+    }
+    // Single pilot mode - use main config
+    return conf->getExitRssi();
+}
+
+uint32_t LapTimer::getLapTime(uint8_t pilotIndex) {
+    if (pilotIndex > 1) return 0;
+    return pilotData[pilotIndex].lastLapTime;
+}
+
+uint8_t LapTimer::getLapCount(uint8_t pilotIndex) {
+    if (pilotIndex > 1) return 0;
+    
+    pilot_lap_data_t* pd = &pilotData[pilotIndex];
+    if (pd->lapCountWraparound) {
+        return LAPTIMER_LAP_HISTORY;  // Max laps stored
+    }
+    return pd->lapCount;
+}
+
+uint32_t* LapTimer::getLapTimes(uint8_t pilotIndex) {
+    if (pilotIndex > 1) return nullptr;
+    return pilotData[pilotIndex].lapTimes;
+}
+
+bool LapTimer::isLapAvailable(uint8_t pilotIndex) {
+    if (pilotIndex > 1) return false;
+    return pilotData[pilotIndex].lapAvailable;
+}
+
+void LapTimer::clearLapAvailable(uint8_t pilotIndex) {
+    if (pilotIndex <= 1) {
+        pilotData[pilotIndex].lapAvailable = false;
+    }
+}
+
+uint8_t LapTimer::getLastPilotWithLap() {
+    return lastLapPilot;
+}
+
+void LapTimer::finishLapMultiPilot(uint8_t pilotIndex) {
+    if (pilotIndex > 1) return;
+    
+    pilot_lap_data_t* pd = &pilotData[pilotIndex];
+    
+    // Calculate lap time
+    uint32_t lapTime;
+    if (pd->lapCount == 0 && !pd->lapCountWraparound) {
+        lapTime = pd->rssiPeakTimeMs - pd->raceStartTimeMs;
+    } else {
+        lapTime = pd->rssiPeakTimeMs - pd->startTimeMs;
+    }
+    
+    pd->lapTimes[pd->lapCount] = lapTime;
+    pd->lastLapTime = lapTime;
+    pd->lapAvailable = true;
+    lastLapPilot = pilotIndex;
+    
+    DEBUG("[Pilot %u] Lap finished, lap time = %u\n", pilotIndex + 1, lapTime);
+    
+    // Update lap count with wraparound
+    if ((pd->lapCount + 1) % LAPTIMER_LAP_HISTORY == 0) {
+        pd->lapCountWraparound = true;
+    }
+    pd->lapCount = (pd->lapCount + 1) % LAPTIMER_LAP_HISTORY;
+    
+    // Reset for next lap
+    pd->startTimeMs = pd->rssiPeakTimeMs;
+    pd->rssiPeak = 0;
+    pd->rssiPeakTimeMs = 0;
+    pd->enteredGate = false;
+    pd->gateExited = true;
+    pd->enterHoldSamples = 0;
+    pd->enterHoldStartMs = 0;
+    
+    // Feedback
+    buz->beep(200);
+    led->on(200);
+    
+#ifdef ESP32S3
+    if (g_rgbLed) g_rgbLed->flashLap();
+#endif
+
+    if (webhooks && conf->getGateLEDsEnabled() && conf->getWebhookLap()) {
+        webhooks->triggerLap();
+    }
 }

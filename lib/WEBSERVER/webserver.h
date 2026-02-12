@@ -10,6 +10,8 @@
 #include "trackmanager.h"
 #include "webhook.h"
 
+class SweepManager;  // Forward declaration
+
 #define WIFI_CONNECTION_TIMEOUT_MS 30000
 #define WIFI_RECONNECT_TIMEOUT_MS 500
 #define WEB_RSSI_SEND_TIMEOUT_MS 200
@@ -19,11 +21,13 @@ class Webserver : public TransportInterface {
    public:
     void init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMonitor, Buzzer *buzzer, Led *l, RaceHistory *raceHist, Storage *stor, SelfTest *test, RX5808 *rx5808, TrackManager *trackMgr, WebhookManager *webhookMgr);
     void setTransportManager(TransportManager *tm);
+    void setSweepManager(SweepManager *sm);  // For multi-pilot calibration
     void recheckWifiMode();  // Re-evaluate WiFi mode after config changes
     void handleWebUpdate(uint32_t currentTimeMs);
     
     // TransportInterface implementation
     void sendLapEvent(uint32_t lapTimeMs) override;
+    void sendLapEvent(uint32_t lapTimeMs, uint8_t pilotIndex) override;
     void sendRssiEvent(uint8_t rssi) override;
     void sendRaceStateEvent(const char* state) override;
     bool isConnected() override;
