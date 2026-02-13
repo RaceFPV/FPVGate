@@ -1,23 +1,22 @@
 /**
- * FPVGate Hybrid Audio Announcer
+ * FPVGate Audio Announcer
  * 
- * Three-tier fallback system for voice announcements:
- * 1. ElevenLabs pre-recorded audio (best quality, instant)
- * 2. Piper TTS via WASM (good quality, slight latency)
- * 3. Web Speech API (fallback, varies by browser)
+ * Two-tier system for voice announcements:
+ * 1. ElevenLabs pre-recorded audio (best quality, instant playback from SD card)
+ * 2. Web Speech API (browser TTS fallback, quality varies by device)
  */
 
 class AudioAnnouncer {
     constructor() {
         console.log('[AudioAnnouncer] Initializing...');
+        console.log('[AudioAnnouncer] Page origin:', window.location.origin);
+        console.log('[AudioAnnouncer] Page host:', window.location.host);
+        
         this.audioQueue = [];
         this.isPlaying = false;
         this.audioEnabled = false;
         this.rate = 1.3;  // Faster playback for quicker announcements
         this.volume = 1.0;  // Volume 0.0-1.0
-        this.piperTTS = null;
-        this.piperLoaded = false;
-        this.ttsEngine = 'piper';  // Default to Piper TTS
         
         // Voice directory mapping
         this.voiceDirectories = {
@@ -26,55 +25,40 @@ class AudioAnnouncer {
             'adam': 'sounds_adam',        // Adam (Deep Male)
             'antoni': 'sounds_antoni',    // Antoni (Male)
             'matilda': 'sounds_matilda',  // Matilda (Warm Female)
-            'piper': 'sounds'             // PiperTTS uses fallback (no pre-recorded)
+            'webspeech': null             // Web Speech only (no pre-recorded)
         };
         
         // Load selected voice from localStorage
         this.selectedVoice = localStorage.getItem('selectedVoice') || 'default';
-        console.log('[AudioAnnouncer] Selected voice:', this.selectedVoice);
+        console.log('[AudioAnnouncer] Selected voice from localStorage:', this.selectedVoice);
+        console.log('[AudioAnnouncer] Voice directory:', this.voiceDirectories[this.selectedVoice] || 'Web Speech only');
         
         // Pre-recorded audio cache
         this.audioCache = new Map();
         this.preloadedAudios = new Set();
         
-        // Load TTS engine preference
-        const savedEngine = localStorage.getItem('ttsEngine');
-        if (savedEngine) {
-            this.ttsEngine = savedEngine;
+        // Single reusable Audio element for mobile compatibility
+        // Mobile browsers restrict creating new Audio() without user gesture
+        this.reusableAudio = null;
+        this.audioUnlocked = false;
+        
+        // Check Web Speech API availability
+        this.webSpeechAvailable = 'speechSynthesis' in window;
+        if (this.webSpeechAvailable) {
+            console.log('[AudioAnnouncer] Web Speech API available');
+            // Pre-load voices (some browsers need this)
+            speechSynthesis.getVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = () => {
+                    const voices = speechSynthesis.getVoices();
+                    console.log('[AudioAnnouncer] Web Speech voices loaded:', voices.length);
+                };
+            }
+        } else {
+            console.warn('[AudioAnnouncer] Web Speech API not available');
         }
         
-        // Initialize Piper TTS
-        this.initPiper();
         console.log('[AudioAnnouncer] Initialized (audio disabled by default, call enable() to activate)');
-        console.log('[AudioAnnouncer] TTS engine:', this.ttsEngine);
-    }
-
-    /**
-     * Initialize Piper TTS (async, non-blocking)
-     */
-    async initPiper() {
-        try {
-            console.log('[AudioAnnouncer] Loading Piper TTS...');
-            
-            // Check if we have the piper-tts-web library loaded
-            if (typeof PiperTTS === 'undefined') {
-                console.warn('[AudioAnnouncer] Piper TTS library not found. Will fallback to Web Speech API.');
-                return;
-            }
-            
-            // Initialize Piper TTS with medium-quality voice
-            this.piperTTS = await PiperTTS.create({
-                voiceId: 'en_US-hfc_female-medium',  // High-quality female voice
-                wasmPath: '/piper/',  // Path to WASM files
-            });
-            
-            this.piperLoaded = true;
-            console.log('[AudioAnnouncer] Piper TTS loaded successfully!');
-            
-        } catch (error) {
-            console.warn('[AudioAnnouncer] Piper TTS failed to load:', error);
-            console.log('[AudioAnnouncer] Will use Web Speech API fallback');
-        }
     }
 
     /**
@@ -104,49 +88,25 @@ class AudioAnnouncer {
 
     /**
      * Play pre-recorded audio file with optimized playback and instant transitions
+     * Uses reusable Audio element on mobile for better compatibility
      * @param {number} overlapMs - Milliseconds to resolve early for crossfade (default: 50ms)
      */
     async playPrerecorded(audioPath, overlapMs = 50) {
         return new Promise((resolve, reject) => {
-            // Check cache first
-            if (this.audioCache.has(audioPath)) {
-                const audio = this.audioCache.get(audioPath).cloneNode();
-                audio.playbackRate = this.rate;
-                audio.volume = this.volume;
-                audio.preservesPitch = false; // Better quality at higher speeds
-                
-                // Resolve early for seamless transitions with slight overlap
-                let resolved = false;
-                const overlapSeconds = overlapMs / 1000;
-                audio.ontimeupdate = () => {
-                    if (!resolved && audio.duration > 0 && audio.currentTime >= audio.duration - overlapSeconds) {
-                        resolved = true;
-                        resolve();
-                    }
-                };
-                
-                audio.onended = () => {
-                    if (!resolved) resolve();
-                };
-                
-                audio.onerror = (e) => {
-                    console.error('[AudioAnnouncer] Error playing cached audio:', audioPath, e);
-                    reject(e);
-                };
-                audio.play().catch((err) => {
-                    console.error('[AudioAnnouncer] Play failed (cached):', audioPath, err);
-                    reject(err);
-                });
-                return;
-            }
+            // Use reusable audio element if available (mobile compatibility)
+            // This avoids creating new Audio() which can fail without user gesture
+            const audio = this.reusableAudio || new Audio();
             
-            // Load and cache - preload='auto' for faster loading
-            const audio = new Audio();
+            // Reset any previous handlers
+            audio.oncanplay = null;
+            audio.ontimeupdate = null;
+            audio.onended = null;
+            audio.onerror = null;
+            
             audio.preload = 'auto';
             audio.playbackRate = this.rate;
             audio.volume = this.volume;
             audio.preservesPitch = false;
-            audio.src = audioPath;
             
             let resolved = false;
             const overlapSeconds = overlapMs / 1000;
@@ -154,75 +114,93 @@ class AudioAnnouncer {
             audio.ontimeupdate = () => {
                 if (!resolved && audio.duration > 0 && audio.currentTime >= audio.duration - overlapSeconds) {
                     resolved = true;
-                    this.audioCache.set(audioPath, audio);
                     resolve();
                 }
             };
             
             audio.onended = () => {
                 if (!resolved) {
-                    this.audioCache.set(audioPath, audio);
+                    resolved = true;
                     resolve();
                 }
             };
             
             audio.onerror = (e) => {
                 console.error('[AudioAnnouncer] Error loading/playing audio:', audioPath, e);
+                resolved = true;
                 reject(e);
             };
             
-            // Play as soon as enough data is buffered
-            audio.oncanplay = () => {
-                audio.play().catch((err) => {
-                    console.error('[AudioAnnouncer] Play failed:', audioPath, err);
-                    reject(err);
+            // Set source and play
+            audio.src = audioPath;
+            
+            // Play when ready
+            const playAudio = () => {
+                audio.play().then(() => {
+                    console.log('[AudioAnnouncer] Playing:', audioPath);
+                }).catch((err) => {
+                    console.error('[AudioAnnouncer] Play failed:', audioPath, err.message);
+                    if (!resolved) {
+                        resolved = true;
+                        reject(err);
+                    }
                 });
             };
-        });
-    }
-
-    /**
-     * Generate speech using Piper TTS
-     */
-    async playPiper(text) {
-        if (!this.piperLoaded || !this.piperTTS) {
-            throw new Error('Piper TTS not available');
-        }
-        
-        return new Promise(async (resolve, reject) => {
-            try {
-                const wav = await this.piperTTS.predict({ text });
-                const audio = new Audio();
-                audio.src = URL.createObjectURL(wav);
-                audio.playbackRate = this.rate;
-                audio.volume = this.volume;
-                audio.onended = () => {
-                    URL.revokeObjectURL(audio.src);
-                    resolve();
-                };
-                audio.onerror = reject;
-                await audio.play();
-            } catch (error) {
-                reject(error);
+            
+            // If already ready, play immediately
+            if (audio.readyState >= 3) {
+                playAudio();
+            } else {
+                audio.oncanplay = playAudio;
             }
         });
     }
 
     /**
-     * Generate speech using Web Speech API (fallback)
+     * Generate speech using Web Speech API
      */
     async playWebSpeech(text) {
         return new Promise((resolve, reject) => {
             if (!('speechSynthesis' in window)) {
+                console.error('[AudioAnnouncer] Web Speech API not supported');
                 reject(new Error('Web Speech API not supported'));
                 return;
             }
             
+            // Check if voices are available
+            const voices = speechSynthesis.getVoices();
+            console.log('[AudioAnnouncer] Web Speech voices available:', voices.length);
+            
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.rate = this.rate;
-            utterance.onend = resolve;
-            utterance.onerror = reject;
             
+            utterance.onstart = () => {
+                console.log('[AudioAnnouncer] Web Speech started speaking:', text);
+            };
+            
+            utterance.onend = () => {
+                console.log('[AudioAnnouncer] Web Speech finished speaking');
+                resolve();
+            };
+            
+            utterance.onerror = (event) => {
+                console.error('[AudioAnnouncer] Web Speech error:', event.error, event);
+                reject(new Error('Web Speech error: ' + event.error));
+            };
+            
+            // Add timeout in case speech never starts/ends
+            const timeout = setTimeout(() => {
+                console.warn('[AudioAnnouncer] Web Speech timeout - speech may have failed silently');
+                resolve(); // Resolve anyway to not block the queue
+            }, 10000);
+            
+            utterance.onend = () => {
+                clearTimeout(timeout);
+                console.log('[AudioAnnouncer] Web Speech finished speaking');
+                resolve();
+            };
+            
+            console.log('[AudioAnnouncer] Calling speechSynthesis.speak()...');
             speechSynthesis.speak(utterance);
         });
     }
@@ -246,22 +224,16 @@ class AudioAnnouncer {
         
         console.log('[AudioAnnouncer] Speaking:', cleanText);
         
-        // Check if PiperTTS is selected as primary voice
+        // Check if Web Speech only mode is selected
         const selectedVoice = localStorage.getItem('selectedVoice') || 'default';
-        const usePiperExclusively = (selectedVoice === 'piper');
+        const useWebSpeechOnly = (selectedVoice === 'webspeech');
         
         try {
-            // If PiperTTS is selected, use it exclusively without trying pre-recorded files
-            if (usePiperExclusively) {
-                console.log('[AudioAnnouncer] PiperTTS selected - using exclusively');
-                if (this.piperLoaded) {
-                    await this.playPiper(cleanText);
-                    return;
-                } else {
-                    console.warn('[AudioAnnouncer] PiperTTS not loaded, fallback to Web Speech');
-                    await this.playWebSpeech(cleanText);
-                    return;
-                }
+            // If Web Speech is selected, use it exclusively
+            if (useWebSpeechOnly) {
+                console.log('[AudioAnnouncer] Web Speech mode selected');
+                await this.playWebSpeech(cleanText);
+                return;
             }
             
             // ElevenLabs voice selected - try pre-recorded files first
@@ -311,16 +283,13 @@ class AudioAnnouncer {
                 console.log('[AudioAnnouncer] No audio mapping found for:', cleanText);
             }
             
-            // Fallback to Piper TTS (for ElevenLabs voices when files missing)
-            if (this.piperLoaded) {
-                console.log('[AudioAnnouncer] Fallback: Generating with Piper TTS:', cleanText);
-                await this.playPiper(cleanText);
-                return;
+            // Fallback: Web Speech API (for when pre-recorded files are missing)
+            if (this.webSpeechAvailable) {
+                console.log('[AudioAnnouncer] Fallback: Using Web Speech API:', cleanText);
+                await this.playWebSpeech(cleanText);
+            } else {
+                console.warn('[AudioAnnouncer] No audio method available for:', cleanText);
             }
-            
-            // Final fallback: Web Speech API
-            console.log('[AudioAnnouncer] Fallback: Using Web Speech API:', cleanText);
-            await this.playWebSpeech(cleanText);
             
         } catch (error) {
             console.error('[AudioAnnouncer] Speech error:', error, 'for text:', cleanText);
@@ -401,15 +370,15 @@ class AudioAnnouncer {
     async speakComplexWithPilot(pilot, lapNumber, lapTime) {
         if (!this.audioEnabled) return;
         
-        // Check if PiperTTS is selected as primary voice
+        // Check if Web Speech only mode is selected
         const selectedVoice = localStorage.getItem('selectedVoice') || 'default';
-        const usePiperExclusively = (selectedVoice === 'piper');
+        const useWebSpeechOnly = (selectedVoice === 'webspeech');
         
-        // If PiperTTS is selected, use it exclusively
-        if (usePiperExclusively) {
+        // If Web Speech mode is selected, use it exclusively
+        if (useWebSpeechOnly) {
             const fullText = `${pilot} Lap ${lapNumber}, ${lapTime}`;
-            console.log('[AudioAnnouncer] PiperTTS selected - speaking complex announcement exclusively:', fullText);
-            await this.useTtsFallback(fullText);
+            console.log('[AudioAnnouncer] Web Speech mode - speaking complex announcement:', fullText);
+            await this.playWebSpeech(fullText);
             return;
         }
         
@@ -440,10 +409,12 @@ class AudioAnnouncer {
             console.error('[AudioAnnouncer] Complex speech with pilot failed:', e);
         }
         
-        // Fallback: Use TTS directly (NOT speak() to avoid infinite recursion)
+        // Fallback: Use Web Speech API
         const fullText = `${pilot} Lap ${lapNumber}, ${lapTime}`;
-        console.log('[AudioAnnouncer] Using TTS fallback for:', fullText);
-        await this.useTtsFallback(fullText);
+        console.log('[AudioAnnouncer] Using Web Speech fallback for:', fullText);
+        if (this.webSpeechAvailable) {
+            await this.playWebSpeech(fullText);
+        }
     }
     
     /**
@@ -452,15 +423,15 @@ class AudioAnnouncer {
     async speakComplexLapTime(lapNumber, lapTime) {
         if (!this.audioEnabled) return;
         
-        // Check if PiperTTS is selected as primary voice
+        // Check if Web Speech only mode is selected
         const selectedVoice = localStorage.getItem('selectedVoice') || 'default';
-        const usePiperExclusively = (selectedVoice === 'piper');
+        const useWebSpeechOnly = (selectedVoice === 'webspeech');
         
-        // If PiperTTS is selected, use it exclusively
-        if (usePiperExclusively) {
+        // If Web Speech mode is selected, use it exclusively
+        if (useWebSpeechOnly) {
             const fullText = `Lap ${lapNumber}, ${lapTime}`;
-            console.log('[AudioAnnouncer] PiperTTS selected - speaking lap+time exclusively:', fullText);
-            await this.useTtsFallback(fullText);
+            console.log('[AudioAnnouncer] Web Speech mode - speaking lap+time:', fullText);
+            await this.playWebSpeech(fullText);
             return;
         }
         
@@ -482,29 +453,12 @@ class AudioAnnouncer {
             console.error('[AudioAnnouncer] Lap+time speech failed:', e);
         }
         
-        // Fallback: Use TTS directly (NOT speak() to avoid infinite recursion)
+        // Fallback: Use Web Speech API
         const fullText = `Lap ${lapNumber}, ${lapTime}`;
-        console.log('[AudioAnnouncer] Using TTS fallback for:', fullText);
-        await this.useTtsFallback(fullText);
-    }
-
-    /**
-     * Use TTS fallback based on user preference
-     */
-    async useTtsFallback(text) {
-        if (this.ttsEngine === 'piper' && this.piperLoaded) {
-            await this.playPiper(text);
-        } else if (this.ttsEngine === 'webspeech' || !this.piperLoaded) {
-            await this.playWebSpeech(text);
+        console.log('[AudioAnnouncer] Using Web Speech fallback for:', fullText);
+        if (this.webSpeechAvailable) {
+            await this.playWebSpeech(fullText);
         }
-    }
-
-    /**
-     * Set TTS engine preference
-     */
-    setTtsEngine(engine) {
-        this.ttsEngine = engine;
-        console.log('[AudioAnnouncer] TTS engine set to:', engine);
     }
 
     /**
@@ -515,14 +469,16 @@ class AudioAnnouncer {
         const numStr = num.toString();
         console.log('[AudioAnnouncer] Speaking number:', numStr);
         
-        // Check if PiperTTS is selected as primary voice
+        // Check if Web Speech only mode is selected
         const selectedVoice = localStorage.getItem('selectedVoice') || 'default';
-        const usePiperExclusively = (selectedVoice === 'piper');
+        const useWebSpeechOnly = (selectedVoice === 'webspeech');
         
-        // If PiperTTS is selected, use it exclusively
-        if (usePiperExclusively) {
-            console.log('[AudioAnnouncer] PiperTTS selected - speaking number exclusively:', numStr);
-            await this.useTtsFallback(numStr);
+        // If Web Speech mode is selected, use it exclusively
+        if (useWebSpeechOnly) {
+            console.log('[AudioAnnouncer] Web Speech mode - speaking number:', numStr);
+            if (this.webSpeechAvailable) {
+                await this.playWebSpeech(numStr);
+            }
             return;
         }
         
@@ -580,9 +536,11 @@ class AudioAnnouncer {
                 }
             }
         } catch (e) {
-            console.warn('[AudioAnnouncer] Error speaking number, fallback to TTS:', num, e);
-            // Fallback to TTS instead of trying to piece together files
-            await this.useTtsFallback(numStr);
+            console.warn('[AudioAnnouncer] Error speaking number, fallback to Web Speech:', num, e);
+            // Fallback to Web Speech API
+            if (this.webSpeechAvailable) {
+                await this.playWebSpeech(numStr);
+            }
         }
     }
 
@@ -609,13 +567,21 @@ class AudioAnnouncer {
         
         this.isPlaying = true;
         
-        while (this.audioQueue.length > 0 && this.audioEnabled) {
-            const text = this.audioQueue.shift();
-            await this.speak(text);
-            // No gap between queued announcements for faster playback
+        try {
+            while (this.audioQueue.length > 0 && this.audioEnabled) {
+                const text = this.audioQueue.shift();
+                try {
+                    await this.speak(text);
+                } catch (e) {
+                    console.error('[AudioAnnouncer] Error in queue processing, continuing:', e);
+                    // Continue processing queue even if one item fails
+                }
+                // No gap between queued announcements for faster playback
+            }
+        } finally {
+            // Always set isPlaying to false, even if there's an error
+            this.isPlaying = false;
         }
-        
-        this.isPlaying = false;
     }
 
     /**
@@ -647,67 +613,93 @@ class AudioAnnouncer {
         this.audioEnabled = true;
         console.log('[AudioAnnouncer] Audio enabled');
         
-        // iOS/Safari requires audio to be "unlocked" with user interaction
-        await this.unlockAudioContextiOS();
+        // Mobile browsers require audio to be "unlocked" with user interaction
+        await this.unlockAudioContextMobile();
         
         this.processQueue();  // Start processing any queued items
     }
     
     /**
-     * Unlock audio context for iOS/Safari
-     * Safari requires user interaction before playing audio
+     * Unlock audio context for mobile browsers
+     * Mobile browsers require user interaction before playing audio
      */
-    async unlockAudioContextiOS() {
-        // Detect iOS/Safari
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    async unlockAudioContextMobile() {
+        // Detect mobile/touch devices (broader detection than just iOS)
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+                        ('ontouchstart' in window);
         
-        if (!isIOS && !isSafari) {
-            return; // Not iOS/Safari, no need to unlock
-        }
+        console.log('[AudioAnnouncer] Mobile detection:', isMobile, 'UA:', navigator.userAgent.substring(0, 50));
+        console.log('[AudioAnnouncer] Origin:', window.location.origin, 'Host:', window.location.host);
         
-        console.log('[AudioAnnouncer] iOS/Safari detected, unlocking audio...');
+        // Always try to unlock on mobile, but also try on desktop for safety
+        console.log('[AudioAnnouncer] Attempting audio unlock...');
         
         try {
-            // Create and play a silent audio to unlock iOS audio
-            const silentAudio = new Audio();
-            silentAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
-            silentAudio.volume = 0;
-            
-            // Try to play
-            await silentAudio.play().catch(err => {
-                console.warn('[AudioAnnouncer] iOS audio unlock play failed (expected on first try):', err);
-            });
-            
-            // For PiperTTS - unlock Web Audio API AudioContext
-            if (this.piperTTS && this.piperTTS.audioContext) {
-                if (this.piperTTS.audioContext.state === 'suspended') {
-                    await this.piperTTS.audioContext.resume();
-                    console.log('[AudioAnnouncer] PiperTTS AudioContext resumed');
-                }
+            // Create the reusable Audio element during user gesture
+            // This is critical for mobile - Audio elements created during user gestures
+            // can be reused for playback later without additional gestures
+            if (!this.reusableAudio) {
+                this.reusableAudio = new Audio();
+                console.log('[AudioAnnouncer] Created reusable Audio element');
             }
+            
+            // Unlock by playing a silent sound
+            this.reusableAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+            this.reusableAudio.volume = 0.01; // Tiny volume instead of 0 (some browsers ignore 0)
+            
+            // Try to play the reusable element to unlock it
+            const playResult = await this.reusableAudio.play().then(() => {
+                this.audioUnlocked = true;
+                return 'success';
+            }).catch(err => err.message || 'unknown error');
+            console.log('[AudioAnnouncer] Reusable audio unlock result:', playResult);
             
             // For Web Speech API - try to initialize
             if ('speechSynthesis' in window) {
+                // Cancel any pending speech first
+                speechSynthesis.cancel();
+                
                 // Load voices (required for iOS)
-                const voices = speechSynthesis.getVoices();
+                let voices = speechSynthesis.getVoices();
+                console.log('[AudioAnnouncer] Initial voices count:', voices.length);
+                
                 if (voices.length === 0) {
                     // Voices not loaded yet, wait for them
                     await new Promise(resolve => {
+                        const voiceTimeout = setTimeout(() => {
+                            console.warn('[AudioAnnouncer] Voice loading timeout (1.5s)');
+                            resolve();
+                        }, 1500);
+                        
                         if (speechSynthesis.onvoiceschanged !== undefined) {
-                            speechSynthesis.onvoiceschanged = resolve;
-                            setTimeout(resolve, 1000); // Timeout after 1s
+                            speechSynthesis.onvoiceschanged = () => {
+                                clearTimeout(voiceTimeout);
+                                resolve();
+                            };
                         } else {
+                            clearTimeout(voiceTimeout);
                             resolve();
                         }
                     });
+                    
+                    voices = speechSynthesis.getVoices();
+                }
+                
+                console.log('[AudioAnnouncer] Final voices count:', voices.length);
+                
+                // Try a silent utterance to fully unlock Web Speech
+                if (voices.length > 0) {
+                    const silentUtterance = new SpeechSynthesisUtterance('');
+                    silentUtterance.volume = 0;
+                    speechSynthesis.speak(silentUtterance);
+                    console.log('[AudioAnnouncer] Silent utterance queued for unlock');
                 }
             }
             
-            console.log('[AudioAnnouncer] iOS/Safari audio unlocked successfully');
+            console.log('[AudioAnnouncer] Audio unlock completed');
         } catch (error) {
-            console.warn('[AudioAnnouncer] iOS audio unlock error:', error);
+            console.warn('[AudioAnnouncer] Audio unlock error:', error);
         }
     }
 

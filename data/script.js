@@ -286,14 +286,21 @@ function setupWiFiEvents() {
   }
 
   if (window.EventSource) {
+    console.log("[SSE] Creating EventSource connection to /events...");
+    console.log("[SSE] Page origin:", window.location.origin, "host:", window.location.host);
+    
     eventSource = new EventSource("/events");
+    
+    // Track last event time for debugging
+    window.lastSSEEvent = Date.now();
 
     eventSource.addEventListener(
       "open",
       function (e) {
-        console.log("WiFi Events Connected");
+        console.log("[SSE] Connection OPEN - readyState:", eventSource.readyState);
         eventSourceReconnectAttempts = 0; // Reset counter on successful connect
         updateConnectionStatus("WiFi", true);
+        window.lastSSEEvent = Date.now();
 
         // Update connection info every 5 seconds
         if (connectionStatusUpdateInterval) {
@@ -301,7 +308,20 @@ function setupWiFiEvents() {
         }
         connectionStatusUpdateInterval = setInterval(() => {
           updateConnectionStatus("WiFi", true);
+          // Log SSE health
+          const timeSinceLastEvent = Math.round((Date.now() - window.lastSSEEvent) / 1000);
+          console.log("[SSE] Health check - seconds since last event:", timeSinceLastEvent, "readyState:", eventSource?.readyState);
         }, 5000);
+      },
+      false
+    );
+    
+    // Listen for keepalive pings from server
+    eventSource.addEventListener(
+      "keepalive",
+      function (e) {
+        window.lastSSEEvent = Date.now();
+        // Don't log every keepalive, just track it
       },
       false
     );
@@ -309,21 +329,22 @@ function setupWiFiEvents() {
     eventSource.addEventListener(
       "error",
       function (e) {
+        console.log("[SSE] ERROR event - readyState:", e.target.readyState, "EventSource.OPEN:", EventSource.OPEN);
         if (e.target.readyState != EventSource.OPEN) {
-          console.log("WiFi Events Disconnected - attempting reconnect...");
+          console.log("[SSE] Connection CLOSED/CONNECTING - attempting reconnect...");
           updateConnectionStatus("WiFi", false);
 
           // Attempt to reconnect
           if (eventSourceReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             eventSourceReconnectAttempts++;
-            console.log(`Reconnect attempt ${eventSourceReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${RECONNECT_DELAY_MS}ms...`);
+            console.log(`[SSE] Reconnect attempt ${eventSourceReconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${RECONNECT_DELAY_MS}ms...`);
 
             eventSourceReconnectTimer = setTimeout(() => {
-              console.log("Attempting EventSource reconnect...");
+              console.log("[SSE] Attempting EventSource reconnect...");
               setupWiFiEvents();
             }, RECONNECT_DELAY_MS);
           } else {
-            console.error("Max reconnect attempts reached. Please refresh the page.");
+            console.error("[SSE] Max reconnect attempts reached. Please refresh the page.");
           }
         }
       },
@@ -345,9 +366,10 @@ function setupWiFiEvents() {
     eventSource.addEventListener(
       "lap",
       function (e) {
+        window.lastSSEEvent = Date.now();
         var lap = (parseFloat(e.data) / 1000).toFixed(2);
+        console.log("[SSE] LAP EVENT RECEIVED - raw:", e.data, "formatted:", lap);
         addLap(lap);
-        console.log("lap raw:", e.data, " formatted:", lap);
       },
       false
     );
@@ -1874,18 +1896,6 @@ function saveVoiceSelection() {
       audioAnnouncer.setVoice(selectedVoice);
     }
 
-    // If PiperTTS selected, use piper engine, otherwise use webspeech for fallback
-    if (selectedVoice === "piper") {
-      if (audioAnnouncer) {
-        audioAnnouncer.setTtsEngine("piper");
-      }
-    } else {
-      // ElevenLabs voices use webspeech for fallback
-      if (audioAnnouncer) {
-        audioAnnouncer.setTtsEngine("webspeech");
-      }
-    }
-
     autoSaveConfig(); // Save to device
   }
 }
@@ -2294,6 +2304,13 @@ async function startRace() {
     } catch (err) {
       console.warn("[Race] AudioContext resume failed:", err);
     }
+  }
+
+  // Ensure audio announcer is unlocked for mobile (user gesture opportunity)
+  // Only unlock if not already unlocked AND not currently playing
+  if (audioEnabled && audioAnnouncer && !audioAnnouncer.audioUnlocked && !audioAnnouncer.isPlaying) {
+    console.log("[Race] Unlocking audio announcer during race start gesture");
+    await audioAnnouncer.unlockAudioContextMobile();
   }
 
   // Queue both announcements
@@ -4019,7 +4036,7 @@ function downloadConfig() {
         audioEnabled: audioEnabled,
         lapFormat: localStorage.getItem("lapFormat") || "full",
         selectedVoice: localStorage.getItem("selectedVoice") || "default",
-        ttsEngine: localStorage.getItem("ttsEngine") || "piper",
+        ttsEngine: localStorage.getItem("ttsEngine") || "webspeech",
         // Pilot frontend settings
         pilotCallsign: localStorage.getItem("pilotCallsign") || "",
         pilotPhonetic: localStorage.getItem("pilotPhonetic") || "",

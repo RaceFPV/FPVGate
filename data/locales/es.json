@@ -190,7 +190,7 @@
                 "eleven_rachel": "ElevenLabs (Rachel - Tranquila)",
                 "eleven_adam": "ElevenLabs (Adam - Voz Grave)",
                 "eleven_antoni": "ElevenLabs (Antoni - Masculina)",
-                "piper": "PiperTTS (Menor Latencia)"
+                "webspeech": "Web Speech (TTS del Navegador)"
             },
             "examples": "Ejemplos: \"Louis Vuelta 5, 12.34\" / \"Vuelta 5, 12.34\" / \"12.34\""
         },

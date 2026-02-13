@@ -190,7 +190,7 @@
                 "eleven_rachel": "ElevenLabs (Rachel - 冷静)",
                 "eleven_adam": "ElevenLabs (Adam - 深沉男声)",
                 "eleven_antoni": "ElevenLabs (Antoni - 男声)",
-                "piper": "PiperTTS (低延迟)"
+                "webspeech": "Web Speech（浏览器TTS）"
             },
             "examples": "示例: \"Louis 第 5 圈, 12.34\" / \"第 5 圈, 12.34\" / \"12.34\""
         },

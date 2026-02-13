@@ -204,7 +204,7 @@
                 "eleven_adam": "ElevenLabs (Adam - Deep Male)",
                 "eleven_antoni": "ElevenLabs (Antoni - Male)",
                 "eleven_matilda": "ElevenLabs (Matilda - Warm Female)",
-                "piper": "PiperTTS (Lower Latency)"
+                "webspeech": "Web Speech (Browser TTS)"
             },
             "examples": "Examples: \"Louis Lap 5, 12.34\" / \"Lap 5, 12.34\" / \"12.34\""
         },

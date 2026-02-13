@@ -190,7 +190,7 @@
                 "eleven_rachel": "ElevenLabs (Rachel - Ruhig)",
                 "eleven_adam": "ElevenLabs (Adam - Tiefe Männerstimme)",
                 "eleven_antoni": "ElevenLabs (Antoni - Männlich)",
-                "piper": "PiperTTS (Geringere Latenz)"
+                "webspeech": "Web Speech (Browser TTS)"
             },
             "examples": "Beispiele: \"Louis Runde 5, 12.34\" / \"Runde 5, 12.34\" / \"12.34\""
         },

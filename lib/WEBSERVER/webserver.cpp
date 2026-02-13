@@ -450,6 +450,14 @@ void Webserver::startServices() {
         return;
     }
 
+    // CORS headers - MUST be set before any handlers are registered
+    // This is critical for iOS Safari which requires CORS for EventSource/SSE
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Max-Age", "600");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "*");
+    DEBUG("CORS headers configured\n");
+
     startLittleFS();
     
     // Initialize storage (SD card or LittleFS fallback)
@@ -893,10 +901,7 @@ EEPROM:\n\
         led->on(200);
     });
 
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-    DefaultHeaders::Instance().addHeader("Access-Control-Max-Age", "600");
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "*");
+    // CORS headers set at start of startServices()
 
     server.onNotFound(handleNotFound);
 
