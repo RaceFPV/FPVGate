@@ -340,6 +340,19 @@ static void handleRoot(AsyncWebServerRequest *request) {
     if (captivePortal(request)) {  // If captive portal redirect instead of displaying the page.
         return;
     }
+    
+    // Redirect hostname requests to IP address for iOS Safari compatibility
+    // iOS Safari has mDNS issues with SSE/fetch on .local hostnames
+    String host = request->host();
+    if (!isIp(host)) {
+        // Get the device's IP address
+        IPAddress deviceIP = (WiFi.getMode() == WIFI_AP) ? WiFi.softAPIP() : WiFi.localIP();
+        String redirectUrl = "http://" + deviceIP.toString() + request->url();
+        DEBUG("Redirecting %s to %s\n", host.c_str(), redirectUrl.c_str());
+        request->redirect(redirectUrl);
+        return;
+    }
+    
 #ifdef HAS_RGB_LED
     // Flash green when user accesses web interface
     if (g_rgbLed) g_rgbLed->flashGreen();
