@@ -652,7 +652,11 @@ class AudioAnnouncer {
             const playResult = await this.reusableAudio.play().then(() => {
                 this.audioUnlocked = true;
                 return 'success';
-            }).catch(err => err.message || 'unknown error');
+            }).catch(err => {
+                // Even if play fails, mark as attempted so we don't keep trying
+                this.audioUnlocked = true; // Treat as "attempted" - Web Speech might still work
+                return err.message || 'unknown error';
+            });
             console.log('[AudioAnnouncer] Reusable audio unlock result:', playResult);
             
             // For Web Speech API - try to initialize
