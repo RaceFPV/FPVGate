@@ -52,14 +52,9 @@ void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMoni
     g_storage = stor;  // Set global pointer for static functions
     selftest = test;
     
-    // Build hostname based on timerNumber
-    uint8_t timerNum = conf->getTimerNumber();
-    if (timerNum == 0) {
-        strcpy(wifi_hostname, "fpvgate");
-    } else {
-        snprintf(wifi_hostname, sizeof(wifi_hostname), "fpvgate%d", timerNum);
-    }
-    DEBUG("Timer hostname configured: %s.local\n", wifi_hostname);
+    // Hostname is always fpvgate.local
+    strcpy(wifi_hostname, "fpvgate");
+    DEBUG("Hostname: %s.local\n", wifi_hostname);
     rx = rx5808;
     trackManager = trackMgr;
     webhooks = webhookMgr;
