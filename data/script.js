@@ -504,17 +504,10 @@ function handleSlaveLapEvent(data) {
 function announceRemotePilotLap(pilot, lapTime) {
   if (!audioEnabled) return;
   
-  const lapNo = pilot.lapNo;
   const name = pilot.pilotPhonetic || pilot.pilotName;
   
-  let text;
-  if (lapNo === 0) {
-    // Gate 1
-    text = `<p>${name} Gate 1, ${lapTime}</p>`;
-  } else {
-    // Regular lap
-    text = `<p>${name} Lap ${lapNo}, ${lapTime}</p>`;
-  }
+  // Simple "Pilot, Time" format for multi-pilot sync
+  const text = `<p>${name}, ${lapTime}</p>`;
   
   console.log(`[TTS] Remote pilot announcement: ${text}`);
   queueSpeak(text);
@@ -2065,18 +2058,26 @@ function addLap(lapStr) {
   // Render unified multi-pilot view
   renderUnifiedRaceView();
 
+  // Determine effective lap format - force "Pilot + Time" in sync modes
+  const effectiveLapFormat = (raceSyncMode === 1 || raceSyncMode === 2) ? 'full' : lapFormat;
+  
   switch (announcerSelect.options[announcerSelect.selectedIndex].value) {
     case "beep":
       beep(100, 330, "square");
       break;
     case "1lap":
       if (lapNo == 0) {
-        queueSpeak(`<p>${i18n.t("settings.tts.gate1", { n: lapStr })}</p>`);
+        // Gate 1 - always include pilot name in sync mode
+        if (raceSyncMode === 1 || raceSyncMode === 2) {
+          queueSpeak(`<p>${pilotName} ${i18n.t("settings.tts.gate1", { n: lapStr })}</p>`);
+        } else {
+          queueSpeak(`<p>${i18n.t("settings.tts.gate1", { n: lapStr })}</p>`);
+        }
       } else {
         let text;
-        switch (lapFormat) {
+        switch (effectiveLapFormat) {
           case "full":
-            text = `<p>${pilotName} ${i18n.t("race.lap_counter", { n: lapNo })}, ${lapStr}</p>`;
+            text = `<p>${pilotName}, ${lapStr}</p>`;
             break;
           case "laptime":
             text = `<p>${i18n.t("race.lap_counter", { n: lapNo })}, ${lapStr}</p>`;
@@ -2085,14 +2086,18 @@ function addLap(lapStr) {
             text = `<p>${lapStr}</p>`;
             break;
           default:
-            text = `<p>${pilotName} ${i18n.t("race.lap_counter", { n: lapNo })}, ${lapStr}</p>`;
+            text = `<p>${pilotName}, ${lapStr}</p>`;
         }
         queueSpeak(text);
       }
       break;
     case "2lap":
       if (lapNo == 0) {
-        queueSpeak(`<p>Gate 1 ${lapStr}<p>`);
+        if (raceSyncMode === 1 || raceSyncMode === 2) {
+          queueSpeak(`<p>${pilotName} Gate 1 ${lapStr}</p>`);
+        } else {
+          queueSpeak(`<p>Gate 1 ${lapStr}</p>`);
+        }
       } else if (last2lapStr != "") {
         const text2 = "<p>" + pilotName + " 2 laps " + last2lapStr + "</p>";
         queueSpeak(text2);
@@ -2100,7 +2105,11 @@ function addLap(lapStr) {
       break;
     case "3lap":
       if (lapNo == 0) {
-        queueSpeak(`<p>Gate 1 ${lapStr}<p>`);
+        if (raceSyncMode === 1 || raceSyncMode === 2) {
+          queueSpeak(`<p>${pilotName} Gate 1 ${lapStr}</p>`);
+        } else {
+          queueSpeak(`<p>Gate 1 ${lapStr}</p>`);
+        }
       } else if (last3lapStr != "") {
         const text3 = "<p>" + pilotName + " 3 laps " + last3lapStr + "</p>";
         queueSpeak(text3);

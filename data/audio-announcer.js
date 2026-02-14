@@ -259,7 +259,17 @@ class AudioAnnouncer {
                 return;
             }
             
-            // Format 3: "time" only (e.g., "12.34")
+            // Format 3: "Pilot, time" (e.g., "Louis, 12.34") - sync mode format
+            const pilotTimeMatch = cleanText.match(/^(.+?),\s*([\d.]+)$/);
+            if (pilotTimeMatch) {
+                const pilot = pilotTimeMatch[1].trim();
+                const lapTime = parseFloat(pilotTimeMatch[2]);
+                console.log('[AudioAnnouncer] Detected pilot+time format:', pilot, lapTime);
+                await this.speakPilotTime(pilot, lapTime);
+                return;
+            }
+            
+            // Format 4: "time" only (e.g., "12.34")
             const timeOnlyMatch = cleanText.match(/^([\d.]+)$/);
             if (timeOnlyMatch) {
                 const lapTime = parseFloat(timeOnlyMatch[1]);
@@ -417,6 +427,21 @@ class AudioAnnouncer {
         }
     }
     
+    /**
+     * Speak pilot name + time (e.g., "Louis, 12.34") - sync mode format
+     * Uses single Web Speech call for fastest announcement
+     */
+    async speakPilotTime(pilot, lapTime) {
+        if (!this.audioEnabled) return;
+        
+        // Always use single Web Speech call for pilot+time (fastest, no file lookups)
+        const fullText = `${pilot}, ${lapTime}`;
+        console.log('[AudioAnnouncer] Speaking pilot+time:', fullText);
+        if (this.webSpeechAvailable) {
+            await this.playWebSpeech(fullText);
+        }
+    }
+
     /**
      * Speak lap announcement without pilot name (e.g., "Lap 5, 12.34")
      */
@@ -616,7 +641,37 @@ class AudioAnnouncer {
         // Mobile browsers require audio to be "unlocked" with user interaction
         await this.unlockAudioContextMobile();
         
+        // Start keepalive for desktop browsers to prevent cold-start delays
+        this.startSpeechKeepalive();
+        
         this.processQueue();  // Start processing any queued items
+    }
+    
+    /**
+     * Keep speech synthesis engine warm to prevent cold-start delays on desktop
+     * Desktop browsers have 2-3 second delays if speech engine goes idle
+     */
+    startSpeechKeepalive() {
+        // Clear any existing keepalive
+        if (this.keepaliveInterval) {
+            clearInterval(this.keepaliveInterval);
+        }
+        
+        // Speak silent utterance every 10 seconds when idle
+        this.keepaliveInterval = setInterval(() => {
+            if (!this.audioEnabled || this.isPlaying || this.audioQueue.length > 0) {
+                return; // Don't interfere with actual speech
+            }
+            
+            // Speak empty/silent utterance to keep engine warm
+            if ('speechSynthesis' in window) {
+                const silentUtterance = new SpeechSynthesisUtterance('');
+                silentUtterance.volume = 0;
+                speechSynthesis.speak(silentUtterance);
+            }
+        }, 10000);
+        
+        console.log('[AudioAnnouncer] Speech keepalive started');
     }
     
     /**
@@ -713,6 +768,12 @@ class AudioAnnouncer {
     disable() {
         this.audioEnabled = false;
         this.audioQueue = [];
+        
+        // Stop keepalive
+        if (this.keepaliveInterval) {
+            clearInterval(this.keepaliveInterval);
+            this.keepaliveInterval = null;
+        }
         
         // Stop any ongoing speech
         if ('speechSynthesis' in window) {
