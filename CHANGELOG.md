@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to FPVGate will be documented in this file.
 

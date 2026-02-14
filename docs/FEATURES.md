@@ -1,4 +1,4 @@
-# FPVGate Features Guide
+ï»¿# FPVGate Features Guide
 
 In-depth documentation of all FPVGate capabilities and technical details.
 
@@ -18,8 +18,8 @@ In-depth documentation of all FPVGate capabilities and technical details.
 8. [Race History & Data Management](#race-history--data-management)
 9. [Multi-Client Support](#multi-client-support)
 10. [Self-Test System](#self-test-system)
-11. [Configuration Management](#configuration-management)
-12. [Technical Architecture](#technical-architecture)
+12. [Configuration Management](#configuration-management)
+13. [Technical Architecture](#technical-architecture)
 
 ---
 
@@ -76,13 +76,13 @@ Direct USB connection for zero-latency control.
 
 ```
 +--------------+         USB Cable        +--------------+
-¦   Computer   ¦ ?----------------------? ¦  ESP32-S3    ¦
-¦              ¦                           ¦              ¦
-¦  Electron    ¦   JSON Command Protocol   ¦  Transport   ¦
-¦  Browser     ¦   {"method":"POST"...}    ¦  Manager     ¦
-¦              ¦                           ¦              ¦
-¦ USB-Transport¦                           ¦  Webserver   ¦
-¦    .js       ¦                           ¦  Handlers    ¦
+ï¿½   Computer   ï¿½ ?----------------------? ï¿½  ESP32-S3    ï¿½
+ï¿½              ï¿½                           ï¿½              ï¿½
+ï¿½  Electron    ï¿½   JSON Command Protocol   ï¿½  Transport   ï¿½
+ï¿½  Browser     ï¿½   {"method":"POST"...}    ï¿½  Manager     ï¿½
+ï¿½              ï¿½                           ï¿½              ï¿½
+ï¿½ USB-Transportï¿½                           ï¿½  Webserver   ï¿½
+ï¿½    .js       ï¿½                           ï¿½  Handlers    ï¿½
 +--------------+                           +--------------+
 ```
 
@@ -153,7 +153,7 @@ USB and WiFi can operate simultaneously!
      Race Director (USB)
             ? Commands
        +---------+
-       ¦ ESP32-S3¦
+       ï¿½ ESP32-S3ï¿½
        +---------+
          ?     ?
     WiFi  WiFi  WiFi
@@ -242,15 +242,15 @@ Drone VTx signal strength (RSSI) peaks when passing through gate.
 
 | Factor | Impact | Mitigation |
 |--------|--------|------------|
-| **RSSI Sampling Rate** | ±5ms | 100Hz sampling |
-| **Peak Detection** | ±10ms | 3-point average |
-| **System Timer** | ±1ms | millis() function |
+| **RSSI Sampling Rate** | ï¿½5ms | 100Hz sampling |
+| **Peak Detection** | ï¿½10ms | 3-point average |
+| **System Timer** | ï¿½1ms | millis() function |
 | **WiFi Latency** | 20-30ms | Use USB mode |
 
 **Expected Accuracy:**
-- **Best Case (USB):** ±10-15ms
-- **WiFi Mode:** ±30-40ms
-- **For Comparison:** MultiGP standard is ±50ms
+- **Best Case (USB):** ï¿½10-15ms
+- **WiFi Mode:** ï¿½30-40ms
+- **For Comparison:** MultiGP standard is ï¿½50ms
 
 ### Gate Pass Classification
 
@@ -452,7 +452,7 @@ Ensure correct pronunciation of pilot names.
 **Implementation:**
 - I2S audio playback with adjustable sample rate
 - 1.0 = 44100 Hz
-- 1.5 = 66150 Hz (1.5× faster)
+- 1.5 = 66150 Hz (1.5ï¿½ faster)
 
 ---
 
@@ -466,7 +466,7 @@ Individually addressable RGB LEDs using single-wire protocol.
 **Technical Details:**
 - **Protocol:** WS2812B (NeoPixel)
 - **Data Rate:** 800 kHz
-- **Color Depth:** 24-bit (8 bits per channel × RGB)
+- **Color Depth:** 24-bit (8 bits per channel ï¿½ RGB)
 - **Update Rate:** ~60 FPS
 - **Max LEDs:** 256 (practical limit ~100 for smooth animation)
 
@@ -541,9 +541,9 @@ Each LED receives 24 bits: `GRB` (Green-Red-Blue order)
 
 | Event | LED Behavior |
 |-------|--------------|
-| **Race Start** | Flash green (3×, 200ms each) |
-| **Lap Detected** | Flash white (1×, 150ms) |
-| **Race Stop** | Flash red (3×, 200ms each) |
+| **Race Start** | Flash green (3ï¿½, 200ms each) |
+| **Lap Detected** | Flash white (1ï¿½, 150ms) |
+| **Race Stop** | Flash red (3ï¿½, 200ms each) |
 | **Between Events** | Resume selected preset |
 
 **Implementation:**
@@ -668,12 +668,121 @@ for i in range(0, num_laps - 2):
 
 **Purpose:** Visualize consistency within best round
 
+### Multi-Pilot Race Analysis (Sync Modes)
+
+When operating in Master or Slave mode, the analysis section switches to "Race Analysis" with multi-pilot comparison charts.
+
+#### Lap Times Chart (SVG Line Chart)
+
+**Rendering Function:** enderLapTimesChart(pilots)
+
+**Chart Specifications:**
+- **Type:** SVG line chart
+- **Dimensions:** 800x300 viewBox, responsive
+- **X-Axis:** Lap numbers (1 to max laps)
+- **Y-Axis:** Time in seconds (auto-scaled with 10% padding)
+- **Lines:** One per pilot, using pilot's configured color
+- **Markers:** Circle markers at each lap time
+- **Grid:** Horizontal and vertical grid lines
+
+**Data Processing:**
+`javascript
+pilots.forEach(pilot => {
+  const validLaps = pilot.lapTimes.slice(1); // Skip gate 1
+  // Calculate min/max times for Y-axis scaling
+  // Build SVG path for each pilot
+});
+`
+
+**SVG Structure:**
+`xml
+<svg viewBox="0 0 800 300">
+  <g class="grid"><!-- Grid lines --></g>
+  <g class="y-axis"><!-- Time labels --></g>
+  <g class="x-axis"><!-- Lap labels --></g>
+  <g class="lines">
+    <path d="M x1,y1 L x2,y2..." stroke="#FF6384" />
+    <circle cx="x" cy="y" r="4" fill="#FF6384" />
+  </g>
+</svg>
+`
+
+#### Consistency Chart (Box-and-Whisker Plot)
+
+**Rendering Function:** enderConsistencyChart(pilots)
+
+**Chart Specifications:**
+- **Type:** SVG box-and-whisker plot
+- **Dimensions:** 800x300 viewBox, responsive
+- **X-Axis:** Pilot names
+- **Y-Axis:** Time in seconds
+- **Box:** Interquartile range (Q1 to Q3)
+- **Whiskers:** Min to Q1, Q3 to Max
+- **Median Line:** Inside box
+- **Individual Points:** Circles for each lap time
+
+**Statistics Calculated:**
+`javascript
+function calculateStats(lapTimes) {
+  const sorted = [...lapTimes].sort((a, b) => a - b);
+  return {
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    q1: sorted[Math.floor(sorted.length * 0.25)],
+    median: sorted[Math.floor(sorted.length * 0.5)],
+    q3: sorted[Math.floor(sorted.length * 0.75)]
+  };
+}
+`
+
+**Visual Components:**
+- **Box:** Rectangle from Q1 to Q3 (filled with pilot color at 30% opacity)
+- **Median Line:** Horizontal line at median value
+- **Whiskers:** Vertical lines from box to min/max
+- **End Caps:** Horizontal lines at min/max
+- **Data Points:** Small circles for each lap time
+
+#### Race Analysis Legend
+
+**Rendering Function:** enderRaceAnalysisLegend(pilots)
+
+**Legend Format:**
+`html
+<div style="border-left: 4px solid {pilot.color}">
+  <span>{pilot.name}{pilot.isLocal ? ' *' : ''}</span>
+  <span>{lapCount} laps, best: {fastest}s</span>
+</div>
+`
+
+**Information Displayed:**
+- Pilot name with color indicator
+- Asterisk (*) for local pilot
+- Total lap count
+- Fastest lap time
+
+#### Analysis Section Visibility
+
+**Toggle Function:** updateAnalysisSectionVisibility()
+
+`javascript
+if (raceSyncMode === 1 || raceSyncMode === 2) {
+  // Sync mode - show Race Analysis
+  lapAnalysis.style.display = "none";
+  raceAnalysis.style.display = "block";
+  updateRaceAnalysisView();
+} else {
+  // Personal mode - show Lap Analysis
+  lapAnalysis.style.display = "block";
+  raceAnalysis.style.display = "none";
+  updateAnalysisView();
+}
+`
 ### Lap Table Features
 
 **Columns:**
 1. **Lap #** - "Gate 1", "Lap 1", "Lap 2"...
 2. **Lap Time** - MM:SS.ss format
-3. **Delta** - Difference from previous lap (±)
+3. **Delta** - Difference from previous lap (ï¿½)
 
 **Fastest Lap Highlight:**
 - Gold background (#FFD700)
@@ -777,8 +886,8 @@ FPVGate sends HTTP POST requests to the following endpoints:
 
 | Endpoint | Trigger | Description |
 |----------|---------|-------------|
-| `/RaceStart` | Race starts | 2× Green flashes |
-| `/RaceStop` | Race stops | 2× Red flashes |
+| `/RaceStart` | Race starts | 2ï¿½ Green flashes |
+| `/RaceStop` | Race stops | 2ï¿½ Red flashes |
 | `/Lap` | Lap detected | White flash (0.5s) |
 | `/GhostLap` | Future feature | White flash (0.5s) |
 | `/off` | Manual | Turn off LEDs |
@@ -886,7 +995,7 @@ Manually trigger test flash to all webhooks
 ESP8266/ESP32 LED controller:
 ```cpp
 server.on("/RaceStart", HTTP_POST, []() {
-  flashGreen(2);  // 2× green flashes
+  flashGreen(2);  // 2ï¿½ green flashes
   server.send(200, "text/plain", "OK");
 });
 
@@ -1008,6 +1117,198 @@ server.on("/Lap", HTTP_POST, []() {
 
 ---
 
+## Race Synchronization (Multi-Timer)
+
+### Overview
+
+FPVGate supports synchronizing multiple timer devices for multi-pilot racing scenarios. This allows race directors to control multiple gates from a central master device while collecting all pilot lap times in one place.
+
+### Architecture
+
+`
+                     WiFi Network
+                          |
+    +---------------------+---------------------+
+    |                     |                     |
++--------+          +--------+           +--------+
+| Master |  <----   | Slave  |   ---->   | Slave  |
+| Timer  |  SSE     | Timer  |   HTTP    | Timer  |
++--------+          +--------+           +--------+
+    |                   |                    |
+  Pilot A            Pilot B              Pilot C
+`
+
+**Master Device:**
+- Controls race timing (start/stop/clear)
+- Receives lap events from all slaves
+- Maintains unified multi-pilot race view
+- Saves complete race history with all pilots
+
+**Slave Devices:**
+- Follow master's race commands via SSE
+- Detect local pilot's laps
+- Send lap data to master via HTTP POST
+- Local voice/LED feedback still works
+
+### Sync Mode States
+
+**raceSyncMode Variable:**
+-   - Personal mode (default, no sync)
+- 1 - Master mode (controls race, receives laps)
+- 2 - Slave mode (follows master, sends laps)
+
+### SSE Event Protocol
+
+Slave devices listen for Server-Sent Events from master:
+
+**Race Start Event:**
+`json
+event: raceState
+data: {"state": "started"}
+`
+
+**Race Stop Event:**
+`json
+event: raceState
+data: {"state": "stopped"}
+`
+
+**Laps Cleared Event:**
+`json
+event: raceState
+data: {"state": "cleared"}
+`
+
+### HTTP Lap Reporting
+
+Slaves send lap times to master via HTTP POST:
+
+**Endpoint:** POST http://<master-ip>/sync/lap
+
+**Request Body:**
+`json
+{
+  "lapTimeMs": 12340,
+  "pilotName": "Louis",
+  "pilotPhonetic": "Louie",
+  "pilotColor": 16744448,
+  "slaveHostname": "192.168.4.100"
+}
+`
+
+**Master Response:**
+`json
+{"success": true}
+`
+
+### Remote Pilots Data Structure
+
+Master maintains state for all remote pilots:
+
+`javascript
+remotePilots = {
+  "192.168.4.100": {
+    pilotName: "Louis",
+    pilotPhonetic: "Louie",
+    pilotColor: 0xFF6B00,
+    lapTimes: [8.45, 12.34, 11.98],
+    lapNo: 2
+  },
+  "192.168.4.101": {
+    pilotName: "Sarah",
+    pilotPhonetic: "Sarah",
+    pilotColor: 0x36A2EB,
+    lapTimes: [9.12, 13.01],
+    lapNo: 1
+  }
+}
+`
+
+### Sync Device Configuration
+
+**Data Structure:**
+`javascript
+syncDevices = [
+  { address: "192.168.4.1", role: "master", isThisDevice: true },
+  { address: "192.168.4.100", role: "slave", isThisDevice: false },
+  { address: "192.168.4.101", role: "slave", isThisDevice: false }
+]
+`
+
+**Role Options:**
+- "disabled" - Not participating in sync
+- "master" - Only one device can be master
+- "slave" - Follows master commands
+
+### Multi-Pilot Race View
+
+When in sync mode, the UI switches to multi-pilot view:
+
+**Lap Table Structure:**
+`html
+<thead>
+  <tr>
+    <th>Lap</th>
+    <th style="border-left: 3px solid #FF6B00">Louis</th>
+    <th style="border-left: 3px solid #36A2EB">Sarah</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>0</td>
+    <td>8.45s</td>
+    <td>9.12s</td>
+  </tr>
+</tbody>
+`
+
+### Race History Multi-Pilot Format
+
+**Single-Pilot Race:**
+`json
+{
+  "timestamp": 1707951234,
+  "pilotName": "Louis",
+  "lapTimes": [8450, 12340, 11980],
+  "fastestLap": 11980,
+  "syncMode": 0
+}
+`
+
+**Multi-Pilot Race (Master saves):**
+`json
+{
+  "timestamp": 1707951234,
+  "syncMode": 1,
+  "pilots": [
+    {
+      "name": "Louis",
+      "callsign": "Louis",
+      "color": 16744448,
+      "lapTimes": [8450, 12340, 11980],
+      "fastestLap": 11980,
+      "isLocal": true
+    },
+    {
+      "name": "Sarah",
+      "callsign": "Sarah",
+      "color": 3580651,
+      "lapTimes": [9120, 13010, 12450],
+      "fastestLap": 12450,
+      "isLocal": false
+    }
+  ]
+}
+`
+
+### Network Requirements
+
+- All devices must be on same network subnet
+- Port 80 must be accessible between devices
+- Recommended: Use wired network or strong WiFi
+- Typical latency: 50-100ms for sync commands
+
+---
 ## Multi-Client Support
 
 ### WebSocket Architecture
@@ -1416,19 +1717,19 @@ Modify TTS options
 src/
 +-- main.cpp              # Entry point, setup/loop
 +-- lib/
-¦   +-- CALIBRATION/      # RSSI calibration logic
-¦   +-- CONFIG/           # Configuration management
-¦   +-- FASTLED/          # LED control
-¦   +-- FREQUENCY/        # Band/channel/frequency
-¦   +-- RACEHISTORY/      # Race data storage
-¦   +-- RACELOGIC/        # Timing state machine
-¦   +-- RX5808/           # RX5808 SPI driver
-¦   +-- SELFTEST/         # Diagnostic system
-¦   +-- TRANSPORT/        # Transport abstraction
-¦   +-- TTS/              # Text-to-speech
-¦   +-- USB/              # USB Serial CDC transport
-¦   +-- WEBSERVER/        # HTTP + WebSocket server
-¦   +-- WIFIMAN/          # WiFi management
+ï¿½   +-- CALIBRATION/      # RSSI calibration logic
+ï¿½   +-- CONFIG/           # Configuration management
+ï¿½   +-- FASTLED/          # LED control
+ï¿½   +-- FREQUENCY/        # Band/channel/frequency
+ï¿½   +-- RACEHISTORY/      # Race data storage
+ï¿½   +-- RACELOGIC/        # Timing state machine
+ï¿½   +-- RX5808/           # RX5808 SPI driver
+ï¿½   +-- SELFTEST/         # Diagnostic system
+ï¿½   +-- TRANSPORT/        # Transport abstraction
+ï¿½   +-- TTS/              # Text-to-speech
+ï¿½   +-- USB/              # USB Serial CDC transport
+ï¿½   +-- WEBSERVER/        # HTTP + WebSocket server
+ï¿½   +-- WIFIMAN/          # WiFi management
 ```
 
 ### Web Interface Structure

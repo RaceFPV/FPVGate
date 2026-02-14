@@ -223,7 +223,7 @@ The RX5808 is a 5.8GHz FPV receiver module that detects drone video signals.
 
 | Strip Wire | Color | ESP32 Pin |
 |------------|-------|-----------|
-| **Data (DIN)** | Green/White | GPIO7 |
+| **Data (DIN)** | Green/White | GPIO5 |
 | **Power (+5V)** | Red | 5V rail |
 | **Ground (GND)** | Black/White | GND |
 
@@ -380,12 +380,12 @@ SD Card Root
 ### Wiring
 
 | Buzzer Pin | ESP32 Pin |
-|------------|-----------|
-| **Signal (+)** | GPIO5 |
+|------------|------------|
+| **Signal (+)** | GPIO6 |
 | **Ground (-)** | GND |
 
 **Polarity:**
-- Red/long leg = Signal (GPIO8)
+- Red/long leg = Signal (GPIO6)
 - Black/short leg = Ground
 
 **Optional:**
@@ -409,7 +409,7 @@ SD Card Root
 **No sound:**
 - Check polarity (swap wires)
 - Verify passive vs active type
-- Test GPIO8 with LED (should flash during countdown)
+- Test GPIO6 with LED (should flash during countdown)
 
 **Distorted/weak sound:**
 - Power supply issue
@@ -548,8 +548,8 @@ SD Card Root
 | GPIO | Component | Signal | Direction |
 |------|-----------|--------|-----------|
 | **GPIO3** | RX5808 | RSSI | Input (analog) |
-| **GPIO7** | LED Strip | Data | Output |
-| **GPIO5** | Buzzer | PWM | Output |
+| **GPIO5** | LED Strip | Data | Output |
+| **GPIO6** | Buzzer | PWM | Output |
 | **GPIO10** | SD Card | CS | Output |
 | **GPIO11** | SD Card | MOSI | Output |
 | **GPIO12** | SD Card | SCK | Output |
@@ -576,9 +576,9 @@ SD Card Root
 | Component | Pin(s) | Voltage | Notes |
 |-----------|--------|---------|-------|
 | **RX5808** | GPIO3, 14, 15, 13 | 5V | RSSI + SPI |
-| **LED Strip** | GPIO7 | 5V | Single data wire |
+| **LED Strip** | GPIO5 | 5V | Single data wire |
 | **SD Card** | GPIO10, 11, 12, 13 | 3.3V | SPI bus |
-| **Buzzer** | GPIO8 | 5V | Passive type |
+| **Buzzer** | GPIO6 | 5V | Passive type |
 | **Battery** | GPIO1 | 3.3V max | Optional, voltage divider |
 
 ---
@@ -708,7 +708,7 @@ Before final assembly, test each component:
 - Random colors/flickering
 
 **Solutions:**
-- Check data pin (GPIO7)
+- Check data pin (GPIO5)
 - Verify 5V power to strip
 - Check ground connection
 - Add 330Ω resistor on data line
@@ -804,7 +804,7 @@ For louder races:
 
 **Circuit:**
 ```
-GPIO8 → NPN Transistor (2N2222) → Piezo Buzzer (12V)
+GPIO6 → NPN Transistor (2N2222) → Piezo Buzzer (12V)
          ↓ (Base)                    ↑
          10kΩ to GND              Power Supply
 ```

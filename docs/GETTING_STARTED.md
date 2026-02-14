@@ -1,4 +1,4 @@
-# Getting Started with FPVGate
+﻿# Getting Started with FPVGate
 
 Complete guide to building, flashing, and configuring your FPVGate lap timer.
 
@@ -139,7 +139,7 @@ ESP32-S3        WS2812 Strip
 -----------------------------
 VBUS (5V)------ +5V
 GND      ------ GND
-GPIO18   ------ Data In
+GPIO5    ------ Data In
 ```
 
 **LED Configuration:**
@@ -155,7 +155,7 @@ GPIO18   ------ Data In
 ```
 ESP32-S3        Active Buzzer
 -----------------------------
-GPIO5    ------ Positive (+)
+GPIO6    ------ Positive (+)
 GND      ------ Negative (-)
 ```
 
@@ -545,6 +545,34 @@ Exit RSSI: 135 (10 below enter)
 
 ![Calibration Wizard Completed](../screenshots/12-12-2025/Calibration%20Wizard%20Completed%20-%2012-12-2025.png)
 
+## Multi-Timer Setup (Optional)
+
+If you have multiple FPVGate devices and want to race with multiple pilots:
+
+### Quick Setup
+
+1. **Connect all devices to same network**
+   - Either connect all to external WiFi, or
+   - Keep one device as AP, connect others to it
+
+2. **On the master device:**
+   - Go to Configuration ? WiFi & Connection ? Race Synchronization
+   - Add other devices' IP addresses
+   - Set this device's role to "Master"
+   - Set other devices to "Slave"
+
+3. **Test connections**
+   - Click "Test All Connections"
+   - Green checkmarks = ready to race
+
+4. **Start racing**
+   - Start race on master device
+   - All slaves will sync automatically
+   - All lap times appear on master's multi-pilot view
+
+For detailed setup instructions, see [Race Synchronization in User Guide](USER_GUIDE.md#race-synchronization-multi-timer).
+
+---
 ## Next Steps
 
  **Hardware assembled and tested**  

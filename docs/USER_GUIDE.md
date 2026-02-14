@@ -1,4 +1,4 @@
-# FPVGate User Guide
+ï»¿# FPVGate User Guide
 
 Complete guide to using all features of your FPVGate lap timer.
 
@@ -13,11 +13,12 @@ Complete guide to using all features of your FPVGate lap timer.
 3. [Configuration](#configuration)
 4. [Calibration](#calibration)
 5. [Racing](#racing)
-6. [Race Analysis](#race-analysis)
-7. [Race History](#race-history)
-8. [LED Control](#led-control)
-9. [Voice Settings](#voice-settings)
-10. [Advanced Features](#advanced-features)
+6. [Race Synchronization (Multi-Timer)](#race-synchronization-multi-timer)
+7. [Race Analysis](#race-analysis)
+8. [Race History](#race-history)
+9. [LED Control](#led-control)
+10. [Voice Settings](#voice-settings)
+11. [Advanced Features](#advanced-features)
 
 ---
 
@@ -171,7 +172,54 @@ The web interface has four main tabs:
 - Save/load thresholds
 - Real-time preview
 
-### Race History Tab
+#### Sync Mode: Race Analysis
+
+In Master or Slave mode, the analysis section changes to "Race Analysis" which shows multi-pilot comparison charts.
+
+#### Lap Times Chart
+
+**Type:** Line chart comparing all pilots
+**Purpose:** Visual comparison of lap times across pilots
+
+**Features:**
+- Each pilot displayed as a colored line
+- X-axis shows lap numbers
+- Y-axis shows time in seconds
+- Grid lines for easy reading
+- Legend identifies each pilot
+
+**Reading the Chart:**
+- Lower lines = faster times
+- Parallel lines = similar pace
+- Converging lines = catching up
+- Diverging lines = pulling away
+
+#### Consistency Chart
+
+**Type:** Box-and-whisker plot for each pilot
+**Purpose:** Compare consistency between pilots
+
+**Components:**
+- **Box:** Shows the interquartile range (middle 50% of lap times)
+- **Line in box:** Median lap time
+- **Whiskers:** Extend to min/max lap times
+- **Circles:** Individual lap times (outliers)
+
+**Reading the Chart:**
+- Shorter boxes = more consistent
+- Lower boxes = faster overall
+- Long whiskers = more variation
+
+#### Race Analysis Legend
+
+Below the charts, a legend shows:
+- Pilot name with color indicator
+- Number of laps completed
+- Fastest lap time
+- Asterisk (*) marks the local pilot
+
+---
+## Race History Tab
 
 ![Race History](../screenshots/12-12-2025/Race%20History%20-%2012-12-2025.png)
 
@@ -424,11 +472,11 @@ FPVGate detects laps by monitoring RSSI (signal strength) changes:
 
 ** Good Calibration:**
 ```
-RSSI  ¦     /\
-      ¦    /  \
-      ¦   /    \     ? Single clean peak
+RSSI  ï¿½     /\
+      ï¿½    /  \
+      ï¿½   /    \     ? Single clean peak
 Enter +--/------\---
-      ¦ /        \
+      ï¿½ /        \
 Exit  +/----------\-
       +--------------- Time
 Result: 1 lap counted 
@@ -436,10 +484,10 @@ Result: 1 lap counted
 
 ** Bad Calibration (Thresholds too low):**
 ```
-RSSI  ¦   /\/\        ? Multiple peaks!
-      ¦  /    \
+RSSI  ï¿½   /\/\        ? Multiple peaks!
+      ï¿½  /    \
 Enter +-/------\---
-      ¦/        \
+      ï¿½/        \
 Exit  /----------\-
       +--------------- Time
 Result: 3 laps counted 
@@ -538,6 +586,156 @@ Result: 3 laps counted
 
 ---
 
+## Race Synchronization (Multi-Timer)
+
+FPVGate supports synchronizing multiple timers for multi-pilot racing. This allows multiple pilots to race simultaneously with centralized timing control.
+
+### Sync Modes
+
+FPVGate operates in one of three modes, indicated by a badge in the header:
+
+#### Personal Mode (Default)
+- **Badge:** PERSONAL (or no badge)
+- Single pilot timing
+- Traditional lap timing experience
+- Lap Analysis shows your individual performance charts
+- No network synchronization required
+
+#### Master Mode
+- **Badge:** MASTER
+- Controls race start/stop for all synced devices
+- Receives lap data from all slave timers
+- Shows multi-pilot race view with all pilots' laps side-by-side
+- Race Analysis charts compare all pilots
+- Saves multi-pilot race history with all pilots' data
+
+#### Slave Mode
+- **Badge:** SLAVE
+- Follows race commands from master timer
+- Start/Stop/Clear buttons are disabled
+- Sends lap times to master timer automatically
+- Local pilot's laps are displayed normally
+- Voice announcements still work locally
+
+### Setting Up Sync Mode
+
+**Access:** Configuration ? WiFi & Connection ? Race Synchronization
+
+#### Step 1: Connect All Devices to Same Network
+
+All FPVGate devices must be on the same WiFi network:
+
+**Option A: All devices connect to external WiFi**
+1. On each device, go to Configuration ? WiFi & Connection
+2. Enter your WiFi network SSID and password
+3. Click "Apply WiFi & Reboot"
+4. After reboot, each device will have an IP address on your network
+
+**Option B: One device as AP, others connect to it**
+1. Keep one device in default AP mode (FPVGate_XXXX network)
+2. Connect other devices and your phone/laptop to that network
+3. All devices will be on 192.168.4.x subnet
+
+#### Step 2: Add Sync Devices
+
+1. On the device you want as master, go to Sync Devices section
+2. Find "Add Device" input field
+3. Enter each slave device's IP address (e.g., 192.168.0.100)
+4. Click "Add Device"
+5. Device appears in the sync devices list
+
+#### Step 3: Set Device Roles
+
+For each device in the list:
+- **This Device:** Set to "Master" for the controlling timer
+- **Other Devices:** Set to "Slave"
+
+**Role Options:**
+- **Disabled** - Not participating in sync
+- **Master** - Controls race timing
+- **Slave** - Follows master's commands
+
+#### Step 4: Test Connections
+
+Click "Test All Connections" to verify all devices can communicate.
+
+**Success:** Green checkmark appears next to device
+**Failure:** Red X appears - check network connectivity
+
+### Multi-Pilot Race View
+
+When in Master or Slave mode, the race interface changes:
+
+**Lap Table:**
+- Shows columns for each pilot (local + remote)
+- Pilot names as column headers with color coding
+- Lap times displayed side-by-side for comparison
+- Fastest lap highlighted per pilot
+
+**Race Analysis:**
+- Replaces Lap Analysis in sync modes
+- Two chart types available:
+
+**Lap Times Chart:**
+- Line chart showing all pilots' lap times
+- X-axis: Lap number
+- Y-axis: Time in seconds
+- Each pilot has a colored line
+- Easily compare pace between pilots
+
+**Consistency Chart:**
+- Box-and-whisker plot for each pilot
+- Shows median, quartiles, and range
+- Compare consistency between pilots
+- Outliers visible as individual points
+
+**Legend:**
+- Shows pilot name with color indicator
+- Displays lap count and fastest time per pilot
+- Asterisk (*) indicates local pilot
+
+### How Sync Commands Work
+
+**Race Start (Master):**
+1. Master sends SSE event to all slaves
+2. Slaves begin countdown automatically
+3. All devices start timer simultaneously
+
+**Lap Detection (Slave):**
+1. Slave detects local pilot's lap
+2. Sends lap time + pilot info to master via HTTP
+3. Master receives and adds to multi-pilot view
+4. Master announces remote pilot lap via TTS
+
+**Race Stop (Master):**
+1. Master sends SSE stop event
+2. All slaves stop timing
+3. Master saves complete multi-pilot race
+
+### Troubleshooting Sync
+
+**Devices Not Connecting:**
+- Verify all devices on same network subnet
+- Check firewall settings (allow port 80)
+- Try using IP addresses instead of hostnames
+- Restart all devices
+
+**Lap Times Not Showing on Master:**
+- Confirm slave device is set to "Slave" role
+- Check slave's network connection
+- Verify master's IP is correct on slave
+
+**Race Start Not Syncing:**
+- Master must have "Master" role set
+- All slaves must be added to master's device list
+- Test connections before starting race
+
+**Inconsistent Timing:**
+- Network latency affects sync accuracy
+- Use wired network or strong WiFi for best results
+- Typical sync accuracy: Â±50-100ms
+
+---
 ## Race Analysis
 
 FPVGate provides real-time analysis of your performance.
@@ -595,9 +793,59 @@ Toggle between two chart views:
 
 ---
 
+### Sync Mode: Race Analysis
+
+In Master or Slave mode, the analysis section changes to "Race Analysis" which shows multi-pilot comparison charts.
+
+#### Lap Times Chart
+
+**Type:** Line chart comparing all pilots
+**Purpose:** Visual comparison of lap times across pilots
+
+**Features:**
+- Each pilot displayed as a colored line
+- X-axis shows lap numbers
+- Y-axis shows time in seconds
+- Grid lines for easy reading
+- Legend identifies each pilot
+
+**Reading the Chart:**
+- Lower lines = faster times
+- Parallel lines = similar pace
+- Converging lines = catching up
+- Diverging lines = pulling away
+
+#### Consistency Chart
+
+**Type:** Box-and-whisker plot for each pilot
+**Purpose:** Compare consistency between pilots
+
+**Components:**
+- **Box:** Shows the interquartile range (middle 50% of lap times)
+- **Line in box:** Median lap time
+- **Whiskers:** Extend to min/max lap times
+- **Circles:** Individual lap times (outliers)
+
+**Reading the Chart:**
+- Shorter boxes = more consistent
+- Lower boxes = faster overall
+- Long whiskers = more variation
+
+#### Race Analysis Legend
+
+Below the charts, a legend shows:
+- Pilot name with color indicator
+- Number of laps completed
+- Fastest lap time
+- Asterisk (*) marks the local pilot
+
+---
 ## Race History
 
 All races are automatically saved when you stop or clear laps.
+
+**Single-Pilot Races:** Saved with your pilot info and lap times.
+**Multi-Pilot Races:** When in Master mode, races are saved with all pilots' data including names, colors, and lap times.
 
 ### Viewing Races
 
@@ -1035,4 +1283,5 @@ Save and restore all settings.
 ---
 
 **Questions? [GitHub Discussions](https://github.com/LouisHitchcock/FPVGate/discussions) | [Report Issues](https://github.com/LouisHitchcock/FPVGate/issues)**
+
 

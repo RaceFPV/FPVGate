@@ -108,7 +108,7 @@
 #elif defined(ESP32S3)
 
 #define PIN_LED 2
-#define PIN_RGB_LED 48         // WS2812 RGB LED on ESP32-S3-DevKitC-1
+#define PIN_RGB_LED 5          // WS2812 RGB LED on GPIO5
 #define PIN_VBAT 1             // Battery voltage test pin (connect 3.0-4.2V via voltage divider)
 #define VBAT_SCALE 2           // 2:1 voltage divider (adjust based on your divider)
 #define VBAT_ADD 2             // Calibration offset: +0.2V correction
@@ -116,7 +116,7 @@
 #define PIN_RX5808_DATA 10     // CH1 on Pin 10
 #define PIN_RX5808_SELECT 11   // CH2 on Pin 11
 #define PIN_RX5808_CLOCK 12    // CH3 on Pin 12
-#define PIN_BUZZER 5
+#define PIN_BUZZER 6           // Buzzer on GPIO6 (GPIO5 used for RGB LED)
 #define BUZZER_INVERTED false
 #define PIN_MODE_SWITCH 9      // Mode selection: LOW=WiFi, HIGH=RotorHazard
 // SD Card SPI pins (tested and working configuration)
@@ -125,10 +125,11 @@
 #define PIN_SD_MOSI 35
 #define PIN_SD_MISO 37
 
-//ESP32
+//ESP32 (DevKit C1 and similar)
 #else
 
 #define PIN_LED 21
+#define PIN_RGB_LED 5          // WS2812 RGB LED on GPIO5
 #define PIN_VBAT 35
 #define VBAT_SCALE 2
 #define VBAT_ADD 2
@@ -153,8 +154,8 @@
     #define HAS_SPI_CLASS 1
 #endif
 
-// ESP32-S3 boards with RGB LED
-#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3)
+// Boards with RGB LED support
+#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(PIN_RGB_LED)
     #define HAS_RGB_LED 1
 #endif
 

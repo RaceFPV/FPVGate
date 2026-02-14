@@ -43,13 +43,13 @@ The LilyGO T-Energy S3 is an ESP32-S3 development board with built-in battery ma
 | **RX5808 CH2 (SELECT)** | 11 | SPI chip select | Same as DevKitC |
 | **RX5808 CH3 (CLOCK)** | 12 | SPI clock | Same as DevKitC |
 | **Battery Voltage** | 3 | Analog input | DIFFERENT: Built-in divider (DO NOT CHANGE) |
-| **Buzzer** | 5 | PWM output | Same as DevKitC |
+| **Buzzer** | 5 | PWM output | Different from DevKitC (uses GPIO6) |
 | **SD Card CS** | 39 | SPI chip select | Same as DevKitC |
 | **SD Card MOSI** | 35 | SPI data out | Same as DevKitC |
 | **SD Card SCK** | 36 | SPI clock | Same as DevKitC |
 | **SD Card MISO** | 37 | SPI data in | Same as DevKitC |
 | **External LED** | 2 | Digital output | Same as DevKitC |
-| **RGB LED** | 48 | WS2812 data | Same as DevKitC |
+| **RGB LED** | 48 | WS2812 data | Different from DevKitC (uses GPIO5) |
 | **Mode Switch** | 9 | Digital input | Same as DevKitC |
 
 ### Power Connections
@@ -132,7 +132,7 @@ GND           →    GND
 ```
 Buzzer Pin    →    T-Energy S3
 ─────────────────────────────
-+             →    GPIO 5 (SAME as DevKitC)
++             →    GPIO 5 (Different from DevKitC)
 -             →    GND
 ```
 
