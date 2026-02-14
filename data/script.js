@@ -165,6 +165,35 @@ async function fetchVersion() {
   }
 }
 
+// Load initial sync state on page load (determines badge and race view)
+async function loadInitialSyncState() {
+  try {
+    const response = await fetch('/config');
+    if (response.ok) {
+      const config = await response.json();
+      
+      // Set sync mode from config
+      if (config.raceSyncMode !== undefined) {
+        raceSyncMode = config.raceSyncMode;
+      }
+      if (config.syncedTimers && Array.isArray(config.syncedTimers)) {
+        syncedTimers = config.syncedTimers.slice();
+      }
+      if (config.masterHostname !== undefined) {
+        masterHostname = config.masterHostname;
+      }
+      
+      // Initialize sync devices and update UI
+      initSyncDevicesFromConfig();
+      updateSlaveModelUI();
+      
+      console.log('[Init] Loaded sync state - mode:', raceSyncMode);
+    }
+  } catch (err) {
+    console.error('[Init] Failed to load initial sync state:', err);
+  }
+}
+
 // Add localized validation message for IP pattern
 document.addEventListener("DOMContentLoaded", () => {
   // Fetch version on page load
@@ -172,6 +201,9 @@ document.addEventListener("DOMContentLoaded", () => {
   
   // Fetch this device's address for sync UI
   fetchThisDeviceAddress();
+  
+  // Load initial sync state (for badge and race view)
+  loadInitialSyncState();
   
   const webhookIP = document.getElementById("webhookIP");
   if (webhookIP) {
