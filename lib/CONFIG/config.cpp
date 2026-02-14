@@ -82,17 +82,33 @@ void Config::load(void) {
     
     DEBUG("EEPROM load: version=0x%08X, timerNumber=%d\n", conf.version, conf.timerNumber);
 
-    // If version is not current, try to restore from SD backup
+    // Handle version migration
     if (version != CONFIG_VERSION) {
-        DEBUG("EEPROM config invalid (version=%u, expected=%u)\n", version, CONFIG_VERSION);
-        if (loadFromSD()) {
-            DEBUG("Successfully restored config from SD card backup\n");
-            DEBUG("After SD restore: timerNumber=%d\n", conf.timerNumber);
-            modified = true;  // Mark as modified to write back to EEPROM
-            write();  // Write restored config to EEPROM
-        } else {
-            DEBUG("No SD backup found, using defaults\n");
-            setDefaults();
+        DEBUG("EEPROM config version mismatch (found=%u, expected=%u)\n", version, CONFIG_VERSION);
+        
+        // Migration from version 10 to 11: add masterHostname field
+        if (version == 10) {
+            DEBUG("Migrating config from v10 to v11 (adding masterHostname)\n");
+            // Initialize the new field with default value
+            memset(conf.masterHostname, 0, sizeof(conf.masterHostname));
+            // Update version
+            conf.version = CONFIG_VERSION | CONFIG_MAGIC;
+            modified = true;
+            write();
+            DEBUG("Migration complete, config preserved\n");
+        }
+        // Unknown or very old version - try SD backup or reset
+        else if (version > CONFIG_VERSION || version < 10) {
+            DEBUG("Cannot migrate from version %u\n", version);
+            if (loadFromSD()) {
+                DEBUG("Successfully restored config from SD card backup\n");
+                DEBUG("After SD restore: timerNumber=%d\n", conf.timerNumber);
+                modified = true;
+                write();
+            } else {
+                DEBUG("No SD backup found, using defaults\n");
+                setDefaults();
+            }
         }
     }
 
@@ -197,6 +213,7 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
     for (uint8_t i = 0; i < conf.syncedTimerCount; i++) {
         syncTimers.add(conf.syncedTimers[i]);
     }
+    config["masterHostname"] = conf.masterHostname;
     
     // Add battery voltage if monitor exists
     if (batteryMonitor) {
@@ -520,6 +537,13 @@ void Config::fromJson(JsonObject source) {
                     conf.syncedTimerCount++;
                 }
             }
+            modified = true;
+        }
+    }
+    if (source.containsKey("masterHostname")) {
+        const char* hostname = source["masterHostname"] | "";
+        if (strcmp(hostname, conf.masterHostname) != 0) {
+            strlcpy(conf.masterHostname, hostname, sizeof(conf.masterHostname));
             modified = true;
         }
     }
@@ -972,6 +996,17 @@ void Config::setBeepVolume(uint8_t volume) {
     }
 }
 
+char* Config::getMasterHostname() {
+    return conf.masterHostname;
+}
+
+void Config::setMasterHostname(const char* hostname) {
+    if (strcmp(hostname, conf.masterHostname) != 0) {
+        strlcpy(conf.masterHostname, hostname, sizeof(conf.masterHostname));
+        modified = true;
+    }
+}
+
 void Config::setDefaults(void) {
     DEBUG("Setting EEPROM defaults\n");
     // Reset everything to 0/false and then just set anything that zero is not appropriate
@@ -1024,6 +1059,7 @@ void Config::setDefaults(void) {
     conf.syncedTimerCount = 0;  // No synced timers
     memset(conf.syncedTimers, 0, sizeof(conf.syncedTimers));  // Clear synced timers
     conf.beepVolume = 100;  // Default 100% volume
+    strlcpy(conf.masterHostname, "", sizeof(conf.masterHostname));  // Empty master hostname
     modified = true;
     write();
 }

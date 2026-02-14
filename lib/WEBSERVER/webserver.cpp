@@ -117,6 +117,73 @@ void Webserver::sendRaceStateEvent(const char* state) {
     events.send(state, "raceState");
 }
 
+void Webserver::sendSlaveLapEvent(uint32_t lapTimeMs, const char* pilotName, const char* pilotPhonetic, uint32_t pilotColor, const char* slaveHostname) {
+    if (!servicesStarted) return;
+    
+    // Build JSON payload for SSE event
+    DynamicJsonDocument doc(256);
+    doc["lapTimeMs"] = lapTimeMs;
+    doc["pilotName"] = pilotName;
+    doc["pilotPhonetic"] = pilotPhonetic;
+    doc["pilotColor"] = pilotColor;
+    doc["slaveHostname"] = slaveHostname;
+    
+    String output;
+    serializeJson(doc, output);
+    events.send(output.c_str(), "slaveLap");
+}
+
+// Send lap data to master (for slave mode)
+void Webserver::sendLapToMaster(uint32_t lapTimeMs) {
+    DEBUG("[Slave] sendLapToMaster called, lapTime=%u, syncMode=%d\n", lapTimeMs, conf->getRaceSyncMode());
+    
+    // Only send if in slave mode and master hostname is configured
+    if (conf->getRaceSyncMode() != RACE_SYNC_SLAVE) {
+        DEBUG("[Slave] Not in slave mode (mode=%d), skipping\n", conf->getRaceSyncMode());
+        return;
+    }
+    
+    const char* masterHostname = conf->getMasterHostname();
+    if (masterHostname[0] == '\0') {
+        DEBUG("[Slave] No master hostname configured, not sending lap\n");
+        return;
+    }
+    
+    char url[96];
+    snprintf(url, sizeof(url), "http://%s/timer/remoteLap", masterHostname);
+    
+    DEBUG("[Slave] Sending lap to master: %s (time=%u ms)\n", url, lapTimeMs);
+    
+    HTTPClient http;
+    http.setConnectTimeout(500);
+    http.setTimeout(1000);
+    
+    if (http.begin(url)) {
+        http.addHeader("Content-Type", "application/json");
+        
+        // Build JSON payload with pilot info
+        DynamicJsonDocument doc(256);
+        doc["lapTimeMs"] = lapTimeMs;
+        doc["pilotName"] = conf->getPilotCallsign();
+        doc["pilotPhonetic"] = conf->getPilotPhonetic();
+        doc["pilotColor"] = conf->getPilotColor();
+        doc["slaveHostname"] = String(wifi_hostname) + ".local";
+        
+        String payload;
+        serializeJson(doc, payload);
+        
+        int httpCode = http.POST(payload);
+        if (httpCode <= 0) {
+            DEBUG("[Slave] FAILED to send lap: %s\n", http.errorToString(httpCode).c_str());
+        } else {
+            DEBUG("[Slave] Lap sent OK (HTTP %d)\n", httpCode);
+        }
+        http.end();
+    } else {
+        DEBUG("[Slave] http.begin() FAILED\n");
+    }
+}
+
 // Send sync command to all configured slave timers
 static void sendSyncCommand(Config* config, const char* endpoint) {
     if (config->getRaceSyncMode() != 1) return;  // Only master sends
@@ -600,6 +667,11 @@ EEPROM:\n\
             if (webhooks && conf->getGateLEDsEnabled() && conf->getWebhookLap()) {
                 webhooks->triggerLap();
             }
+            // Send lap to master if in slave mode
+            if (conf->getRaceSyncMode() == 2) {
+                DEBUG("[Slave] Manual lap - sending to master: %u ms\n", lapTimeMs);
+                sendLapToMaster(lapTimeMs);
+            }
         }
         request->send(200, "application/json", "{\"status\": \"OK\"}");
     });
@@ -697,6 +769,60 @@ EEPROM:\n\
         response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         request->send(response);
     });
+    
+    // Test endpoint to manually trigger slave-to-master lap send
+    server.on("/timer/testSlaveToMaster", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        DEBUG("[Slave] testSlaveToMaster endpoint called\n");
+        
+        // Force call sendLapToMaster with a test lap time
+        uint32_t testLapTime = 12345; // Test lap time in ms
+        sendLapToMaster(testLapTime);
+        
+        DynamicJsonDocument doc(256);
+        doc["status"] = "OK";
+        doc["raceSyncMode"] = conf->getRaceSyncMode();
+        doc["masterHostname"] = conf->getMasterHostname();
+        doc["testLapTime"] = testLapTime;
+        
+        String output;
+        serializeJson(doc, output);
+        
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", output);
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(response);
+    });
+
+    // Remote lap endpoint - receives lap data from slave devices
+    server.on("/timer/remoteLap", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        AsyncWebServerResponse *response = request->beginResponse(204);
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        request->send(response);
+    });
+    
+    AsyncCallbackJsonWebHandler *remoteLapHandler = new AsyncCallbackJsonWebHandler("/timer/remoteLap", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject jsonObj = json.as<JsonObject>();
+        
+        uint32_t lapTimeMs = jsonObj["lapTimeMs"] | 0;
+        const char* pilotName = jsonObj["pilotName"] | "Unknown";
+        const char* pilotPhonetic = jsonObj["pilotPhonetic"] | pilotName;
+        uint32_t pilotColor = jsonObj["pilotColor"] | 0x0080FF;
+        const char* slaveHostname = jsonObj["slaveHostname"] | "unknown";
+        
+        DEBUG("[Master] Received remote lap from %s: %u ms (pilot: %s)\n", slaveHostname, lapTimeMs, pilotName);
+        
+        // Broadcast to all connected clients via SSE
+        if (transportMgr) {
+            transportMgr->broadcastSlaveLapEvent(lapTimeMs, pilotName, pilotPhonetic, pilotColor, slaveHostname);
+        }
+        
+        // Add CORS headers for cross-origin requests from slave devices
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"status\": \"OK\"}");
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        request->send(response);
+    });
+    server.addHandler(remoteLapHandler);
 
     server.on("/timer/rssiStart", HTTP_POST, [this](AsyncWebServerRequest *request) {
         sendRssi = true;

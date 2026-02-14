@@ -16,6 +16,7 @@
         "slave_mode_indicator": "Slave Mode - Controlled by Master Timer",
         "slave_mode_short": "SLAVE",
         "master_mode_short": "MASTER",
+        "personal_mode_short": "PERSONAL",
         "connected": "{mode}: Connected",
         "disconnected": "Disconnected",
         "status_connected": "Connected",
@@ -37,7 +38,8 @@
             "lap_singular": "1 lap",
             "lap_plural": "{n} laps",
             "seconds_short": "s"
-        }
+        },
+        "no_laps": "No laps recorded yet"
     },
     "analysis": {
         "title": "Lap Analysis",
@@ -320,9 +322,24 @@
             "add_timer": "Add Timer",
             "add_placeholder": "e.g. fpvgate2.local",
             "no_timers": "No synced timers configured",
+            "test_all": "Test All Connections",
             "master_note": "Start/Stop/Clear commands will be sent to all synced timers.",
             "slave_active": "Slave Mode Active",
-            "slave_note": "This timer is controlled by a master timer. Race controls are disabled."
+            "slave_note": "Race start/stop buttons are disabled. This device will respond to commands from a master timer.",
+            "master_hostname": "Master Hostname/IP:",
+            "master_placeholder": "e.g., fpvgate.local or 192.168.1.100",
+            "master_tip": "Enter the master timer's address to send lap times",
+            "save_master": "Save Master Address",
+            "test_master": "Test Master Connection",
+            "devices_title": "Sync Devices",
+            "this_device": "This Device",
+            "add_device": "Add Device:",
+            "add_device_placeholder": "e.g., 192.168.0.100 or fpvgate2.local",
+            "add_device_btn": "Add Device",
+            "role_personal": "Personal",
+            "role_master": "Master",
+            "role_slave": "Slave",
+            "info_note": "Set one device as Master to control race start/stop. Other devices set as Slave will follow the Master and send their lap times to it."
         },
         "webhooks": {
             "title": "Webhooks",
@@ -494,7 +511,10 @@
         "invalid_ip": "Invalid IP address format (e.g. 192.168.0.75)",
         "enter_timer_hostname": "Please enter a timer hostname",
         "timer_already_added": "This timer is already in the list",
-        "max_timers_reached": "Maximum of 5 synced timers allowed"
+        "max_timers_reached": "Maximum of 5 synced timers allowed",
+        "enter_device_address": "Please enter a device address",
+        "device_already_added": "This device is already in the list",
+        "max_devices_reached": "Maximum 6 devices allowed"
     },
     "osd": {
         "lap": "Lap {n}",

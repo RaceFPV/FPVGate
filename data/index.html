@@ -22,6 +22,7 @@
           <h1>FPVGate</h1>
         </div>
         <div class="header-right">
+          <div id="personalModeRaceBanner" class="personal-mode-indicator" style="display: none;" data-i18n="race.personal_mode_short">PERSONAL</div>
           <div id="masterModeRaceBanner" class="master-mode-indicator" style="display: none;" data-i18n="race.master_mode_short">MASTER</div>
           <div id="slaveModeRaceBanner" class="slave-mode-indicator" style="display: none;" data-i18n="race.slave_mode_short">SLAVE</div>
           <div id="batteryIndicator" class="battery-indicator" style="display: none;">
@@ -60,14 +61,20 @@
           <button id="addLapButton" onclick="addManualLap()" disabled data-i18n="race.add_lap">Add Lap</button>
           <button id="clearLapsButton" onclick="clearLaps()" data-i18n="race.clear_laps">Clear Laps</button>
         </div>
-        <table id="lapTable">
-          <tr>
-            <th data-i18n="race.table.lap_no">Lap No</th>
-            <th data-i18n="race.table.lap_time">Lap Time</th>
-            <th data-i18n="race.table.gap">Gap</th>
-            <th data-i18n="race.table.total_time">Total Time</th>
-          </tr>
-        </table>
+        <!-- Unified Multi-Pilot Race View -->
+        <div id="unifiedRaceView">
+          <table id="lapTable" class="unified-lap-table">
+            <thead id="lapTableHead">
+              <tr>
+                <th data-i18n="race.table.lap_no">Lap</th>
+                <!-- Pilot columns added dynamically -->
+              </tr>
+            </thead>
+            <tbody id="lapTableBody">
+              <!-- Lap rows added dynamically -->
+            </tbody>
+          </table>
+        </div>
 
         <div id="lapAnalysis" class="lap-analysis">
           <h3 data-i18n="analysis.title">Lap Analysis</h3>
@@ -763,46 +770,35 @@
                 <p style="margin: 0" data-i18n="settings.sync.description">Synchronize race start/stop across multiple FPVGate devices on the same network.</p>
               </div>
 
-              <div class="config-item">
-                <label data-i18n="settings.sync.mode">Sync Mode:</label>
-                <div style="flex: 1; display: flex; flex-direction: column; gap: 8px">
-                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
-                    <input type="radio" name="raceSyncMode" value="0" checked onchange="updateRaceSyncMode(0)" />
-                    <span data-i18n="settings.sync.disabled">Disabled</span>
-                    <span style="color: var(--secondary-color); font-size: 12px" data-i18n="settings.sync.disabled_desc">- This timer operates independently</span>
-                  </label>
-                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
-                    <input type="radio" name="raceSyncMode" value="1" onchange="updateRaceSyncMode(1)" />
-                    <span data-i18n="settings.sync.master">Master</span>
-                    <span style="color: var(--secondary-color); font-size: 12px" data-i18n="settings.sync.master_desc">- Control race on this timer and all synced timers</span>
-                  </label>
-                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
-                    <input type="radio" name="raceSyncMode" value="2" onchange="updateRaceSyncMode(2)" />
-                    <span data-i18n="settings.sync.slave">Slave</span>
-                    <span style="color: var(--secondary-color); font-size: 12px" data-i18n="settings.sync.slave_desc">- Race controlled by master (buttons disabled)</span>
-                  </label>
+              <!-- Sync Devices List -->
+              <div id="syncDevicesSection">
+                <h4 style="margin-bottom: 12px" data-i18n="settings.sync.devices_title">Sync Devices</h4>
+                
+                <!-- Device List -->
+                <div id="syncDevicesList" style="margin-bottom: 16px">
+                  <!-- This Device row (auto-populated) and other devices rendered by JS -->
                 </div>
-              </div>
-
-              <div id="masterSyncOptions" style="display: none; margin-left: 24px; margin-top: 12px">
-                <h4 style="margin-bottom: 12px" data-i18n="settings.sync.synced_timers">Synced Timers</h4>
+                
+                <!-- Add Device Input -->
                 <div class="config-item">
-                  <label for="syncTimerInput" data-i18n="settings.sync.add_timer">Add Timer:</label>
-                  <input type="text" id="syncTimerInput" placeholder="e.g., fpvgate2.local" maxlength="31" style="flex: 1" data-i18n-placeholder="settings.sync.add_placeholder" />
+                  <label for="addSyncDeviceInput" data-i18n="settings.sync.add_device">Add Device:</label>
+                  <input type="text" id="addSyncDeviceInput" placeholder="e.g., 192.168.0.100 or fpvgate2.local" maxlength="31" style="flex: 1" data-i18n-placeholder="settings.sync.add_device_placeholder" />
                 </div>
-                <button onclick="addSyncedTimer()" style="width: 100%; margin-top: 8px" data-i18n="settings.sync.add_timer">Add Timer</button>
-                <div id="syncedTimersList" style="margin-top: 16px">
-                  <p style="color: var(--secondary-color); text-align: center; padding: 16px" data-i18n="settings.sync.no_timers">No synced timers configured</p>
-                </div>
-                <button onclick="testAllSyncedTimers()" style="width: 100%; margin-top: 12px; background-color: var(--accent-color)" data-i18n="settings.sync.test_all">Test All Connections</button>
+                <button onclick="addSyncDevice()" style="width: 100%; margin-top: 8px" data-i18n="settings.sync.add_device_btn">Add Device</button>
+                
+                <!-- Test All Button -->
+                <button onclick="testAllSyncDevices()" style="width: 100%; margin-top: 12px; background-color: var(--accent-color)" data-i18n="settings.sync.test_all">Test All Connections</button>
+                
+                <!-- Info Box -->
                 <div style="margin-top: 12px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 13px">
-                  <p style="margin: 0; color: var(--secondary-color)" data-i18n="settings.sync.master_note">When you start/stop a race, commands will be sent to all synced timers. Max 5 timers.</p>
+                  <p style="margin: 0; color: var(--secondary-color)" data-i18n="settings.sync.info_note">Set one device as Master to control race start/stop. Other devices set as Slave will follow the Master and send their lap times to it.</p>
                 </div>
-              </div>
-
-              <div id="slaveModeIndicator" style="display: none; margin-top: 12px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--primary-color)">
-                <p style="margin: 0; font-weight: bold; color: var(--primary-color)" data-i18n="settings.sync.slave_active">Slave Mode Active</p>
-                <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--secondary-color)" data-i18n="settings.sync.slave_note">Race start/stop buttons are disabled. This device will respond to commands from a master timer.</p>
+                
+                <!-- Slave Mode Indicator (shown when this device is slave) -->
+                <div id="slaveModeIndicator" style="display: none; margin-top: 12px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--primary-color)">
+                  <p style="margin: 0; font-weight: bold; color: var(--primary-color)" data-i18n="settings.sync.slave_active">Slave Mode Active</p>
+                  <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--secondary-color)" data-i18n="settings.sync.slave_note">Race start/stop buttons are disabled. This device will respond to commands from a master timer.</p>
+                </div>
               </div>
 
               <div style="display: flex; gap: 12px; margin-top: 16px">

@@ -2010,3 +2010,84 @@ footer {
   filter: brightness(0) saturate(100%) invert(100%);
 }
 
+/* Mode Indicators */
+.personal-mode-indicator {
+  background-color: #3498db;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+/* Unified Multi-Pilot Race Table */
+.unified-lap-table {
+  margin-top: 16px;
+}
+
+.unified-lap-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.unified-lap-table th.pilot-header {
+  min-width: 120px;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 3px solid currentColor;
+}
+
+.unified-lap-table th.lap-header {
+  width: 50px;
+  background-color: var(--bg-secondary);
+  color: var(--text-color);
+}
+
+.unified-lap-table td.pilot-lap {
+  text-align: center;
+  padding: 8px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.unified-lap-table td.pilot-lap.fastest {
+  background-color: rgba(243, 156, 18, 0.3) !important;
+  font-weight: bold;
+}
+
+.unified-lap-table td.pilot-lap .lap-time {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.unified-lap-table td.pilot-lap .lap-gap {
+  font-size: 11px;
+  color: var(--secondary-color);
+  margin-top: 2px;
+}
+
+.unified-lap-table td.pilot-lap .lap-gap.positive {
+  color: #e74c3c;
+}
+
+.unified-lap-table td.pilot-lap .lap-gap.negative {
+  color: #2ecc71;
+}
+
+.unified-lap-table td.lap-number {
+  font-weight: bold;
+  background-color: var(--bg-secondary);
+  text-align: center;
+  width: 50px;
+}
+
+/* No pilots message */
+.no-pilots-message {
+  text-align: center;
+  padding: 24px;
+  color: var(--secondary-color);
+  font-style: italic;
+}
+

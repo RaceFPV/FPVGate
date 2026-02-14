@@ -282,6 +282,9 @@ void loop() {
     if (timer.isLapAvailable()) {
         uint32_t lapTime = timer.getLapTime();
         transportManager.broadcastLapEvent(lapTime);
+        
+        // If in slave mode, also send lap to master
+        ws.sendLapToMaster(lapTime);
     }
     
     // Process queued webhooks (non-blocking)

@@ -117,7 +117,17 @@ var trackLapLength = 0.0; // Length of one lap (meters)
 var timerNumber = 0; // LEGACY: Timer number (no longer used for hostname)
 var raceSyncMode = 0; // 0=disabled, 1=master, 2=slave
 var syncedTimers = []; // Array of synced timer hostnames (for master mode)
+var masterHostname = ""; // Master hostname for slave mode
 var configLoaded = false; // Flag to prevent saving before initial config load
+
+// Unified sync devices list (new UI)
+// Each device: { address: string, role: 'disabled'|'master'|'slave', isThisDevice: boolean }
+var syncDevices = [];
+var thisDeviceAddress = ""; // This device's IP address
+
+// Remote pilots state (for master mode - tracks laps from slave devices)
+var remotePilots = {}; // { slaveHostname: { pilotName, pilotPhonetic, pilotColor, lapTimes: [], lapNo: -1 } }
+var remotePilotsCollapsed = false;
 
 var timerInterval;
 var lapTimerStartMs = 0; // Start time for current lap timer
@@ -159,6 +169,9 @@ async function fetchVersion() {
 document.addEventListener("DOMContentLoaded", () => {
   // Fetch version on page load
   fetchVersion();
+  
+  // Fetch this device's address for sync UI
+  fetchThisDeviceAddress();
   
   const webhookIP = document.getElementById("webhookIP");
   if (webhookIP) {
@@ -382,6 +395,21 @@ function setupWiFiEvents() {
       },
       false
     );
+    
+    eventSource.addEventListener(
+      "slaveLap",
+      function (e) {
+        window.lastSSEEvent = Date.now();
+        console.log("[SSE] slaveLap event:", e.data);
+        try {
+          const data = JSON.parse(e.data);
+          handleSlaveLapEvent(data);
+        } catch (err) {
+          console.error("[SSE] Error parsing slaveLap event:", err);
+        }
+      },
+      false
+    );
   }
 }
 
@@ -414,11 +442,6 @@ function handleRaceStateEvent(state) {
 
 // Reset lap display without sending commands
 function resetLapDisplay() {
-  var tableHeaderRowCount = 1;
-  var rowCount = lapTable.rows.length;
-  for (var i = tableHeaderRowCount; i < rowCount; i++) {
-    lapTable.deleteRow(tableHeaderRowCount);
-  }
   lapNo = -1;
   lapTimes = [];
   updateLapCounter();
@@ -428,6 +451,315 @@ function resetLapDisplay() {
   if (analysisContent) {
     analysisContent.innerHTML = `<p class="no-data">${i18n.t("analysis.no_data")}</p>`;
   }
+  
+  // Clear remote pilots data
+  remotePilots = {};
+  
+  // Re-render unified view (will show empty state)
+  renderUnifiedRaceView();
+}
+
+// ============================================
+// Remote Pilots Functions (Master Mode)
+// ============================================
+
+// Handle slave lap event from SSE
+function handleSlaveLapEvent(data) {
+  const { lapTimeMs, pilotName, pilotPhonetic, pilotColor, slaveHostname } = data;
+  
+  console.log(`[Remote] Lap from ${slaveHostname}: ${pilotName} - ${lapTimeMs}ms`);
+  
+  // Initialize pilot if not exists
+  if (!remotePilots[slaveHostname]) {
+    remotePilots[slaveHostname] = {
+      pilotName: pilotName,
+      pilotPhonetic: pilotPhonetic || pilotName,
+      pilotColor: pilotColor || 0x0080FF,
+      lapTimes: [],
+      lapNo: -1
+    };
+  }
+  
+  // Update pilot info (in case it changed)
+  remotePilots[slaveHostname].pilotName = pilotName;
+  remotePilots[slaveHostname].pilotPhonetic = pilotPhonetic || pilotName;
+  remotePilots[slaveHostname].pilotColor = pilotColor;
+  
+  // Add lap
+  const lapTime = (lapTimeMs / 1000).toFixed(2);
+  remotePilots[slaveHostname].lapNo += 1;
+  remotePilots[slaveHostname].lapTimes.push(parseFloat(lapTime));
+  
+  // Show remote pilots section if in master mode
+  updateRemotePilotsVisibility();
+  
+  // Render the updated pilot list
+  renderRemotePilotsList();
+  
+  // Announce via TTS
+  announceRemotePilotLap(remotePilots[slaveHostname], lapTime);
+}
+
+// Announce remote pilot lap via TTS
+function announceRemotePilotLap(pilot, lapTime) {
+  if (!audioEnabled) return;
+  
+  const lapNo = pilot.lapNo;
+  const name = pilot.pilotPhonetic || pilot.pilotName;
+  
+  let text;
+  if (lapNo === 0) {
+    // Gate 1
+    text = `<p>${name} Gate 1, ${lapTime}</p>`;
+  } else {
+    // Regular lap
+    text = `<p>${name} Lap ${lapNo}, ${lapTime}</p>`;
+  }
+  
+  console.log(`[TTS] Remote pilot announcement: ${text}`);
+  queueSpeak(text);
+}
+
+// Update visibility of remote pilots section based on sync mode
+function updateRemotePilotsVisibility() {
+  const section = document.getElementById("remotePilotsSection");
+  if (!section) return;
+  
+  // Show in master mode when there are remote pilots
+  const hasRemotePilots = Object.keys(remotePilots).length > 0;
+  section.style.display = (raceSyncMode === 1 && hasRemotePilots) ? "block" : "none";
+}
+
+// Toggle remote pilots collapse
+function toggleRemotePilots() {
+  remotePilotsCollapsed = !remotePilotsCollapsed;
+  const content = document.getElementById("remotePilotsContent");
+  const icon = document.getElementById("remotePilotsIcon");
+  
+  if (content) {
+    content.style.display = remotePilotsCollapsed ? "none" : "block";
+  }
+  if (icon) {
+    icon.innerHTML = remotePilotsCollapsed ? "&#9654;" : "&#9660;";
+  }
+}
+
+// Render the remote pilots list (LEGACY - now uses unified view)
+function renderRemotePilotsList() {
+  // Trigger unified view render instead
+  renderUnifiedRaceView();
+}
+
+// ============================================
+// Unified Multi-Pilot Race View
+// ============================================
+
+// Get local pilot info
+function getLocalPilotInfo() {
+  const callsignInput = document.getElementById("pcallsign");
+  const colorInput = document.getElementById("pilotColor");
+  const pilotName = callsignInput && callsignInput.value ? callsignInput.value : (pilotNameInput.value || "Local");
+  let pilotColor = 0x0080FF; // Default blue
+  if (colorInput && colorInput.value) {
+    pilotColor = parseInt(colorInput.value.replace("#", ""), 16);
+  }
+  return { pilotName, pilotColor, lapTimes: lapTimes.slice(), lapNo: lapNo };
+}
+
+// Render the race view - switches between personal (single) and multi-pilot view
+function renderUnifiedRaceView() {
+  // Use personal (single-pilot) view when sync is disabled
+  if (raceSyncMode === 0) {
+    renderPersonalRaceView();
+    return;
+  }
+  
+  // Use multi-pilot view for master/slave sync modes
+  renderMultiPilotRaceView();
+}
+
+// Render classic single-pilot race view (Personal mode)
+function renderPersonalRaceView() {
+  const thead = document.getElementById("lapTableHead");
+  const tbody = document.getElementById("lapTableBody");
+  if (!thead || !tbody) return;
+  
+  // Build classic header
+  thead.innerHTML = `<tr>
+    <th>${i18n.t("race.table.lap_no") || "Lap No"}</th>
+    <th>${i18n.t("race.table.lap_time") || "Lap Time"}</th>
+    <th>${i18n.t("race.table.gap") || "Gap"}</th>
+    <th>${i18n.t("race.table.total_time") || "Total Time"}</th>
+  </tr>`;
+  
+  // Build body rows
+  let bodyHtml = '';
+  let totalTime = 0;
+  let fastestIdx = -1;
+  let fastestTime = Infinity;
+  
+  // Find fastest lap (excluding gate 1)
+  for (let i = 1; i < lapTimes.length; i++) {
+    if (lapTimes[i] < fastestTime) {
+      fastestTime = lapTimes[i];
+      fastestIdx = i;
+    }
+  }
+  
+  for (let i = 0; i < lapTimes.length; i++) {
+    const lapTime = lapTimes[i];
+    totalTime += lapTime;
+    const lapLabel = i === 0 ? '0' : i;
+    const isFastest = i === fastestIdx && i > 0;
+    
+    // Calculate gap from previous lap
+    let gap = '-';
+    if (i > 0) {
+      const diff = (lapTime - lapTimes[i - 1]).toFixed(2);
+      gap = (diff > 0 ? '+' : '') + diff + 's';
+    }
+    
+    // Format lap time display
+    let lapTimeDisplay;
+    if (i === 0) {
+      lapTimeDisplay = i18n.t("race.gate1_table", { s: lapTime.toFixed(2) }) || `Gate 1: ${lapTime.toFixed(2)}s`;
+    } else {
+      lapTimeDisplay = lapTime.toFixed(2) + 's';
+    }
+    
+    bodyHtml += `<tr class="${isFastest ? 'fastest-lap' : ''}">
+      <td>${lapLabel}</td>
+      <td>${lapTimeDisplay}</td>
+      <td>${gap}</td>
+      <td>${totalTime.toFixed(2)}s</td>
+    </tr>`;
+  }
+  
+  if (lapTimes.length === 0) {
+    bodyHtml = `<tr><td colspan="4" class="no-pilots-message">${i18n.t("race.no_laps") || "No laps recorded yet"}</td></tr>`;
+  }
+  
+  tbody.innerHTML = bodyHtml;
+}
+
+// Render multi-pilot race view (Master/Slave sync modes)
+function renderMultiPilotRaceView() {
+  const thead = document.getElementById("lapTableHead");
+  const tbody = document.getElementById("lapTableBody");
+  if (!thead || !tbody) return;
+  
+  // Collect all pilots
+  const pilots = [];
+  
+  // Add local pilot first
+  const localPilot = getLocalPilotInfo();
+  pilots.push({
+    id: 'local',
+    name: localPilot.pilotName,
+    color: localPilot.pilotColor,
+    lapTimes: localPilot.lapTimes,
+    lapNo: localPilot.lapNo,
+    isLocal: true
+  });
+  
+  // Add remote pilots
+  for (const hostname of Object.keys(remotePilots)) {
+    const pilot = remotePilots[hostname];
+    pilots.push({
+      id: hostname,
+      name: pilot.pilotName,
+      color: pilot.pilotColor || 0x0080FF,
+      lapTimes: pilot.lapTimes,
+      lapNo: pilot.lapNo,
+      isLocal: false
+    });
+  }
+  
+  // Find max laps across all pilots
+  let maxLapCount = 0;
+  for (const pilot of pilots) {
+    if (pilot.lapTimes.length > maxLapCount) {
+      maxLapCount = pilot.lapTimes.length;
+    }
+  }
+  
+  // Find fastest lap for each pilot (excluding gate 1 / lap 0)
+  const fastestLaps = {};
+  for (const pilot of pilots) {
+    let fastest = Infinity;
+    let fastestIdx = -1;
+    for (let i = 1; i < pilot.lapTimes.length; i++) {
+      if (pilot.lapTimes[i] < fastest) {
+        fastest = pilot.lapTimes[i];
+        fastestIdx = i;
+      }
+    }
+    fastestLaps[pilot.id] = fastestIdx;
+  }
+  
+  // Build header row
+  let headerHtml = '<tr><th class="lap-header">' + (i18n.t("race.table.lap_no") || "Lap") + '</th>';
+  for (const pilot of pilots) {
+    const colorHex = '#' + (pilot.color).toString(16).padStart(6, '0');
+    const localBadge = pilot.isLocal ? ' ★' : '';
+    headerHtml += `<th class="pilot-header" style="background-color: ${colorHex}; color: white;">${pilot.name}${localBadge}</th>`;
+  }
+  headerHtml += '</tr>';
+  thead.innerHTML = headerHtml;
+  
+  // Build body rows
+  let bodyHtml = '';
+  for (let lapIdx = 0; lapIdx < maxLapCount; lapIdx++) {
+    const lapLabel = lapIdx === 0 ? 'G1' : lapIdx;
+    
+    bodyHtml += `<tr><td class="lap-number">${lapLabel}</td>`;
+    
+    for (const pilot of pilots) {
+      const colorHex = '#' + (pilot.color).toString(16).padStart(6, '0');
+      
+      if (lapIdx < pilot.lapTimes.length) {
+        const lapTime = pilot.lapTimes[lapIdx];
+        const isFastest = lapIdx === fastestLaps[pilot.id] && lapIdx > 0;
+        
+        // Calculate gap from previous lap
+        let gapHtml = '';
+        if (lapIdx > 0 && lapIdx < pilot.lapTimes.length) {
+          const prevTime = pilot.lapTimes[lapIdx - 1];
+          const diff = (lapTime - prevTime).toFixed(2);
+          const gapClass = diff > 0 ? 'positive' : (diff < 0 ? 'negative' : '');
+          gapHtml = `<div class="lap-gap ${gapClass}">${diff > 0 ? '+' : ''}${diff}s</div>`;
+        }
+        
+        bodyHtml += `
+          <td class="pilot-lap${isFastest ? ' fastest' : ''}" style="border-left: 3px solid ${colorHex};">
+            <div class="lap-time">${lapTime.toFixed(2)}s</div>
+            ${gapHtml}
+          </td>
+        `;
+      } else {
+        bodyHtml += `<td class="pilot-lap" style="border-left: 3px solid ${colorHex}; opacity: 0.3;">-</td>`;
+      }
+    }
+    
+    bodyHtml += '</tr>';
+  }
+  
+  // Show message if no laps
+  if (maxLapCount === 0) {
+    bodyHtml = `<tr><td colspan="${pilots.length + 1}" class="no-pilots-message">${i18n.t("race.no_laps") || "No laps recorded yet"}</td></tr>`;
+  }
+  
+  tbody.innerHTML = bodyHtml;
+}
+
+// Save master hostname
+function saveMasterHostname() {
+  const input = document.getElementById("masterHostname");
+  if (!input) return;
+  
+  masterHostname = input.value.trim();
+  console.log("[Sync] Saving master hostname:", masterHostname);
+  autoSaveConfig();
 }
 
 // Race running state
@@ -1336,6 +1668,7 @@ async function saveConfig() {
     timerNumber: timerNumber,
     raceSyncMode: raceSyncMode,
     syncedTimers: syncedTimers,
+    masterHostname: masterHostname,
   };
 
   if (usbConnected && transportManager) {
@@ -1729,39 +2062,8 @@ function addLap(lapStr) {
   lapTimerStartMs = Date.now(); // Reset lap timer
   currentLapDistance = 0.0; // Reset distance counter
 
-  // Calculate total time so far
-  const totalTime = lapTimes.reduce((sum, time) => sum + time, 0).toFixed(2);
-
-  // Calculate gap from previous lap (for regular laps only, not gate 1)
-  let gap = "";
-  if (lapNo > 1) {
-    gap = (newLap - lapTimes[lapTimes.length - 2]).toFixed(2);
-    if (gap > 0) gap = "+" + gap;
-  }
-
-  const table = document.getElementById("lapTable");
-  const row = table.insertRow();
-  row.setAttribute("data-lap-index", lapTimes.length - 1);
-
-  const cell1 = row.insertCell(0); // Lap No
-  const cell2 = row.insertCell(1); // Lap Time
-  const cell3 = row.insertCell(2); // Gap
-  const cell4 = row.insertCell(3); // Total Time
-
-  cell1.innerHTML = lapNo;
-
-  if (lapNo == 0) {
-    cell2.innerHTML = i18n.t("race.gate1_table", { s: lapStr });
-    cell3.innerHTML = "-";
-  } else {
-    cell2.innerHTML = lapStr + i18n.t("race.table.seconds_short");
-    cell3.innerHTML = gap ? gap + i18n.t("race.table.seconds_short") : "-";
-  }
-
-  cell4.innerHTML = totalTime + i18n.t("race.table.seconds_short");
-
-  // Highlight fastest lap
-  highlightFastestLap();
+  // Render unified multi-pilot view
+  renderUnifiedRaceView();
 
   switch (announcerSelect.options[announcerSelect.selectedIndex].value) {
     case "beep":
@@ -2535,8 +2837,9 @@ function updateRaceSyncMode(mode, skipSave = false) {
   }
 }
 
-// Update race buttons and banner for slave/master mode
+// Update race buttons and banner for slave/master/personal mode
 function updateSlaveModelUI() {
+  const personalBanner = document.getElementById("personalModeRaceBanner");
   const slaveBanner = document.getElementById("slaveModeRaceBanner");
   const masterBanner = document.getElementById("masterModeRaceBanner");
   const startBtn = document.getElementById("startRaceButton");
@@ -2545,6 +2848,7 @@ function updateSlaveModelUI() {
   
   if (raceSyncMode === 2) {
     // Slave mode - disable buttons and show slave banner
+    if (personalBanner) personalBanner.style.display = "none";
     if (slaveBanner) slaveBanner.style.display = "block";
     if (masterBanner) masterBanner.style.display = "none";
     if (startBtn) {
@@ -2557,6 +2861,7 @@ function updateSlaveModelUI() {
     }
   } else if (raceSyncMode === 1) {
     // Master mode - enable buttons and show master banner
+    if (personalBanner) personalBanner.style.display = "none";
     if (slaveBanner) slaveBanner.style.display = "none";
     if (masterBanner) masterBanner.style.display = "block";
     if (startBtn) {
@@ -2568,7 +2873,8 @@ function updateSlaveModelUI() {
       clearBtn.style.opacity = "1";
     }
   } else {
-    // Disabled mode - enable buttons and hide both banners
+    // Personal mode - enable buttons and show personal banner
+    if (personalBanner) personalBanner.style.display = "block";
     if (slaveBanner) slaveBanner.style.display = "none";
     if (masterBanner) masterBanner.style.display = "none";
     if (startBtn) {
@@ -2580,6 +2886,9 @@ function updateSlaveModelUI() {
       clearBtn.style.opacity = "1";
     }
   }
+  
+  // Re-render the race view when mode changes
+  renderUnifiedRaceView();
 }
 
 // Add a synced timer to the list
@@ -2675,34 +2984,373 @@ async function testAllSyncedTimers() {
   }
 }
 
-// Render the synced timers list UI
-function renderSyncedTimersList() {
-  const container = document.getElementById("syncedTimersList");
-  if (!container) return;
+// Test connection from slave to master
+async function testMasterConnection() {
+  const masterInput = document.getElementById("masterHostname");
+  const statusDiv = document.getElementById("masterConnectionStatus");
   
-  if (syncedTimers.length === 0) {
-    container.innerHTML = `<p style="color: var(--secondary-color); text-align: center; padding: 16px" data-i18n="settings.sync.no_timers">${i18n.t("settings.sync.no_timers") || "No synced timers configured"}</p>`;
+  if (!masterInput || !statusDiv) return;
+  
+  let masterHostname = masterInput.value.trim();
+  if (!masterHostname) {
+    statusDiv.style.display = "block";
+    statusDiv.style.backgroundColor = "rgba(231, 76, 60, 0.2)";
+    statusDiv.style.color = "#e74c3c";
+    statusDiv.textContent = i18n.t("messages.enter_master_hostname") || "Please enter master hostname/IP first";
     return;
   }
   
+  // Add .local if not present and not an IP address
+  if (!masterHostname.includes(".") || (!masterHostname.includes(":") && !masterHostname.match(/^\d+\.\d+\.\d+\.\d+$/))) {
+    if (!masterHostname.includes(".")) {
+      masterHostname += ".local";
+    }
+  }
+  
+  statusDiv.style.display = "block";
+  statusDiv.style.backgroundColor = "rgba(52, 152, 219, 0.2)";
+  statusDiv.style.color = "#3498db";
+  statusDiv.textContent = "Step 1: Testing connection to master...";
+  
+  try {
+    // Step 1: Test direct connection to master via browser fetch
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(`http://${masterHostname}/timer/ping`, {
+      method: "GET",
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log("[Slave] Master ping OK:", data);
+      
+      // Step 2: Test slave-to-master connection via backend
+      statusDiv.textContent = "Step 2: Testing slave firmware -> master...";
+      
+      try {
+        const backendResponse = await fetch("/timer/testSlaveToMaster", { method: "POST" });
+        const backendData = await backendResponse.json();
+        console.log("[Slave] Backend test response:", backendData);
+        
+        statusDiv.style.backgroundColor = "rgba(46, 204, 113, 0.2)";
+        statusDiv.style.color = "#2ecc71";
+        statusDiv.innerHTML = `<div>Browser -> Master: OK (${data.hostname})</div><div>Firmware -> Master: Sent test lap (check master console)</div>`;
+      } catch (backendErr) {
+        console.warn("[Slave] Backend test failed:", backendErr.message);
+        statusDiv.style.backgroundColor = "rgba(241, 196, 15, 0.2)";
+        statusDiv.style.color = "#f1c40f";
+        statusDiv.innerHTML = `<div>Browser -> Master: OK</div><div>Firmware -> Master: Error - ${backendErr.message}</div>`;
+      }
+    } else {
+      statusDiv.style.backgroundColor = "rgba(231, 76, 60, 0.2)";
+      statusDiv.style.color = "#e74c3c";
+      statusDiv.textContent = (i18n.t("messages.master_error") || "Error") + ": HTTP " + response.status;
+    }
+  } catch (err) {
+    console.warn("[Slave] Master ping failed:", err.message);
+    statusDiv.style.backgroundColor = "rgba(231, 76, 60, 0.2)";
+    statusDiv.style.color = "#e74c3c";
+    if (err.name === 'AbortError') {
+      statusDiv.textContent = i18n.t("messages.master_timeout") || "Connection timeout (5s)";
+    } else {
+      statusDiv.textContent = i18n.t("messages.master_unreachable") || "Master unreachable";
+    }
+  }
+}
+
+// Render the synced timers list UI (LEGACY - kept for backwards compatibility)
+function renderSyncedTimersList() {
+  // Now calls the new unified render function
+  renderSyncDevicesList();
+}
+
+// Fetch this device's IP address
+async function fetchThisDeviceAddress() {
+  try {
+    const response = await fetch('/timer/ping');
+    if (response.ok) {
+      const data = await response.json();
+      // Try to get the IP from the request, fallback to hostname
+      thisDeviceAddress = window.location.hostname || data.hostname || 'fpvgate.local';
+      console.log('[Sync] This device address:', thisDeviceAddress);
+      return thisDeviceAddress;
+    }
+  } catch (err) {
+    console.warn('[Sync] Failed to fetch device address:', err.message);
+    thisDeviceAddress = window.location.hostname || 'fpvgate.local';
+  }
+  return thisDeviceAddress;
+}
+
+// Initialize sync devices from legacy config
+function initSyncDevicesFromConfig() {
+  syncDevices = [];
+  
+  // Add "This Device" first
+  let thisDeviceRole = 'personal';
+  if (raceSyncMode === 1) {
+    thisDeviceRole = 'master';
+  } else if (raceSyncMode === 2) {
+    thisDeviceRole = 'slave';
+  }
+  
+  syncDevices.push({
+    address: thisDeviceAddress || window.location.hostname || 'This Device',
+    role: thisDeviceRole,
+    isThisDevice: true
+  });
+  
+  // Add synced timers (from master config) as slaves
+  if (syncedTimers && syncedTimers.length > 0) {
+    syncedTimers.forEach(timer => {
+      syncDevices.push({
+        address: timer,
+        role: 'slave',
+        isThisDevice: false
+      });
+    });
+  }
+  
+  // Add master hostname (from slave config) as master
+  if (masterHostname && raceSyncMode === 2) {
+    // Check if already in list
+    const exists = syncDevices.some(d => d.address === masterHostname);
+    if (!exists) {
+      syncDevices.push({
+        address: masterHostname,
+        role: 'master',
+        isThisDevice: false
+      });
+    }
+  }
+  
+  console.log('[Sync] Initialized sync devices:', syncDevices);
+}
+
+// Map sync devices UI back to legacy config fields
+function mapSyncDevicesToConfig() {
+  // Find this device's role
+  const thisDevice = syncDevices.find(d => d.isThisDevice);
+  if (thisDevice) {
+    if (thisDevice.role === 'master') {
+      raceSyncMode = 1;
+    } else if (thisDevice.role === 'slave') {
+      raceSyncMode = 2;
+    } else {
+      raceSyncMode = 0;
+    }
+  }
+  
+  // Find master (for slave config)
+  const masterDevice = syncDevices.find(d => d.role === 'master' && !d.isThisDevice);
+  masterHostname = masterDevice ? masterDevice.address : '';
+  
+  // Build syncedTimers array (all slaves except this device)
+  syncedTimers = syncDevices
+    .filter(d => d.role === 'slave' && !d.isThisDevice)
+    .map(d => d.address);
+  
+  console.log('[Sync] Mapped config - mode:', raceSyncMode, 'master:', masterHostname, 'slaves:', syncedTimers);
+  
+  // Update UI elements that depend on mode
+  updateRaceSyncMode(raceSyncMode, true);
+}
+
+// Render the unified sync devices list
+function renderSyncDevicesList() {
+  const container = document.getElementById("syncDevicesList");
+  if (!container) return;
+  
+  // Ensure we have at least "This Device" in the list
+  if (syncDevices.length === 0) {
+    syncDevices.push({
+      address: thisDeviceAddress || window.location.hostname || 'This Device',
+      role: 'personal',
+      isThisDevice: true
+    });
+  }
+  
   let html = '';
-  syncedTimers.forEach((timer, index) => {
-    const safeId = timer.replace(/\./g, '-');
+  syncDevices.forEach((device, index) => {
+    const safeId = device.address.replace(/\./g, '-').replace(/:/g, '-');
+    const isThisDevice = device.isThisDevice;
+    const displayName = isThisDevice ? `${i18n.t("settings.sync.this_device") || "This Device"} (${device.address})` : device.address;
+    
+    // Check if there's already a master (other than this device if it's master)
+    const hasMaster = syncDevices.some(d => d.role === 'master');
+    const canBeMaster = !hasMaster || device.role === 'master';
+    
     html += `
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-secondary); border-radius: 4px; margin-bottom: 8px;">
-        <div style="flex: 1;">
-          <span>${timer}</span>
-          <span id="status-${safeId}" style="margin-left: 8px; font-size: 12px; color: var(--secondary-color);"></span>
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background-color: var(--bg-secondary); border-radius: 6px; margin-bottom: 8px; ${isThisDevice ? 'border-left: 3px solid var(--primary-color);' : ''}">
+        <div style="flex: 1; display: flex; align-items: center; gap: 8px;">
+          <span style="font-weight: ${isThisDevice ? 'bold' : 'normal'};">${displayName}</span>
+          <span id="status-${safeId}" style="font-size: 12px; color: var(--secondary-color);"></span>
         </div>
-        <div style="display: flex; gap: 4px;">
-          <button onclick="testSyncedTimer('${timer}')" style="padding: 4px 8px; background-color: var(--accent-color); font-size: 12px;">Test</button>
-          <button onclick="removeSyncedTimer('${timer}')" style="padding: 4px 8px; background-color: #e74c3c; font-size: 12px;">X</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <select onchange="updateDeviceRole(${index}, this.value)" style="padding: 4px 8px; font-size: 13px; min-width: 100px;">
+            <option value="personal" ${device.role === 'personal' ? 'selected' : ''}>${i18n.t("settings.sync.role_personal") || "Personal"}</option>
+            <option value="master" ${device.role === 'master' ? 'selected' : ''} ${!canBeMaster ? 'disabled' : ''}>${i18n.t("settings.sync.role_master") || "Master"}</option>
+            <option value="slave" ${device.role === 'slave' ? 'selected' : ''}>${i18n.t("settings.sync.role_slave") || "Slave"}</option>
+          </select>
+          ${!isThisDevice ? `
+            <button onclick="testSyncDevice(${index})" style="padding: 4px 8px; background-color: var(--accent-color); font-size: 12px;" title="Test connection">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </button>
+            <button onclick="removeSyncDevice(${index})" style="padding: 4px 8px; background-color: #e74c3c; font-size: 12px;" title="Remove device">X</button>
+          ` : ''}
         </div>
       </div>
     `;
   });
   
   container.innerHTML = html;
+  
+  // Update slave mode indicator
+  const thisDevice = syncDevices.find(d => d.isThisDevice);
+  const slaveIndicator = document.getElementById('slaveModeIndicator');
+  if (slaveIndicator) {
+    slaveIndicator.style.display = (thisDevice && thisDevice.role === 'slave') ? 'block' : 'none';
+  }
+}
+
+// Add a new sync device
+function addSyncDevice() {
+  const input = document.getElementById('addSyncDeviceInput');
+  if (!input) return;
+  
+  let address = input.value.trim();
+  if (!address) {
+    alert(i18n.t("messages.enter_device_address") || "Please enter a device address");
+    return;
+  }
+  
+  // Add .local if hostname without dots
+  if (!address.includes('.')) {
+    address += '.local';
+  }
+  
+  // Check if already in list
+  if (syncDevices.some(d => d.address === address)) {
+    alert(i18n.t("messages.device_already_added") || "Device already in list");
+    return;
+  }
+  
+  // Max 6 devices total (including this device)
+  if (syncDevices.length >= 6) {
+    alert(i18n.t("messages.max_devices_reached") || "Maximum 6 devices allowed");
+    return;
+  }
+  
+  syncDevices.push({
+    address: address,
+    role: 'slave', // Default to slave
+    isThisDevice: false
+  });
+  
+  input.value = '';
+  renderSyncDevicesList();
+  mapSyncDevicesToConfig();
+  autoSaveConfig();
+  console.log('[Sync] Added device:', address);
+}
+
+// Remove a sync device by index
+function removeSyncDevice(index) {
+  if (index < 0 || index >= syncDevices.length) return;
+  if (syncDevices[index].isThisDevice) return; // Can't remove this device
+  
+  const removed = syncDevices.splice(index, 1)[0];
+  renderSyncDevicesList();
+  mapSyncDevicesToConfig();
+  autoSaveConfig();
+  console.log('[Sync] Removed device:', removed.address);
+}
+
+// Update a device's role
+function updateDeviceRole(index, newRole) {
+  if (index < 0 || index >= syncDevices.length) return;
+  
+  const device = syncDevices[index];
+  const oldRole = device.role;
+  
+  // If setting to master, clear any other master
+  if (newRole === 'master') {
+    syncDevices.forEach((d, i) => {
+      if (i !== index && d.role === 'master') {
+        d.role = 'slave'; // Demote to slave
+      }
+    });
+  }
+  
+  device.role = newRole;
+  console.log('[Sync] Updated device role:', device.address, oldRole, '->', newRole);
+  
+  renderSyncDevicesList();
+  mapSyncDevicesToConfig();
+  autoSaveConfig();
+}
+
+// Test connection to a sync device
+async function testSyncDevice(index) {
+  if (index < 0 || index >= syncDevices.length) return;
+  
+  const device = syncDevices[index];
+  const safeId = device.address.replace(/\./g, '-').replace(/:/g, '-');
+  const statusSpan = document.getElementById(`status-${safeId}`);
+  
+  if (statusSpan) {
+    statusSpan.textContent = 'Testing...';
+    statusSpan.style.color = 'var(--secondary-color)';
+  }
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(`http://${device.address}/timer/ping`, {
+      method: 'GET',
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (statusSpan) {
+        statusSpan.textContent = `Online`;
+        statusSpan.style.color = '#2ecc71';
+      }
+      console.log(`[Sync] Ping OK: ${device.address}`, data);
+    } else {
+      if (statusSpan) {
+        statusSpan.textContent = 'Error: ' + response.status;
+        statusSpan.style.color = '#e74c3c';
+      }
+    }
+  } catch (err) {
+    console.warn(`[Sync] Ping failed for ${device.address}:`, err.message);
+    if (statusSpan) {
+      if (err.name === 'AbortError') {
+        statusSpan.textContent = 'Timeout';
+      } else {
+        statusSpan.textContent = 'Unreachable';
+      }
+      statusSpan.style.color = '#e74c3c';
+    }
+  }
+}
+
+// Test all sync devices
+async function testAllSyncDevices() {
+  for (let i = 0; i < syncDevices.length; i++) {
+    if (!syncDevices[i].isThisDevice) {
+      await testSyncDevice(i);
+    }
+  }
 }
 
 // EventSource initialization moved to setupWiFiEvents() function above
@@ -5531,17 +6179,23 @@ function openSettingsModal() {
         
         if (config.raceSyncMode !== undefined) {
           raceSyncMode = config.raceSyncMode;
-          const radioButtons = document.querySelectorAll('input[name="raceSyncMode"]');
-          radioButtons.forEach(radio => {
-            radio.checked = parseInt(radio.value) === config.raceSyncMode;
-          });
           updateRaceSyncMode(config.raceSyncMode, true);  // skipSave=true when loading
         }
         
         if (config.syncedTimers && Array.isArray(config.syncedTimers)) {
           syncedTimers = config.syncedTimers.slice(); // Copy array
-          renderSyncedTimersList();
         }
+        
+        if (config.masterHostname !== undefined) {
+          masterHostname = config.masterHostname;
+        }
+        
+        // Initialize unified sync devices list from loaded config
+        initSyncDevicesFromConfig();
+        renderSyncDevicesList();
+        
+        // Ensure mode UI is updated (badges, race view)
+        updateSlaveModelUI();
         
         // Mark config as loaded - now saves are allowed
         configLoaded = true;

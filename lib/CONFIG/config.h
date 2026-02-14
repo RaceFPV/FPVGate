@@ -170,7 +170,7 @@
 #define EEPROM_RESERVED_SIZE 768
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 10U
+#define CONFIG_VERSION 11U
 
 // Race sync mode constants
 #define RACE_SYNC_DISABLED 0
@@ -233,6 +233,7 @@ typedef struct {
     char syncedTimers[5][32];      // Up to 5 synced timer hostnames (for master mode)
     uint8_t syncedTimerCount;      // Number of configured synced timers
     uint8_t beepVolume;            // Buzzer volume 0-100 (percentage)
+    char masterHostname[32];       // Master hostname for slave mode (e.g., "fpvgate.local" or "192.168.1.100")
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
@@ -337,6 +338,10 @@ class Config {
     // Beep volume
     uint8_t getBeepVolume();
     void setBeepVolume(uint8_t volume);
+    
+    // Master hostname for slave mode
+    char* getMasterHostname();
+    void setMasterHostname(const char* hostname);
 
    private:
     laptimer_config_t conf;

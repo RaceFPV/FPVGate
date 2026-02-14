@@ -64,6 +64,22 @@ void USBTransport::sendRaceStateEvent(const char* state) {
     Serial.println();
 }
 
+void USBTransport::sendSlaveLapEvent(uint32_t lapTimeMs, const char* pilotName, const char* pilotPhonetic, uint32_t pilotColor, const char* slaveHostname) {
+    if (!isConnected()) return;
+    
+    DynamicJsonDocument doc(256);
+    doc["event"] = "slaveLap";
+    JsonObject data = doc.createNestedObject("data");
+    data["lapTimeMs"] = lapTimeMs;
+    data["pilotName"] = pilotName;
+    data["pilotPhonetic"] = pilotPhonetic;
+    data["pilotColor"] = pilotColor;
+    data["slaveHostname"] = slaveHostname;
+    
+    serializeJson(doc, Serial);
+    Serial.println();
+}
+
 bool USBTransport::isConnected() {
     // Check if USB CDC is connected
     return Serial && Serial.availableForWrite() > 0;

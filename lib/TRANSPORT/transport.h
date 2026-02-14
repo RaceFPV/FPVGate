@@ -18,6 +18,9 @@ class TransportInterface {
     // Send race state event (started/stopped)
     virtual void sendRaceStateEvent(const char* state) = 0;
     
+    // Send slave lap event (remote pilot lap from another device)
+    virtual void sendSlaveLapEvent(uint32_t lapTimeMs, const char* pilotName, const char* pilotPhonetic, uint32_t pilotColor, const char* slaveHostname) = 0;
+    
     // Check if transport is ready/connected
     virtual bool isConnected() = 0;
     
@@ -60,6 +63,15 @@ class TransportManager {
         for (uint8_t i = 0; i < transportCount; i++) {
             if (transports[i] && transports[i]->isConnected()) {
                 transports[i]->sendRaceStateEvent(state);
+            }
+        }
+    }
+    
+    // Broadcast slave lap event to all transports
+    void broadcastSlaveLapEvent(uint32_t lapTimeMs, const char* pilotName, const char* pilotPhonetic, uint32_t pilotColor, const char* slaveHostname) {
+        for (uint8_t i = 0; i < transportCount; i++) {
+            if (transports[i] && transports[i]->isConnected()) {
+                transports[i]->sendSlaveLapEvent(lapTimeMs, pilotName, pilotPhonetic, pilotColor, slaveHostname);
             }
         }
     }
