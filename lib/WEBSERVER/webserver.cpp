@@ -1081,9 +1081,31 @@ EEPROM:\n\
         race.totalDistance = jsonObj["totalDistance"] | 0.0;
         DEBUG("Parsed totalDistance=%.2f\n", race.totalDistance);
         
+        // Sync mode
+        race.syncMode = jsonObj["syncMode"] | 0;
+        
         JsonArray lapsArray = jsonObj["lapTimes"];
         for (uint32_t lap : lapsArray) {
             race.lapTimes.push_back(lap);
+        }
+        
+        // Parse pilots array if present (multi-pilot races)
+        if (jsonObj.containsKey("pilots")) {
+            JsonArray pilotsArray = jsonObj["pilots"];
+            for (JsonObject pilotObj : pilotsArray) {
+                PilotData pilot;
+                pilot.name = pilotObj["name"] | "";
+                pilot.callsign = pilotObj["callsign"] | "";
+                pilot.color = pilotObj["color"] | 0x0080FF;
+                pilot.fastestLap = pilotObj["fastestLap"] | 0;
+                pilot.isLocal = pilotObj["isLocal"] | false;
+                JsonArray pilotLaps = pilotObj["lapTimes"];
+                for (uint32_t lap : pilotLaps) {
+                    pilot.lapTimes.push_back(lap);
+                }
+                race.pilots.push_back(pilot);
+            }
+            DEBUG("Parsed %d pilots\n", race.pilots.size());
         }
         
         bool success = history->saveRace(race);
@@ -1165,7 +1187,7 @@ EEPROM:\n\
             for (const auto& race : races) {
                 if (race.timestamp == timestamp) {
                     // Create JSON for single race
-                    DynamicJsonDocument doc(16384);
+                    DynamicJsonDocument doc(32768);  // Increased for multi-pilot
                     JsonArray racesArray = doc.createNestedArray("races");
                     JsonObject raceObj = racesArray.createNestedObject();
                     raceObj["timestamp"] = race.timestamp;
@@ -1179,9 +1201,27 @@ EEPROM:\n\
                     raceObj["frequency"] = race.frequency;
                     raceObj["band"] = race.band;
                     raceObj["channel"] = race.channel;
+                    raceObj["syncMode"] = race.syncMode;
                     JsonArray lapsArray = raceObj.createNestedArray("lapTimes");
                     for (uint32_t lap : race.lapTimes) {
                         lapsArray.add(lap);
+                    }
+                    
+                    // Include pilots if present
+                    if (!race.pilots.empty()) {
+                        JsonArray pilotsArray = raceObj.createNestedArray("pilots");
+                        for (const auto& pilot : race.pilots) {
+                            JsonObject pilotObj = pilotsArray.createNestedObject();
+                            pilotObj["name"] = pilot.name;
+                            pilotObj["callsign"] = pilot.callsign;
+                            pilotObj["color"] = pilot.color;
+                            pilotObj["fastestLap"] = pilot.fastestLap;
+                            pilotObj["isLocal"] = pilot.isLocal;
+                            JsonArray pilotLaps = pilotObj.createNestedArray("lapTimes");
+                            for (uint32_t lap : pilot.lapTimes) {
+                                pilotLaps.add(lap);
+                            }
+                        }
                     }
                     
                     String json;

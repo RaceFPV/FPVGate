@@ -46,16 +46,34 @@ bool RaceHistory::saveRace(const RaceSession& race) {
     raceObj["trackId"] = race.trackId;
     raceObj["trackName"] = race.trackName;
     raceObj["totalDistance"] = race.totalDistance;
+    raceObj["syncMode"] = race.syncMode;
     
     JsonArray lapsArray = raceObj.createNestedArray("lapTimes");
     for (uint32_t lap : race.lapTimes) {
         lapsArray.add(lap);
     }
     
+    // Multi-pilot support
+    if (!race.pilots.empty()) {
+        JsonArray pilotsArray = raceObj.createNestedArray("pilots");
+        for (const auto& pilot : race.pilots) {
+            JsonObject pilotObj = pilotsArray.createNestedObject();
+            pilotObj["name"] = pilot.name;
+            pilotObj["callsign"] = pilot.callsign;
+            pilotObj["color"] = pilot.color;
+            pilotObj["fastestLap"] = pilot.fastestLap;
+            pilotObj["isLocal"] = pilot.isLocal;
+            JsonArray pilotLaps = pilotObj.createNestedArray("lapTimes");
+            for (uint32_t lap : pilot.lapTimes) {
+                pilotLaps.add(lap);
+            }
+        }
+    }
+    
     String json;
     serializeJson(doc, json);
     
-    DEBUG("Saving race JSON: totalDistance=%.2f\n", race.totalDistance);
+    DEBUG("Saving race JSON: totalDistance=%.2f, syncMode=%d, pilots=%d\n", race.totalDistance, race.syncMode, race.pilots.size());
     DEBUG("JSON content: %s\n", json.c_str());
     
     bool success = storage->writeFile(filepath, json);
@@ -124,10 +142,29 @@ bool RaceHistory::loadRaces() {
         race.trackId = doc["trackId"] | 0;
         race.trackName = doc["trackName"] | "";
         race.totalDistance = doc["totalDistance"] | 0.0f;
+        race.syncMode = doc["syncMode"] | 0;
         
         JsonArray lapsArray = doc["lapTimes"];
         for (uint32_t lap : lapsArray) {
             race.lapTimes.push_back(lap);
+        }
+        
+        // Load pilots array if present
+        if (doc.containsKey("pilots")) {
+            JsonArray pilotsArray = doc["pilots"];
+            for (JsonObject pilotObj : pilotsArray) {
+                PilotData pilot;
+                pilot.name = pilotObj["name"] | "";
+                pilot.callsign = pilotObj["callsign"] | "";
+                pilot.color = pilotObj["color"] | 0x0080FF;
+                pilot.fastestLap = pilotObj["fastestLap"] | 0;
+                pilot.isLocal = pilotObj["isLocal"] | false;
+                JsonArray pilotLaps = pilotObj["lapTimes"];
+                for (uint32_t lap : pilotLaps) {
+                    pilot.lapTimes.push_back(lap);
+                }
+                race.pilots.push_back(pilot);
+            }
         }
         
         races.push_back(race);
@@ -334,7 +371,7 @@ bool RaceHistory::clearAll() {
 }
 
 String RaceHistory::toJsonString() {
-    DynamicJsonDocument doc(32768);
+    DynamicJsonDocument doc(65536);  // Increased for multi-pilot data
     JsonArray racesArray = doc.createNestedArray("races");
     
     for (const auto& race : races) {
@@ -353,10 +390,28 @@ String RaceHistory::toJsonString() {
         raceObj["trackId"] = race.trackId;
         raceObj["trackName"] = race.trackName;
         raceObj["totalDistance"] = race.totalDistance;
+        raceObj["syncMode"] = race.syncMode;
         
         JsonArray lapsArray = raceObj.createNestedArray("lapTimes");
         for (uint32_t lap : race.lapTimes) {
             lapsArray.add(lap);
+        }
+        
+        // Include pilots array if present
+        if (!race.pilots.empty()) {
+            JsonArray pilotsArray = raceObj.createNestedArray("pilots");
+            for (const auto& pilot : race.pilots) {
+                JsonObject pilotObj = pilotsArray.createNestedObject();
+                pilotObj["name"] = pilot.name;
+                pilotObj["callsign"] = pilot.callsign;
+                pilotObj["color"] = pilot.color;
+                pilotObj["fastestLap"] = pilot.fastestLap;
+                pilotObj["isLocal"] = pilot.isLocal;
+                JsonArray pilotLaps = pilotObj.createNestedArray("lapTimes");
+                for (uint32_t lap : pilot.lapTimes) {
+                    pilotLaps.add(lap);
+                }
+            }
         }
     }
     
@@ -366,7 +421,7 @@ String RaceHistory::toJsonString() {
 }
 
 bool RaceHistory::fromJsonString(const String& json) {
-    DynamicJsonDocument doc(32768);
+    DynamicJsonDocument doc(65536);  // Increased for multi-pilot data
     DeserializationError error = deserializeJson(doc, json);
     
     if (error) {
@@ -394,10 +449,29 @@ bool RaceHistory::fromJsonString(const String& json) {
         race.trackId = raceObj["trackId"] | 0;
         race.trackName = raceObj["trackName"] | "";
         race.totalDistance = raceObj["totalDistance"] | 0.0f;
+        race.syncMode = raceObj["syncMode"] | 0;
         
         JsonArray lapsArray = raceObj["lapTimes"];
         for (uint32_t lap : lapsArray) {
             race.lapTimes.push_back(lap);
+        }
+        
+        // Import pilots array if present
+        if (raceObj.containsKey("pilots")) {
+            JsonArray pilotsArray = raceObj["pilots"];
+            for (JsonObject pilotObj : pilotsArray) {
+                PilotData pilot;
+                pilot.name = pilotObj["name"] | "";
+                pilot.callsign = pilotObj["callsign"] | "";
+                pilot.color = pilotObj["color"] | 0x0080FF;
+                pilot.fastestLap = pilotObj["fastestLap"] | 0;
+                pilot.isLocal = pilotObj["isLocal"] | false;
+                JsonArray pilotLaps = pilotObj["lapTimes"];
+                for (uint32_t lap : pilotLaps) {
+                    pilot.lapTimes.push_back(lap);
+                }
+                race.pilots.push_back(pilot);
+            }
         }
         
         // Check if race with this timestamp already exists

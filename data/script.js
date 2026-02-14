@@ -3843,7 +3843,50 @@ function saveCurrentRace() {
     trackId: currentTrackId || 0,
     trackName: currentTrackName || "",
     totalDistance: totalRaceDistance,
+    syncMode: raceSyncMode,
   };
+  
+  // Build pilots array for multi-pilot races (sync mode active)
+  if (raceSyncMode === 1 || raceSyncMode === 2) {
+    const pilots = [];
+    
+    // Add local pilot
+    const localPilotColor = document.getElementById("pilotColor")?.value || "#0080FF";
+    const localColorInt = parseInt(localPilotColor.replace("#", ""), 16);
+    const localValidLaps = lapTimes.slice(1);
+    const localFastest = localValidLaps.length > 0 ? Math.min(...localValidLaps) : 0;
+    
+    pilots.push({
+      name: pilotNameInput.value || "Local",
+      callsign: pilotCallsign,
+      color: localColorInt,
+      lapTimes: lapTimes.map((t) => Math.round(t * 1000)),
+      fastestLap: Math.round(localFastest * 1000),
+      isLocal: true
+    });
+    
+    // Add remote pilots (only in master mode)
+    if (raceSyncMode === 1 && Object.keys(remotePilots).length > 0) {
+      for (const hostname of Object.keys(remotePilots)) {
+        const pilot = remotePilots[hostname];
+        const remoteLapTimes = pilot.lapTimes || [];
+        const remoteValidLaps = remoteLapTimes.slice(1);
+        const remoteFastest = remoteValidLaps.length > 0 ? Math.min(...remoteValidLaps) : 0;
+        
+        pilots.push({
+          name: pilot.pilotName || hostname,
+          callsign: pilot.pilotPhonetic || pilot.pilotName || "",
+          color: pilot.pilotColor || 0x0080FF,
+          lapTimes: remoteLapTimes.map((t) => Math.round(t * 1000)),
+          fastestLap: Math.round(remoteFastest * 1000),
+          isLocal: false
+        });
+      }
+    }
+    
+    raceData.pilots = pilots;
+    console.log(`[Race] Saving multi-pilot race with ${pilots.length} pilots`);
+  }
 
   fetch("/races/save", {
     method: "POST",
@@ -3894,6 +3937,20 @@ function renderRaceHistory() {
     const freqDisplay = race.frequency ? `${race.band}${race.channel} (${race.frequency}MHz)` : "";
     const trackDisplay = race.trackName ? race.trackName : "";
     const distanceDisplay = race.totalDistance ? `${race.totalDistance.toFixed(1)}m` : "";
+    
+    // Multi-pilot race detection
+    const isMultiPilot = race.pilots && race.pilots.length > 1;
+    const pilotCount = race.pilots ? race.pilots.length : 1;
+    const syncModeLabel = race.syncMode === 1 ? "MASTER" : race.syncMode === 2 ? "SLAVE" : "";
+    
+    // Build pilots display for multi-pilot races
+    let pilotsDisplay = "";
+    if (isMultiPilot) {
+      const pilotNames = race.pilots.map(p => p.name || p.callsign || "Unknown").join(", ");
+      pilotsDisplay = `<div style="font-size: 14px; color: var(--secondary-color); margin-top: 4px;"><strong>${pilotCount} Pilots:</strong> ${pilotNames}</div>`;
+    } else if (pilotCallsign) {
+      pilotsDisplay = `<div style="font-size: 14px; color: var(--secondary-color); margin-top: 4px;">${i18n.t("history.item_pilot", { n: pilotCallsign })}</div>`;
+    }
 
     html += `
       <div class="race-item" data-race-index="${index}">
@@ -3905,9 +3962,11 @@ function renderRaceHistory() {
         <div class="race-item-header">
           <div>
             ${tag ? '<span class="race-tag">' + tag + "</span>" : ""}
+            ${syncModeLabel ? '<span class="race-tag" style="background-color: var(--primary-color); margin-left: 4px;">' + syncModeLabel + "</span>" : ""}
+            ${isMultiPilot ? '<span class="race-tag" style="background-color: var(--accent-color); margin-left: 4px;">' + pilotCount + ' PILOTS</span>' : ""}
             <div class="race-date">${dateStr}</div>
             ${name ? '<div class="race-name">' + name + "</div>" : ""}
-            ${pilotCallsign ? '<div style="font-size: 14px; color: var(--secondary-color); margin-top: 4px;">' + i18n.t("history.item_pilot", { n: pilotCallsign }) + "</div>" : ""}
+            ${pilotsDisplay}
             ${freqDisplay ? '<div style="font-size: 14px; color: var(--secondary-color);">' + i18n.t("history.item_channel", { n: freqDisplay }) + "</div>" : ""}
             ${trackDisplay ? '<div style="font-size: 14px; color: var(--secondary-color);">' + i18n.t("history.item_track", { n: trackDisplay + (distanceDisplay ? " (" + distanceDisplay + ")" : "") }) + "</div>" : ""}
           </div>
@@ -4329,6 +4388,14 @@ function switchDetailMode(mode) {
 
 function renderDetailHistory() {
   if (!currentDetailRace) return;
+  
+  // Check if this is a multi-pilot race
+  const isMultiPilot = currentDetailRace.pilots && currentDetailRace.pilots.length > 1;
+  
+  if (isMultiPilot) {
+    renderMultiPilotDetailHistory();
+    return;
+  }
 
   const lapTimes = currentDetailRace.lapTimes.map((t) => t / 1000);
   const displayLaps = lapTimes.slice(-10);
@@ -4369,6 +4436,87 @@ function renderDetailHistory() {
   html += "</div>";
   html += `<p style="text-align: center; margin-top: 16px; font-weight: bold; color: var(--primary-color);">${i18n.t("history.total_race_time", { n: totalTime.toFixed(2) })}</p>`;
 
+  document.getElementById("detailContent").innerHTML = html;
+}
+
+// Render multi-pilot race history with side-by-side lap table
+function renderMultiPilotDetailHistory() {
+  if (!currentDetailRace || !currentDetailRace.pilots) return;
+  
+  const pilots = currentDetailRace.pilots;
+  
+  // Find max laps across all pilots
+  let maxLapCount = 0;
+  for (const pilot of pilots) {
+    const lapCount = pilot.lapTimes ? pilot.lapTimes.length : 0;
+    if (lapCount > maxLapCount) maxLapCount = lapCount;
+  }
+  
+  // Find fastest lap for each pilot (excluding gate 1)
+  const fastestLaps = {};
+  for (let pIdx = 0; pIdx < pilots.length; pIdx++) {
+    const pilot = pilots[pIdx];
+    let fastest = Infinity;
+    let fastestIdx = -1;
+    const laps = pilot.lapTimes || [];
+    for (let i = 1; i < laps.length; i++) {
+      if (laps[i] < fastest) {
+        fastest = laps[i];
+        fastestIdx = i;
+      }
+    }
+    fastestLaps[pIdx] = fastestIdx;
+  }
+  
+  // Build header row
+  let html = '<div style="overflow-x: auto;"><table class="unified-lap-table" style="width: 100%;">';
+  html += '<thead><tr><th>' + (i18n.t("race.table.lap_no") || "Lap") + '</th>';
+  for (const pilot of pilots) {
+    const colorHex = '#' + (pilot.color || 0x0080FF).toString(16).padStart(6, '0');
+    const localBadge = pilot.isLocal ? ' *' : '';
+    html += `<th style="background-color: ${colorHex}; color: white;">${pilot.name || pilot.callsign || 'Unknown'}${localBadge}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+  
+  // Build body rows
+  for (let lapIdx = 0; lapIdx < maxLapCount; lapIdx++) {
+    const lapLabel = lapIdx === 0 ? 'G1' : lapIdx;
+    html += `<tr><td style="font-weight: bold;">${lapLabel}</td>`;
+    
+    for (let pIdx = 0; pIdx < pilots.length; pIdx++) {
+      const pilot = pilots[pIdx];
+      const laps = pilot.lapTimes || [];
+      const isFastest = fastestLaps[pIdx] === lapIdx && lapIdx > 0;
+      
+      if (lapIdx < laps.length) {
+        const lapTime = (laps[lapIdx] / 1000).toFixed(2);
+        const style = isFastest ? 'background-color: rgba(243, 156, 18, 0.3); font-weight: bold;' : '';
+        html += `<td style="${style}">${lapTime}s</td>`;
+      } else {
+        html += '<td style="color: var(--secondary-color);">-</td>';
+      }
+    }
+    html += '</tr>';
+  }
+  
+  html += '</tbody></table></div>';
+  
+  // Add pilot stats summary
+  html += '<div style="display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; justify-content: center;">';
+  for (const pilot of pilots) {
+    const colorHex = '#' + (pilot.color || 0x0080FF).toString(16).padStart(6, '0');
+    const fastest = pilot.fastestLap ? (pilot.fastestLap / 1000).toFixed(2) : '-';
+    const totalTime = pilot.lapTimes ? (pilot.lapTimes.reduce((a, b) => a + b, 0) / 1000).toFixed(2) : '-';
+    html += `
+      <div style="padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; border-left: 4px solid ${colorHex}; min-width: 150px;">
+        <div style="font-weight: bold; margin-bottom: 8px;">${pilot.name || 'Unknown'}${pilot.isLocal ? ' *' : ''}</div>
+        <div style="font-size: 13px; color: var(--secondary-color);">Fastest: <strong style="color: var(--primary-color);">${fastest}s</strong></div>
+        <div style="font-size: 13px; color: var(--secondary-color);">Total: <strong>${totalTime}s</strong></div>
+      </div>
+    `;
+  }
+  html += '</div>';
+  
   document.getElementById("detailContent").innerHTML = html;
 }
 
