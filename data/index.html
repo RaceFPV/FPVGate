@@ -76,6 +76,7 @@
           </table>
         </div>
 
+        <!-- Personal Mode: Lap Analysis -->
         <div id="lapAnalysis" class="lap-analysis">
           <h3 data-i18n="analysis.title">Lap Analysis</h3>
 
@@ -110,6 +111,25 @@
           <div id="analysisContent" class="analysis-content">
             <p class="no-data" data-i18n="analysis.no_data">Complete at least 1 lap to see analysis</p>
           </div>
+        </div>
+        
+        <!-- Sync Mode: Race Analysis (Multi-Pilot) -->
+        <div id="raceAnalysis" class="lap-analysis" style="display: none;">
+          <h3>Race Analysis</h3>
+          
+          <!-- Chart Tabs -->
+          <div class="analysis-tabs">
+            <button class="analysis-tab active" onclick="switchRaceAnalysisMode('lapTimes')">Lap Times</button>
+            <button class="analysis-tab" onclick="switchRaceAnalysisMode('consistency')">Consistency</button>
+          </div>
+          
+          <!-- Chart Container -->
+          <div id="raceAnalysisContent" class="analysis-content" style="min-height: 350px;">
+            <p class="no-data">Complete at least 2 laps to see race analysis</p>
+          </div>
+          
+          <!-- Legend -->
+          <div id="raceAnalysisLegend" style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 12px;"></div>
         </div>
       </div>
 

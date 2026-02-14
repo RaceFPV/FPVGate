@@ -484,6 +484,16 @@ function resetLapDisplay() {
     analysisContent.innerHTML = `<p class="no-data">${i18n.t("analysis.no_data")}</p>`;
   }
   
+  // Clear race analysis
+  const raceAnalysisContent = document.getElementById("raceAnalysisContent");
+  if (raceAnalysisContent) {
+    raceAnalysisContent.innerHTML = '<p class="no-data">Complete at least 2 laps to see race analysis</p>';
+  }
+  const raceAnalysisLegend = document.getElementById("raceAnalysisLegend");
+  if (raceAnalysisLegend) {
+    raceAnalysisLegend.innerHTML = '';
+  }
+  
   // Clear remote pilots data
   remotePilots = {};
   
@@ -527,6 +537,11 @@ function handleSlaveLapEvent(data) {
   
   // Render the updated pilot list
   renderRemotePilotsList();
+  
+  // Update race analysis charts (in master mode)
+  if (raceSyncMode === 1) {
+    updateRaceAnalysisView();
+  }
   
   // Announce via TTS
   announceRemotePilotLap(remotePilots[slaveHostname], lapTime);
@@ -2154,8 +2169,8 @@ function addLap(lapStr) {
   // Update lap counter
   updateLapCounter();
 
-  // Update lap analysis
-  updateAnalysisView();
+  // Update lap analysis (mode-dependent)
+  updateAnalysisSectionVisibility();
 
   // Auto-stop race if max laps reached (excluding hole shot, and if maxLaps > 0)
   if (maxLaps > 0 && lapNo > 0 && lapNo >= maxLaps) {
@@ -2930,6 +2945,9 @@ function updateSlaveModelUI() {
   
   // Re-render the race view when mode changes
   renderUnifiedRaceView();
+  
+  // Toggle between Lap Analysis and Race Analysis sections
+  updateAnalysisSectionVisibility();
 }
 
 // Add a synced timer to the list
@@ -3791,6 +3809,361 @@ function createBarItemWithColor(label, time, maxTime, displayTime, colorIndex) {
       </div>
     </div>
   `;
+}
+
+// ============================================
+// Race Analysis (Multi-Pilot Sync Modes)
+// ============================================
+
+let currentRaceAnalysisMode = "lapTimes";
+
+// Pilot color palette for charts
+const pilotColors = [
+  "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF",
+  "#FF9F40", "#7CFC00", "#FF69B4", "#00CED1", "#FFD700"
+];
+
+function switchRaceAnalysisMode(mode) {
+  currentRaceAnalysisMode = mode;
+  // Update tab styling
+  const tabs = document.querySelectorAll("#raceAnalysis .analysis-tab");
+  tabs.forEach((tab, idx) => {
+    tab.classList.toggle("active", (mode === "lapTimes" && idx === 0) || (mode === "consistency" && idx === 1));
+  });
+  // Re-render analysis
+  updateRaceAnalysisView();
+}
+
+function updateRaceAnalysisView() {
+  // Collect all pilots' data
+  const pilots = collectAllPilotsData();
+  
+  if (pilots.length === 0 || pilots.every(p => p.lapTimes.length < 2)) {
+    document.getElementById("raceAnalysisContent").innerHTML = '<p class="no-data">Complete at least 2 laps to see race analysis</p>';
+    document.getElementById("raceAnalysisLegend").innerHTML = '';
+    return;
+  }
+  
+  // Render the appropriate chart
+  switch (currentRaceAnalysisMode) {
+    case "lapTimes":
+      renderLapTimesChart(pilots);
+      break;
+    case "consistency":
+      renderConsistencyChart(pilots);
+      break;
+  }
+  
+  // Render legend
+  renderRaceAnalysisLegend(pilots);
+}
+
+function collectAllPilotsData() {
+  const pilots = [];
+  
+  // Add local pilot
+  const localPilotInfo = getLocalPilotInfo();
+  const localColorHex = document.getElementById("pilotColor")?.value || "#0080FF";
+  pilots.push({
+    name: localPilotInfo.pilotName || "Local",
+    color: localColorHex,
+    lapTimes: lapTimes.slice(), // Copy array
+    isLocal: true
+  });
+  
+  // Add remote pilots (in master mode)
+  if (raceSyncMode === 1) {
+    for (const hostname of Object.keys(remotePilots)) {
+      const pilot = remotePilots[hostname];
+      const colorHex = pilot.pilotColor ? '#' + pilot.pilotColor.toString(16).padStart(6, '0') : pilotColors[pilots.length % pilotColors.length];
+      pilots.push({
+        name: pilot.pilotName || hostname,
+        color: colorHex,
+        lapTimes: pilot.lapTimes || [],
+        isLocal: false
+      });
+    }
+  }
+  
+  return pilots;
+}
+
+function renderLapTimesChart(pilots) {
+  const container = document.getElementById("raceAnalysisContent");
+  
+  // Find max laps and time range
+  let maxLaps = 0;
+  let minTime = Infinity;
+  let maxTime = 0;
+  
+  pilots.forEach(pilot => {
+    const validLaps = pilot.lapTimes.slice(1); // Skip gate 1
+    if (validLaps.length > maxLaps) maxLaps = validLaps.length;
+    validLaps.forEach(t => {
+      if (t < minTime) minTime = t;
+      if (t > maxTime) maxTime = t;
+    });
+  });
+  
+  if (maxLaps < 1) {
+    container.innerHTML = '<p class="no-data">Complete at least 1 lap to see chart</p>';
+    return;
+  }
+  
+  // Chart dimensions
+  const width = 800;
+  const height = 300;
+  const padding = { top: 20, right: 20, bottom: 40, left: 50 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  
+  // Add padding to time range
+  const timeRange = maxTime - minTime || 1;
+  minTime = Math.max(0, minTime - timeRange * 0.1);
+  maxTime = maxTime + timeRange * 0.1;
+  
+  // Build SVG
+  let svg = `<svg viewBox="0 0 ${width} ${height}" style="width: 100%; max-width: ${width}px; height: auto;">`;
+  
+  // Grid lines
+  svg += '<g class="grid" stroke="var(--border-color)" stroke-opacity="0.3">';
+  for (let i = 0; i <= 5; i++) {
+    const y = padding.top + (chartHeight / 5) * i;
+    svg += `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" />`;
+  }
+  for (let i = 0; i <= maxLaps; i++) {
+    const x = padding.left + (chartWidth / maxLaps) * i;
+    svg += `<line x1="${x}" y1="${padding.top}" x2="${x}" y2="${height - padding.bottom}" />`;
+  }
+  svg += '</g>';
+  
+  // Y-axis labels (time)
+  svg += '<g class="y-axis" fill="var(--text-color)" font-size="11">';
+  for (let i = 0; i <= 5; i++) {
+    const y = padding.top + (chartHeight / 5) * i;
+    const time = maxTime - ((maxTime - minTime) / 5) * i;
+    svg += `<text x="${padding.left - 8}" y="${y + 4}" text-anchor="end">${time.toFixed(1)}s</text>`;
+  }
+  svg += '</g>';
+  
+  // X-axis labels (laps)
+  svg += '<g class="x-axis" fill="var(--text-color)" font-size="11">';
+  for (let i = 1; i <= maxLaps; i++) {
+    const x = padding.left + (chartWidth / maxLaps) * (i - 0.5);
+    svg += `<text x="${x}" y="${height - padding.bottom + 20}" text-anchor="middle">L${i}</text>`;
+  }
+  svg += `<text x="${width / 2}" y="${height - 5}" text-anchor="middle" font-size="12" fill="var(--secondary-color)">Lap</text>`;
+  svg += '</g>';
+  
+  // Draw lines and points for each pilot
+  pilots.forEach((pilot, pilotIdx) => {
+    const validLaps = pilot.lapTimes.slice(1); // Skip gate 1
+    if (validLaps.length < 1) return;
+    
+    // Build path points
+    const points = [];
+    validLaps.forEach((time, lapIdx) => {
+      const x = padding.left + (chartWidth / maxLaps) * (lapIdx + 0.5);
+      const y = padding.top + chartHeight - ((time - minTime) / (maxTime - minTime)) * chartHeight;
+      points.push({ x, y, time });
+    });
+    
+    // Draw smooth curve using catmull-rom spline converted to bezier
+    if (points.length > 1) {
+      let pathD = `M ${points[0].x} ${points[0].y}`;
+      for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[Math.max(0, i - 1)];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const p3 = points[Math.min(points.length - 1, i + 2)];
+        
+        // Catmull-Rom to Bezier conversion
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+        
+        pathD += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+      }
+      svg += `<path d="${pathD}" fill="none" stroke="${pilot.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />`;
+    }
+    
+    // Draw points
+    points.forEach(p => {
+      svg += `<circle cx="${p.x}" cy="${p.y}" r="5" fill="${pilot.color}" stroke="white" stroke-width="1.5" />`;
+    });
+  });
+  
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
+
+function renderConsistencyChart(pilots) {
+  const container = document.getElementById("raceAnalysisContent");
+  
+  // Calculate box plot statistics for each pilot
+  const pilotStats = pilots.map(pilot => {
+    const validLaps = pilot.lapTimes.slice(1).filter(t => t > 0); // Skip gate 1
+    if (validLaps.length < 2) return null;
+    
+    const sorted = [...validLaps].sort((a, b) => a - b);
+    const n = sorted.length;
+    const q1Idx = Math.floor(n * 0.25);
+    const q3Idx = Math.floor(n * 0.75);
+    
+    const min = sorted[0];
+    const max = sorted[n - 1];
+    const q1 = sorted[q1Idx];
+    const q3 = sorted[q3Idx];
+    const median = n % 2 === 0 ? (sorted[n/2 - 1] + sorted[n/2]) / 2 : sorted[Math.floor(n/2)];
+    const iqr = q3 - q1;
+    const whiskerMin = Math.max(min, q1 - 1.5 * iqr);
+    const whiskerMax = Math.min(max, q3 + 1.5 * iqr);
+    
+    // Find outliers
+    const outliers = validLaps.filter(t => t < whiskerMin || t > whiskerMax);
+    
+    return {
+      name: pilot.name,
+      color: pilot.color,
+      min, max, q1, q3, median, whiskerMin, whiskerMax, outliers,
+      allLaps: validLaps
+    };
+  }).filter(s => s !== null);
+  
+  if (pilotStats.length === 0) {
+    container.innerHTML = '<p class="no-data">Complete at least 2 laps to see consistency chart</p>';
+    return;
+  }
+  
+  // Find time range across all pilots
+  let globalMin = Infinity;
+  let globalMax = 0;
+  pilotStats.forEach(s => {
+    if (s.min < globalMin) globalMin = s.min;
+    if (s.max > globalMax) globalMax = s.max;
+  });
+  
+  const timeRange = globalMax - globalMin || 1;
+  globalMin = Math.max(0, globalMin - timeRange * 0.1);
+  globalMax = globalMax + timeRange * 0.1;
+  
+  // Chart dimensions
+  const width = 800;
+  const rowHeight = 40;
+  const height = pilotStats.length * rowHeight + 80;
+  const padding = { top: 20, right: 30, bottom: 50, left: 100 };
+  const chartWidth = width - padding.left - padding.right;
+  
+  // Build SVG
+  let svg = `<svg viewBox="0 0 ${width} ${height}" style="width: 100%; max-width: ${width}px; height: auto;">`;
+  
+  // Grid lines (vertical)
+  svg += '<g class="grid" stroke="var(--border-color)" stroke-opacity="0.3">';
+  for (let i = 0; i <= 10; i++) {
+    const x = padding.left + (chartWidth / 10) * i;
+    svg += `<line x1="${x}" y1="${padding.top}" x2="${x}" y2="${height - padding.bottom}" />`;
+  }
+  svg += '</g>';
+  
+  // X-axis labels (time)
+  svg += '<g class="x-axis" fill="var(--text-color)" font-size="11">';
+  for (let i = 0; i <= 10; i++) {
+    const x = padding.left + (chartWidth / 10) * i;
+    const time = globalMin + ((globalMax - globalMin) / 10) * i;
+    svg += `<text x="${x}" y="${height - padding.bottom + 20}" text-anchor="middle">${time.toFixed(1)}</text>`;
+  }
+  svg += `<text x="${width / 2}" y="${height - 10}" text-anchor="middle" font-size="12" fill="var(--secondary-color)">Lap Time (s)</text>`;
+  svg += '</g>';
+  
+  // Draw box plots for each pilot
+  pilotStats.forEach((stats, idx) => {
+    const y = padding.top + idx * rowHeight + rowHeight / 2;
+    const boxHeight = rowHeight * 0.6;
+    
+    // Helper to convert time to x position
+    const timeToX = (t) => padding.left + ((t - globalMin) / (globalMax - globalMin)) * chartWidth;
+    
+    // Pilot name label
+    svg += `<text x="${padding.left - 8}" y="${y + 4}" text-anchor="end" font-size="12" fill="${stats.color}" font-weight="bold">${stats.name}</text>`;
+    
+    // Whiskers (lines extending from box)
+    const whiskerMinX = timeToX(stats.whiskerMin);
+    const whiskerMaxX = timeToX(stats.whiskerMax);
+    const q1X = timeToX(stats.q1);
+    const q3X = timeToX(stats.q3);
+    const medianX = timeToX(stats.median);
+    
+    // Left whisker
+    svg += `<line x1="${whiskerMinX}" y1="${y}" x2="${q1X}" y2="${y}" stroke="${stats.color}" stroke-width="1.5" />`;
+    svg += `<line x1="${whiskerMinX}" y1="${y - boxHeight/4}" x2="${whiskerMinX}" y2="${y + boxHeight/4}" stroke="${stats.color}" stroke-width="1.5" />`;
+    
+    // Right whisker
+    svg += `<line x1="${q3X}" y1="${y}" x2="${whiskerMaxX}" y2="${y}" stroke="${stats.color}" stroke-width="1.5" />`;
+    svg += `<line x1="${whiskerMaxX}" y1="${y - boxHeight/4}" x2="${whiskerMaxX}" y2="${y + boxHeight/4}" stroke="${stats.color}" stroke-width="1.5" />`;
+    
+    // Box (Q1 to Q3)
+    svg += `<rect x="${q1X}" y="${y - boxHeight/2}" width="${q3X - q1X}" height="${boxHeight}" fill="${stats.color}" fill-opacity="0.3" stroke="${stats.color}" stroke-width="1.5" rx="2" />`;
+    
+    // Median line
+    svg += `<line x1="${medianX}" y1="${y - boxHeight/2}" x2="${medianX}" y2="${y + boxHeight/2}" stroke="${stats.color}" stroke-width="2" />`;
+    
+    // Fastest lap marker (red circle)
+    const fastestX = timeToX(stats.min);
+    svg += `<circle cx="${fastestX}" cy="${y}" r="6" fill="#FF0000" stroke="white" stroke-width="1.5" />`;
+    
+    // Individual lap points (small circles)
+    stats.allLaps.forEach(t => {
+      const x = timeToX(t);
+      svg += `<circle cx="${x}" cy="${y}" r="3" fill="none" stroke="${stats.color}" stroke-opacity="0.5" />`;
+    });
+    
+    // Outliers (hollow circles)
+    stats.outliers.forEach(t => {
+      const x = timeToX(t);
+      svg += `<circle cx="${x}" cy="${y}" r="4" fill="none" stroke="${stats.color}" stroke-width="1.5" />`;
+    });
+  });
+  
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
+
+function renderRaceAnalysisLegend(pilots) {
+  const legend = document.getElementById("raceAnalysisLegend");
+  let html = '';
+  
+  pilots.forEach(pilot => {
+    const validLaps = pilot.lapTimes.slice(1);
+    const lapCount = validLaps.length;
+    const fastest = lapCount > 0 ? Math.min(...validLaps).toFixed(2) : '--';
+    html += `
+      <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; background-color: var(--bg-secondary); border-radius: 4px; border-left: 4px solid ${pilot.color};">
+        <span style="font-weight: bold;">${pilot.name}${pilot.isLocal ? ' *' : ''}</span>
+        <span style="color: var(--secondary-color); font-size: 12px;">${lapCount} laps, best: ${fastest}s</span>
+      </div>
+    `;
+  });
+  
+  legend.innerHTML = html;
+}
+
+// Toggle between Lap Analysis and Race Analysis based on sync mode
+function updateAnalysisSectionVisibility() {
+  const lapAnalysis = document.getElementById("lapAnalysis");
+  const raceAnalysis = document.getElementById("raceAnalysis");
+  
+  if (raceSyncMode === 1 || raceSyncMode === 2) {
+    // Sync mode - show Race Analysis
+    if (lapAnalysis) lapAnalysis.style.display = "none";
+    if (raceAnalysis) raceAnalysis.style.display = "block";
+    updateRaceAnalysisView();
+  } else {
+    // Personal mode - show Lap Analysis
+    if (lapAnalysis) lapAnalysis.style.display = "block";
+    if (raceAnalysis) raceAnalysis.style.display = "none";
+    updateAnalysisView();
+  }
 }
 
 // Race History Functions
