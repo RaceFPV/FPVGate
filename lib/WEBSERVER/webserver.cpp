@@ -30,7 +30,7 @@ static IPAddress ipAddress;
 static AsyncWebServer server(80);
 static AsyncEventSource events("/events");
 
-// Dynamic hostname based on timerNumber config
+// Hostname is always fpvgate.local (timerNumber-based hostnames removed for iOS compatibility)
 static char wifi_hostname[16] = "fpvgate";
 static const char *wifi_ap_ssid_prefix = "FPVGate";
 static const char *wifi_ap_password = "fpvgate1";
@@ -320,16 +320,18 @@ static bool captivePortal(AsyncWebServerRequest *request) {
         return false;
     }
     
-    // Always allow fpvgate.local and fpvgateN.local (N=1-8)
+    // Always allow fpvgate.local
     if (host == "fpvgate.local" || host == "www.fpvgate.local") {
         return false;
     }
-    for (int i = 1; i <= 8; i++) {
-        String allowed = "fpvgate" + String(i) + ".local";
-        if (host == allowed || host == "www." + allowed) {
-            return false;
-        }
-    }
+    
+    // LEGACY: timerNumber-based hostnames (fpvgate1-8.local) removed for iOS compatibility
+    // for (int i = 1; i <= 8; i++) {
+    //     String allowed = "fpvgate" + String(i) + ".local";
+    //     if (host == allowed || host == "www." + allowed) {
+    //         return false;
+    //     }
+    // }
     
     DEBUG("Request redirected to captive portal\n");
     request->redirect(String("http://") + toStringIp(request->client()->localIP()));

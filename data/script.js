@@ -114,7 +114,7 @@ var lastCompletedLapTime = 0; // Duration of previous lap (ms)
 var trackLapLength = 0.0; // Length of one lap (meters)
 
 // Race sync state
-var timerNumber = 0; // 0=fpvgate.local, 1-8=fpvgateN.local
+var timerNumber = 0; // LEGACY: Timer number (no longer used for hostname)
 var raceSyncMode = 0; // 0=disabled, 1=master, 2=slave
 var syncedTimers = []; // Array of synced timer hostnames (for master mode)
 var configLoaded = false; // Flag to prevent saving before initial config load
