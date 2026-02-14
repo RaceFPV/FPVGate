@@ -54,7 +54,9 @@
 
       <div id="race" class="tabcontent">
         <span id="timer" data-i18n="race.timer_default">00:00:00s</span>
-        <div id="lapCounter" style="text-align: center; font-size: 18px; font-weight: bold; color: var(--primary-color); margin: 8px 0" data-i18n="race.lap_counter">Lap 0</div>
+        <div id="lapCounter" style="text-align: center; font-size: 18px; font-weight: bold; color: var(--primary-color); margin: 8px 0">
+          <span id="lapCounterText" data-i18n="race.lap_counter">Lap 0</span> - <span id="currentLapTimer">00:00:00s</span>
+        </div>
         <div class="racebuttons">
           <button id="startRaceButton" onclick="startRace()" data-i18n="race.start_race">Start Race</button>
           <button id="stopRaceButton" onclick="stopRace()" disabled data-i18n="race.stop_race">Stop Race</button>

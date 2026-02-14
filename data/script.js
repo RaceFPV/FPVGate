@@ -131,6 +131,7 @@ var remotePilotsCollapsed = false;
 
 var timerInterval;
 var lapTimerStartMs = 0; // Start time for current lap timer
+var currentLapStartMs = 0; // Start time for current lap (resets each lap)
 const timer = document.getElementById("timer");
 const lapCounter = document.getElementById("lapCounter");
 const startRaceButton = document.getElementById("startRaceButton");
@@ -814,6 +815,10 @@ function startRaceTimer() {
   var millis = 0;
   var seconds = 0;
   var minutes = 0;
+  
+  // Track current lap start time
+  currentLapStartMs = Date.now();
+  
   timerInterval = setInterval(function () {
     millis += 1;
     if (millis == 100) {
@@ -827,10 +832,14 @@ function startRaceTimer() {
         }
       }
     }
+    // Total race time
     let m = minutes < 10 ? "0" + minutes : minutes;
     let s = seconds < 10 ? "0" + seconds : seconds;
     let ms = millis < 10 ? "0" + millis : millis;
     timer.innerHTML = `${m}:${s}:${ms}` + i18n.t("race.table.seconds_short");
+    
+    // Current lap time
+    updateCurrentLapTimer();
   }, 10);
 }
 
@@ -2101,6 +2110,9 @@ function addLap(lapStr) {
   currentLapStartTime = Date.now(); // Reset lap start time
   lapTimerStartMs = Date.now(); // Reset lap timer
   currentLapDistance = 0.0; // Reset distance counter
+  
+  // Reset current lap timer display
+  resetCurrentLapTimer();
 
   // Render unified multi-pilot view
   renderUnifiedRaceView();
@@ -2187,6 +2199,10 @@ function startTimer() {
   var millis = 0;
   var seconds = 0;
   var minutes = 0;
+  
+  // Initialize current lap timer
+  currentLapStartMs = Date.now();
+  
   timerInterval = setInterval(function () {
     millis += 1;
 
@@ -2207,6 +2223,9 @@ function startTimer() {
     let s = seconds < 10 ? "0" + seconds : seconds;
     let ms = millis < 10 ? "0" + millis : millis;
     timer.innerHTML = `${m}:${s}:${ms}` + i18n.t("race.table.seconds_short");
+    
+    // Update current lap timer
+    updateCurrentLapTimer();
   }, 10);
 
   if (usbConnected && transportManager) {
@@ -2602,11 +2621,37 @@ function doSpeak(obj) {
 }
 
 function updateLapCounter() {
+  const lapCounterText = document.getElementById("lapCounterText");
+  if (!lapCounterText) return;
+  
   if (maxLaps === 0) {
-    lapCounter.textContent = i18n.t("race.lap_counter", { n: Math.max(0, lapNo) });
+    lapCounterText.textContent = i18n.t("race.lap_counter", { n: Math.max(0, lapNo) });
   } else {
-    lapCounter.textContent = i18n.t("race.lap_counter", { n: Math.max(0, lapNo) }) + " / " + maxLaps;
+    lapCounterText.textContent = i18n.t("race.lap_counter", { n: Math.max(0, lapNo) }) + " / " + maxLaps;
   }
+}
+
+// Update current lap timer display
+function updateCurrentLapTimer() {
+  const currentLapTimerEl = document.getElementById("currentLapTimer");
+  if (!currentLapTimerEl || !currentLapStartMs) return;
+  
+  const elapsed = Date.now() - currentLapStartMs;
+  const totalCentis = Math.floor(elapsed / 10);
+  const minutes = Math.floor(totalCentis / 6000);
+  const seconds = Math.floor((totalCentis % 6000) / 100);
+  const centis = totalCentis % 100;
+  
+  const m = minutes < 10 ? "0" + minutes : minutes;
+  const s = seconds < 10 ? "0" + seconds : seconds;
+  const ms = centis < 10 ? "0" + centis : centis;
+  
+  currentLapTimerEl.textContent = `${m}:${s}:${ms}` + i18n.t("race.table.seconds_short");
+}
+
+// Reset current lap timer (called when lap is recorded)
+function resetCurrentLapTimer() {
+  currentLapStartMs = Date.now();
 }
 
 function highlightFastestLap() {
@@ -2723,6 +2768,11 @@ function stopRace() {
   queueSpeak(`<p>${i18n.t("settings.tts.race_stopped")}</p>`);
   clearInterval(timerInterval);
   timer.innerHTML = i18n.t("race.timer_default");
+  
+  // Reset current lap timer display
+  currentLapStartMs = 0;
+  const currentLapTimerEl = document.getElementById("currentLapTimer");
+  if (currentLapTimerEl) currentLapTimerEl.textContent = "00:00:00s";
 
   if (usbConnected && transportManager) {
     transportManager
@@ -2784,6 +2834,11 @@ function clearLaps() {
   lapNo = -1;
   lapTimes = [];
   updateLapCounter();
+  
+  // Reset current lap timer display
+  currentLapStartMs = 0;
+  const currentLapTimerEl = document.getElementById("currentLapTimer");
+  if (currentLapTimerEl) currentLapTimerEl.textContent = "00:00:00s";
 
   // Clear lap analysis
   document.getElementById("analysisContent").innerHTML = `<p class="no-data">${i18n.t("analysis.no_data")}</p>`;
@@ -3573,41 +3628,38 @@ function loadDarkMode() {
 
 // Manual lap addition
 function addManualLap() {
-  // Get current timer value and convert to milliseconds
-  const timerText = timer.innerHTML;
-  const match = timerText.match(/(\d{2}):(\d{2}):(\d{2})s/);
-  if (match) {
-    const minutes = parseInt(match[1]);
-    const seconds = parseInt(match[2]);
-    const centiseconds = parseInt(match[3]);
-    const totalMs = minutes * 60000 + seconds * 1000 + centiseconds * 10;
-
-    // Calculate lap time in milliseconds
-    const lapTimeMs = totalMs - (lapNo >= 0 ? lapTimes.reduce((a, b) => a + b * 1000, 0) : 0);
-
-    // Send lap to backend to broadcast to all clients (including OSD)
-    if (usbConnected && transportManager) {
-      transportManager
-        .sendCommand("timer/addLap", "POST", { lapTime: lapTimeMs })
-        .then((data) => console.log("Manual lap broadcasted:", data))
-        .catch((err) => console.error("Failed to broadcast manual lap:", err));
-    } else {
-      fetch("/timer/addLap", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ lapTime: lapTimeMs }),
-      })
-        .then((response) => response.json())
-        .then((data) => console.log("Manual lap broadcasted:", data))
-        .catch((err) => console.error("Failed to broadcast manual lap:", err));
-    }
-
-    // Note: The lap will be added via EventSource lap event
-    // No need to call addLap() here as it will come back through the event stream
+  // Use the current lap timer value (time since last gate crossing)
+  if (!currentLapStartMs) {
+    console.warn("[Manual Lap] No lap timer running");
+    return;
   }
+  
+  const lapTimeMs = Date.now() - currentLapStartMs;
+  
+  console.log("[Manual Lap] Recording lap time:", lapTimeMs, "ms (", (lapTimeMs / 1000).toFixed(2), "s)");
+
+  // Send lap to backend to broadcast to all clients (including OSD)
+  if (usbConnected && transportManager) {
+    transportManager
+      .sendCommand("timer/addLap", "POST", { lapTime: lapTimeMs })
+      .then((data) => console.log("Manual lap broadcasted:", data))
+      .catch((err) => console.error("Failed to broadcast manual lap:", err));
+  } else {
+    fetch("/timer/addLap", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ lapTime: lapTimeMs }),
+    })
+      .then((response) => response.json())
+      .then((data) => console.log("Manual lap broadcasted:", data))
+      .catch((err) => console.error("Failed to broadcast manual lap:", err));
+  }
+
+  // Note: The lap will be added via EventSource lap event
+  // No need to call addLap() here as it will come back through the event stream
 }
 
 // Lap Analysis
