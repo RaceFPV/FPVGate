@@ -1761,11 +1761,14 @@ footer {
   
   .racebuttons {
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
   }
   
   .racebuttons button {
     width: 100%;
+    margin: 0; /* Remove default button margin */
+    padding: 16px 12px;
+    font-size: 16px;
   }
   
   button {
