@@ -1,6 +1,6 @@
 ﻿# FPVGate
 
-**Personal FPV Lap Timer for [ESP32-S3](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html) / [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/) / Seeed Studio XIAO ESP32S3**
+**Personal FPV Lap Timer for [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/) (Recommended) / [ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)**
 
 [![Website](https://img.shields.io/badge/Website-fpvgate.xyz-blue?style=for-the-badge&logo=google-chrome&logoColor=white)](https://fpvgate.xyz)
 [![Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/louishitchcock)
@@ -107,7 +107,7 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 
 | Component | Required | Notes |
 |-----------|----------|-------|
-| **[ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)** or **[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)** | Yes | Main controller (both supported) |
+| **[Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)** (Recommended) or **[ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)** | Yes | Main controller |
 | **RX5808 Module** | Yes | 5.8GHz receiver ([SPI mod required](https://sheaivey.github.io/rx5808-pro-diversity/docs/rx5808-spi-mod.html)) |
 | **MicroSD Card** | Yes | FAT32, 1GB+ for audio storage |
 | **5V Power Supply** | Yes | USB power or any 5V power source |
@@ -118,10 +118,12 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 
 Detailed wiring diagrams are available for each supported board:
 
-- **[ESP32-S3 DevKitC-1 (8MB Flash)](docs/wiring/ESP32-S3-DevKitC-1.md)** - Recommended
-- **[ESP32-S3 Super Mini (4MB Flash)](docs/wiring/ESP32-S3-SuperMini.md)** - Compact
-- **[Seeed Studio XIAO ESP32S3](docs/wiring/Seeed-XIAO-ESP32S3.md)** - Compact, 8MB
+- **[Seeed Studio XIAO ESP32S3](docs/wiring/Seeed-XIAO-ESP32S3.md)** - Recommended, compact, 8MB
+- **[ESP32-S3 DevKitC-1 (8MB Flash)](docs/wiring/ESP32-S3-DevKitC-1.md)** - Alternative
+- **[ESP32-S3 Super Mini (4MB Flash)](docs/wiring/ESP32-S3-SuperMini.md)** - Not recommended (see note below)
 - **[LilyGO T-Energy S3](docs/wiring/LilyGO-T-Energy-S3.md)** - Expert mode, integrated battery
+
+> **Note on ESP32-S3 Super Mini:** Through testing, this board has proven unreliable due to inconsistent quality from various suppliers. Some revisions experience frequent brownouts under load. This board is still supported but is not recommended for new builds.
 
 **[Complete hardware guide →](docs/HARDWARE_GUIDE.md)**
 
@@ -140,9 +142,9 @@ The easiest way to install FPVGate is using our web-based flasher:
 5. Click "Flash" and wait for completion (~2-3 minutes)
 
 Supported boards:
-- ESP32-S3 DevKitC-1 (8MB Flash) - Recommended
-- ESP32-S3 Super Mini (4MB Flash)
-- Seeed Studio XIAO ESP32S3 (8MB)
+- Seeed Studio XIAO ESP32S3 (8MB) - Recommended
+- ESP32-S3 DevKitC-1 (8MB Flash)
+- ESP32-S3 Super Mini (4MB Flash) - Not recommended
 - LilyGO T-Energy S3
 
 **Option B: Command Line (Advanced)**

@@ -51,7 +51,21 @@ Technical specifications, wiring diagrams, and hardware troubleshooting.
 
 ## ESP32 Board Selection
 
-### Recommended: ESP32-S3 DevKit-C
+### Recommended: Seeed Studio XIAO ESP32S3
+
+**Why XIAO ESP32S3:**
+- **Compact form factor** - Smallest recommended board
+- **8MB Flash** - Full feature support
+- **USB-C** - Modern connector
+- **Consistent quality** - Reliable sourcing from Seeed Studio
+- **Good documentation** - Well-supported by manufacturer
+
+**Where to Buy:**
+- **Seeed Studio:** $7-10 (direct)
+- **Amazon:** $10-15 (faster shipping)
+- **AliExpress:** $6-8 (longer shipping)
+
+### Alternative: ESP32-S3 DevKit-C
 
 **Why ESP32-S3:**
 - **USB Serial CDC** - Direct USB connectivity to PC
@@ -60,28 +74,19 @@ Technical specifications, wiring diagrams, and hardware troubleshooting.
 - **Better WiFi** - Improved antenna design
 - **LittleFS support** - Store voice files without SD card
 
-**Pinout Compatibility:**
-- Uses same GPIO pins as original ESP32
-- Drop-in replacement for existing builds
-
 **Where to Buy:**
 - **AliExpress:** $6-8 (search "ESP32-S3 DevKit-C")
 - **Amazon:** $10-12 (faster shipping)
 - **Adafruit:** $13 (quality assurance)
 
-### Alternative: Original ESP32 DevKitC
+### Not Recommended
 
-**Still Supported:**
-- All features work except USB connectivity
-- WiFi-only operation
-- Cheaper ($4-6)
+**ESP32-S3 Super Mini:**
+- **Unreliable sourcing** - Inconsistent board quality from various suppliers
+- **Brownout issues** - Some revisions experience frequent brownouts under load
+- **Still supported** - Available in Expert Mode on the web flasher, but not recommended for new builds
 
-**Limitations:**
-- No USB Serial CDC (WiFi only)
-- Less RAM (may limit voice files)
-- Older architecture
-
-### Not Recommended / Not Supported
+### Not Supported
 
 **ESP32-C3:**
 - No longer supported in FPVGate (performance and compatibility issues)

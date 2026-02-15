@@ -24,8 +24,8 @@ Complete guide to building, flashing, and configuring your FPVGate lap timer.
 
 | Component | Specs | Purchase Links | Approx. Cost |
 |-----------|-------|----------------|--------------|
+| **[Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)** (Recommended) | USB-C, 8MB Flash, Compact | [Seeed Studio](https://www.seeedstudio.com/), [Amazon](https://www.amazon.com) | $7-15 |
 | **[ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)** | USB-C, 8MB Flash | [Espressif](https://www.espressif.com/en/products/devkits) | $10-15 |
-| **[ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/)** | USB-C, 4MB Flash, Compact | [ESPBoards](https://www.espboards.dev/store/), [AliExpress](https://www.aliexpress.com) | $5-8 |
 | **RX5808 Module** | 5.8GHz receiver with SPI mod | [Banggood](https://www.banggood.com) | $5-8 |
 | **MicroSD Card** | FAT32, 1GB+, Class 10 | Any retailer | $3-5 |
 | **MicroSD Card Module** | SPI interface | Amazon/eBay | $2-3 |
