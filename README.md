@@ -1,13 +1,12 @@
 ﻿# FPVGate
 
-**Personal FPV Lap Timer for [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/) (Recommended) / [ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)**
+**Personal FPV Lap Timer for [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/) / [ESP32-S3-DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html)**
 
 [![Website](https://img.shields.io/badge/Website-fpvgate.xyz-blue?style=for-the-badge&logo=google-chrome&logoColor=white)](https://fpvgate.xyz)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey?style=for-the-badge)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/D3MgfvsnAw)
 [![Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/louishitchcock)
 
-[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-[![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32--S3-orange.svg)](https://platformio.org/)
-[![GitHub release](https://img.shields.io/github/v/release/LouisHitchcock/FPVGate)](https://github.com/LouisHitchcock/FPVGate/releases)
 
 A compact, self-contained RSSI-based lap timing solution for 5.8GHz FPV drones. Perfect for personal practice sessions, small indoor tracks, and training.
 
@@ -240,11 +239,21 @@ Exit  ├/──────────\─
 
 ### Recent Updates
 
-**v1.5.7 (Latest Release - February 7, 2026)**
+**v1.6.1 (Latest Release - February 14, 2026)**
+- **Multi-Pilot Race Analysis** - Current lap timer, lap times chart, consistency chart
+- **Race Synchronization** - Redesigned sync UI, TTS format override, speech keepalive
+- **Mobile Experience** - Settings modal navigation, iOS Safari hostname fix
+- **Bug Fixes** - Start race button hanging, mobile audio announcer, DevKit pin corrections
+
+**v1.6.0 (February 9, 2026)**
+- **Race Synchronization System** - Multi-timer sync for distributed race timing
+- **Audio Controls** - Beep volume slider, independent browser audio volume
+- **WebSocket Sync** - Real-time sync between master and slave timers
+
+**v1.5.7 (February 7, 2026)**
 - **OSD Setup Section** - Quick actions for horizontal and vertical On Screen Displays
 - **Custom Theme** - User-defined colors for background, highlight, text, menu and secondary
 - **Theme Organization** - Preset themes grouped for easier selection
-- **UI Cleanup** - Removed RSSI detection UI block from the settings menu
 
 **v1.5.1-dev**
 - [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/) support (4MB flash variant)
@@ -274,19 +283,6 @@ Exit  ├/──────────\─
 - Modern Configuration UI with full-screen overlay modal
 - WebSocket Stability with SSE keepalive mechanism
 - Fixed duplicate element IDs and WiFi configuration issues
-
-**v1.3.2**
-- WiFi Status Display with real-time connection monitoring
-- Marshalling Mode for post-race lap editing
-- LED settings persistence to EEPROM
-
-**v1.3.0**
-- iOS/Safari full audio support with vibration feedback
-- Mobile-responsive interface for phones and tablets
-- USB Serial CDC connectivity with Electron desktop app
-- OSD overlay system for streaming (transparent, real-time)
-- Cross-device race storage on SD card
-- Race tagging, naming, and detailed analysis
 
 **[Full changelog →](CHANGELOG.md)**
 
