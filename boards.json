@@ -8,7 +8,7 @@
     {
       "value": "esp32s3supermini",
       "label": "ESP32-S3 Super Mini (4MB Flash)",
-      "expert_mode": 0
+      "expert_mode": 1
     },
     {
       "value": "seeedxiaos3",
