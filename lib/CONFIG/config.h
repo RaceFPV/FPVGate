@@ -171,7 +171,7 @@
 #define EEPROM_RESERVED_SIZE 768
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 11U
+#define CONFIG_VERSION 14U
 
 // Race sync mode constants
 #define RACE_SYNC_DISABLED 0
@@ -235,6 +235,18 @@ typedef struct {
     uint8_t syncedTimerCount;      // Number of configured synced timers
     uint8_t beepVolume;            // Buzzer volume 0-100 (percentage)
     char masterHostname[32];       // Master hostname for slave mode (e.g., "fpvgate.local" or "192.168.1.100")
+    uint8_t autoThresholdEnabled;   // Auto threshold mode: 0=manual (static enter/exit), 1=rolling baseline
+    uint8_t autoThresholdOffset;    // RSSI units above rolling baseline to trigger entry (5-80, default 15)
+    uint8_t receiverRadio;          // Receiver module: 0=RX5808, 1=Novacore
+    // Novacore filter configuration (only used when receiverRadio=1)
+    uint8_t novaFilterKalman;       // Kalman filter: 0=off, 1=on
+    uint8_t novaFilterMedian;       // Median-of-3 filter: 0=off, 1=on
+    uint8_t novaFilterMA;           // Moving average filter: 0=off, 1=on
+    uint8_t novaFilterEMA;          // EMA low-pass filter: 0=off, 1=on
+    uint8_t novaFilterStepLimiter;  // Step limiter: 0=off, 1=on
+    uint16_t novaKalmanQ;           // Kalman Q * 100 (100-1500, higher = more smoothing)
+    uint8_t novaEmaAlpha;           // EMA alpha * 100 (5-80, lower = more smoothing)
+    uint8_t novaStepMax;            // Step limiter max per sample (5-50)
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
@@ -261,6 +273,8 @@ class Config {
     uint8_t getAlarmThreshold();
     uint8_t getEnterRssi();
     uint8_t getExitRssi();
+    uint8_t getAutoThresholdEnabled();
+    uint8_t getAutoThresholdOffset();
     uint8_t getMaxLaps();
     uint8_t getLedMode();
     uint8_t getLedBrightness();
@@ -343,6 +357,24 @@ class Config {
     // Master hostname for slave mode
     char* getMasterHostname();
     void setMasterHostname(const char* hostname);
+    
+    // Auto threshold (rolling baseline)
+    void setAutoThresholdEnabled(uint8_t enabled);
+    void setAutoThresholdOffset(uint8_t offset);
+    
+    // Receiver radio
+    uint8_t getReceiverRadio();
+    void setReceiverRadio(uint8_t radio);
+    
+    // Novacore filter config
+    uint8_t getNovaFilterKalman();
+    uint8_t getNovaFilterMedian();
+    uint8_t getNovaFilterMA();
+    uint8_t getNovaFilterEMA();
+    uint8_t getNovaFilterStepLimiter();
+    uint16_t getNovaKalmanQ();
+    uint8_t getNovaEmaAlpha();
+    uint8_t getNovaStepMax();
 
    private:
     laptimer_config_t conf;

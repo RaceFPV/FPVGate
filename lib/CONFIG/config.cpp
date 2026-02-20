@@ -86,12 +86,73 @@ void Config::load(void) {
     if (version != CONFIG_VERSION) {
         DEBUG("EEPROM config version mismatch (found=%u, expected=%u)\n", version, CONFIG_VERSION);
         
-        // Migration from version 10 to 11: add masterHostname field
-        if (version == 10) {
-            DEBUG("Migrating config from v10 to v11 (adding masterHostname)\n");
-            // Initialize the new field with default value
+        // Migration from version 13 to 14: add Novacore filter config
+        if (version == 13) {
+            DEBUG("Migrating config from v13 to v14 (adding Novacore filter config)\n");
+            conf.novaFilterKalman = 1;
+            conf.novaFilterMedian = 0;
+            conf.novaFilterMA = 0;
+            conf.novaFilterEMA = 0;
+            conf.novaFilterStepLimiter = 1;
+            conf.novaKalmanQ = 200;
+            conf.novaEmaAlpha = 15;
+            conf.novaStepMax = 20;
+            conf.version = CONFIG_VERSION | CONFIG_MAGIC;
+            modified = true;
+            write();
+            DEBUG("Migration complete, config preserved\n");
+        }
+        // Migration from version 12 to 14
+        else if (version == 12) {
+            DEBUG("Migrating config from v12 to v14 (adding receiverRadio + filter config)\n");
+            conf.receiverRadio = 0;
+            conf.novaFilterKalman = 1;
+            conf.novaFilterMedian = 0;
+            conf.novaFilterMA = 0;
+            conf.novaFilterEMA = 0;
+            conf.novaFilterStepLimiter = 1;
+            conf.novaKalmanQ = 200;
+            conf.novaEmaAlpha = 15;
+            conf.novaStepMax = 20;
+            conf.version = CONFIG_VERSION | CONFIG_MAGIC;
+            modified = true;
+            write();
+            DEBUG("Migration complete, config preserved\n");
+        }
+        // Migration from version 11 to 14
+        else if (version == 11) {
+            DEBUG("Migrating config from v11 to v14\n");
+            conf.autoThresholdEnabled = 0;
+            conf.autoThresholdOffset = 15;
+            conf.receiverRadio = 0;
+            conf.novaFilterKalman = 1;
+            conf.novaFilterMedian = 0;
+            conf.novaFilterMA = 0;
+            conf.novaFilterEMA = 0;
+            conf.novaFilterStepLimiter = 1;
+            conf.novaKalmanQ = 200;
+            conf.novaEmaAlpha = 15;
+            conf.novaStepMax = 20;
+            conf.version = CONFIG_VERSION | CONFIG_MAGIC;
+            modified = true;
+            write();
+            DEBUG("Migration complete, config preserved\n");
+        }
+        // Migration from version 10 to 14
+        else if (version == 10) {
+            DEBUG("Migrating config from v10 to v14\n");
             memset(conf.masterHostname, 0, sizeof(conf.masterHostname));
-            // Update version
+            conf.autoThresholdEnabled = 0;
+            conf.autoThresholdOffset = 15;
+            conf.receiverRadio = 0;
+            conf.novaFilterKalman = 1;
+            conf.novaFilterMedian = 0;
+            conf.novaFilterMA = 0;
+            conf.novaFilterEMA = 0;
+            conf.novaFilterStepLimiter = 1;
+            conf.novaKalmanQ = 200;
+            conf.novaEmaAlpha = 15;
+            conf.novaStepMax = 20;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
@@ -140,7 +201,7 @@ void Config::write(void) {
 
 void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMonitor) {
     // Use https://arduinojson.org/v6/assistant to estimate memory
-    DynamicJsonDocument config(768);
+    DynamicJsonDocument config(1024);
     config["freq"] = conf.frequency;
     
     // Use stored band/channel indices if valid, otherwise compute from frequency
@@ -214,6 +275,23 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
         syncTimers.add(conf.syncedTimers[i]);
     }
     config["masterHostname"] = conf.masterHostname;
+    
+    // Auto threshold settings
+    config["autoThresholdEnabled"] = conf.autoThresholdEnabled;
+    config["autoThresholdOffset"] = conf.autoThresholdOffset;
+    
+    // Receiver radio
+    config["receiverRadio"] = conf.receiverRadio;
+    
+    // Novacore filter config
+    config["novaFilterKalman"] = conf.novaFilterKalman;
+    config["novaFilterMedian"] = conf.novaFilterMedian;
+    config["novaFilterMA"] = conf.novaFilterMA;
+    config["novaFilterEMA"] = conf.novaFilterEMA;
+    config["novaFilterStepLimiter"] = conf.novaFilterStepLimiter;
+    config["novaKalmanQ"] = conf.novaKalmanQ;
+    config["novaEmaAlpha"] = conf.novaEmaAlpha;
+    config["novaStepMax"] = conf.novaStepMax;
     
     // Add battery voltage if monitor exists
     if (batteryMonitor) {
@@ -544,6 +622,68 @@ void Config::fromJson(JsonObject source) {
         const char* hostname = source["masterHostname"] | "";
         if (strcmp(hostname, conf.masterHostname) != 0) {
             strlcpy(conf.masterHostname, hostname, sizeof(conf.masterHostname));
+            modified = true;
+        }
+    }
+    // Auto threshold settings
+    if (source.containsKey("autoThresholdEnabled") && source["autoThresholdEnabled"] != conf.autoThresholdEnabled) {
+        uint8_t val = source["autoThresholdEnabled"].as<uint8_t>();
+        if (val <= 1) {
+            conf.autoThresholdEnabled = val;
+            modified = true;
+        }
+    }
+    if (source.containsKey("autoThresholdOffset") && source["autoThresholdOffset"] != conf.autoThresholdOffset) {
+        conf.autoThresholdOffset = source["autoThresholdOffset"].as<uint8_t>();
+        modified = true;
+    }
+    // Receiver radio
+    if (source.containsKey("receiverRadio") && source["receiverRadio"] != conf.receiverRadio) {
+        uint8_t val = source["receiverRadio"].as<uint8_t>();
+        if (val <= 1) {
+            conf.receiverRadio = val;
+            modified = true;
+        }
+    }
+    // Novacore filter config
+    if (source.containsKey("novaFilterKalman") && source["novaFilterKalman"] != conf.novaFilterKalman) {
+        conf.novaFilterKalman = source["novaFilterKalman"].as<uint8_t>() ? 1 : 0;
+        modified = true;
+    }
+    if (source.containsKey("novaFilterMedian") && source["novaFilterMedian"] != conf.novaFilterMedian) {
+        conf.novaFilterMedian = source["novaFilterMedian"].as<uint8_t>() ? 1 : 0;
+        modified = true;
+    }
+    if (source.containsKey("novaFilterMA") && source["novaFilterMA"] != conf.novaFilterMA) {
+        conf.novaFilterMA = source["novaFilterMA"].as<uint8_t>() ? 1 : 0;
+        modified = true;
+    }
+    if (source.containsKey("novaFilterEMA") && source["novaFilterEMA"] != conf.novaFilterEMA) {
+        conf.novaFilterEMA = source["novaFilterEMA"].as<uint8_t>() ? 1 : 0;
+        modified = true;
+    }
+    if (source.containsKey("novaFilterStepLimiter") && source["novaFilterStepLimiter"] != conf.novaFilterStepLimiter) {
+        conf.novaFilterStepLimiter = source["novaFilterStepLimiter"].as<uint8_t>() ? 1 : 0;
+        modified = true;
+    }
+    if (source.containsKey("novaKalmanQ") && source["novaKalmanQ"] != conf.novaKalmanQ) {
+        uint16_t val = source["novaKalmanQ"].as<uint16_t>();
+        if (val >= 100 && val <= 1500) {
+            conf.novaKalmanQ = val;
+            modified = true;
+        }
+    }
+    if (source.containsKey("novaEmaAlpha") && source["novaEmaAlpha"] != conf.novaEmaAlpha) {
+        uint8_t val = source["novaEmaAlpha"].as<uint8_t>();
+        if (val >= 5 && val <= 80) {
+            conf.novaEmaAlpha = val;
+            modified = true;
+        }
+    }
+    if (source.containsKey("novaStepMax") && source["novaStepMax"] != conf.novaStepMax) {
+        uint8_t val = source["novaStepMax"].as<uint8_t>();
+        if (val >= 5 && val <= 50) {
+            conf.novaStepMax = val;
             modified = true;
         }
     }
@@ -1007,6 +1147,48 @@ void Config::setMasterHostname(const char* hostname) {
     }
 }
 
+uint8_t Config::getAutoThresholdEnabled() {
+    return conf.autoThresholdEnabled;
+}
+
+void Config::setAutoThresholdEnabled(uint8_t enabled) {
+    if (enabled <= 1 && conf.autoThresholdEnabled != enabled) {
+        conf.autoThresholdEnabled = enabled;
+        modified = true;
+    }
+}
+
+uint8_t Config::getAutoThresholdOffset() {
+    return conf.autoThresholdOffset;
+}
+
+void Config::setAutoThresholdOffset(uint8_t offset) {
+    if (conf.autoThresholdOffset != offset) {
+        conf.autoThresholdOffset = offset;
+        modified = true;
+    }
+}
+
+uint8_t Config::getReceiverRadio() {
+    return conf.receiverRadio;
+}
+
+void Config::setReceiverRadio(uint8_t radio) {
+    if (radio <= 1 && conf.receiverRadio != radio) {
+        conf.receiverRadio = radio;
+        modified = true;
+    }
+}
+
+uint8_t Config::getNovaFilterKalman() { return conf.novaFilterKalman; }
+uint8_t Config::getNovaFilterMedian() { return conf.novaFilterMedian; }
+uint8_t Config::getNovaFilterMA() { return conf.novaFilterMA; }
+uint8_t Config::getNovaFilterEMA() { return conf.novaFilterEMA; }
+uint8_t Config::getNovaFilterStepLimiter() { return conf.novaFilterStepLimiter; }
+uint16_t Config::getNovaKalmanQ() { return conf.novaKalmanQ; }
+uint8_t Config::getNovaEmaAlpha() { return conf.novaEmaAlpha; }
+uint8_t Config::getNovaStepMax() { return conf.novaStepMax; }
+
 void Config::setDefaults(void) {
     DEBUG("Setting EEPROM defaults\n");
     // Reset everything to 0/false and then just set anything that zero is not appropriate
@@ -1060,6 +1242,18 @@ void Config::setDefaults(void) {
     memset(conf.syncedTimers, 0, sizeof(conf.syncedTimers));  // Clear synced timers
     conf.beepVolume = 100;  // Default 100% volume
     strlcpy(conf.masterHostname, "", sizeof(conf.masterHostname));  // Empty master hostname
+    conf.autoThresholdEnabled = 0;  // Manual threshold mode by default
+    conf.autoThresholdOffset = 65;  // Default baseline RSSI (ambient floor)
+    conf.receiverRadio = 0;  // Default to RX5808
+    // Novacore filter defaults
+    conf.novaFilterKalman = 1;       // Kalman on
+    conf.novaFilterMedian = 0;       // Median off
+    conf.novaFilterMA = 0;           // Moving average off
+    conf.novaFilterEMA = 0;          // EMA off
+    conf.novaFilterStepLimiter = 1;  // Step limiter on
+    conf.novaKalmanQ = 200;          // Q=2.0 (light smoothing)
+    conf.novaEmaAlpha = 15;          // alpha=0.15
+    conf.novaStepMax = 20;           // max step per sample
     modified = true;
     write();
 }

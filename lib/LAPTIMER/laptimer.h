@@ -32,6 +32,12 @@ class LapTimer {
     uint32_t getLapTime();
     bool isLapAvailable();
     
+    // Effective thresholds (returns configured values)
+    uint8_t getEffectiveEnterRssi();
+    uint8_t getEffectiveExitRssi();
+    uint8_t getBaselineRssi();
+    uint8_t getNoiseCeiling();
+    
     // Calibration wizard methods
     void startCalibrationWizard();
     void stopCalibrationWizard();
@@ -72,6 +78,10 @@ class LapTimer {
     bool enteredGate;         // True once we have crossed the enter threshold
     uint8_t enterHoldSamples; // Number of consecutive samples at/above enter
     uint32_t enterHoldStartMs;
+
+
+    // Receiver filter mode tracking
+    uint8_t activeReceiverRadio;  // Last-seen receiver type (to detect config changes)
 
     // Debug helpers (last processed RSSI chain)
     uint8_t lastRawRssi;

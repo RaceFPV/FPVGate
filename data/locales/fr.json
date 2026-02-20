@@ -339,6 +339,28 @@
             "enable_battery": "Surveillance Batterie:",
             "low_battery": "Alarme Batterie Faible:",
             "battery_voltage": "Tension Batterie:",
+            "receiver_radio": "Radio Récepteur",
+            "receiver_label": "Module Récepteur:",
+            "receiver_options": {
+                "rx5808": "RX5808",
+                "novacore": "Novacore"
+            },
+            "filter_title": "Filtrage du Signal",
+            "filter_desc": "Configurez les filtres appliques au signal RSSI. Moins de filtres = moins de latence mais plus de bruit.",
+            "filter_kalman": "Filtre de Kalman",
+            "filter_kalman_desc": "Reduction predictive du bruit. Lisse le signal en fonction du comportement attendu.",
+            "filter_kalman_strength": "Intensite:",
+            "filter_median": "Filtre Median",
+            "filter_median_desc": "Prend la valeur mediane de 3 echantillons. Elimine les parasites isoles.",
+            "filter_ma": "Moyenne Mobile",
+            "filter_ma_desc": "Moyenne des 7 derniers echantillons. Lisse les pics courts au prix de la latence.",
+            "filter_ema": "Passe-Bas EMA",
+            "filter_ema_desc": "Lissage exponentiel. Alpha plus bas = lissage plus fort, plus de latence.",
+            "filter_ema_alpha": "Alpha:",
+            "filter_step": "Limiteur de Pas",
+            "filter_step_desc": "Limite le changement max par echantillon. Empeche les sauts soudains de causer de faux declenchements.",
+            "filter_step_max": "Pas Max:",
+            "filter_restore_defaults": "Restaurer les Valeurs par Defaut",
             "appearance": "Apparence",
             "language": "Langue:",
             "theme": "Thème:"
@@ -378,13 +400,6 @@
         },
         "diagnostics": {
             "title": "Diagnostics",
-            "rssi_detection": "Détection RSSI",
-            "rssi_sensitivity": "Sensibilité RSSI:",
-            "sensitivity_options": {
-                "normal": "Normal (Hérité)",
-                "high": "Élevé (1.5x Boost)"
-            },
-            "sensitivity_tip": "Sensibilité élevée offre meilleure détection signal faible. Utilisez Normal si déclenchements intempestifs.",
             "hardware_tests": "Tests Matériel",
             "description": "Exécuter tests matériels et logiciels complets pour vérifier tous les composants FPVGate.",
             "run_test": "Lancer Auto-Test Système",

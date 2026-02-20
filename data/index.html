@@ -115,6 +115,15 @@
           </div>
         </div>
         
+        <!-- Debug RSSI Overlay (shown when debug mode enabled) -->
+        <div id="debugRssiOverlay" style="display: none; position: fixed; bottom: 12px; right: 12px; width: 320px; height: 120px; background: rgba(0,0,0,0.85); border-radius: 8px; border: 1px solid var(--border-color); z-index: 900; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 6px; margin-bottom: 2px;">
+            <span style="font-size: 10px; color: var(--secondary-color); font-weight: bold;">RSSI DEBUG</span>
+            <span id="debugRssiValue" style="font-size: 10px; color: var(--primary-color); font-family: monospace;">--</span>
+          </div>
+          <canvas id="debugRssiChart" style="width: 100%; height: 90px;"></canvas>
+        </div>
+
         <!-- Sync Mode: Race Analysis (Multi-Pilot) -->
         <div id="raceAnalysis" class="lap-analysis" style="display: none;">
           <h3>Race Analysis</h3>
@@ -253,22 +262,26 @@
           <div class="calib-card-header">
             <span data-i18n="calib.thresholds">Detection Thresholds</span>
           </div>
-          <div class="calib-threshold-grid">
-            <div class="calib-threshold-item">
-              <div class="calib-threshold-header">
-                <label data-i18n="calib.enter_rssi">Enter RSSI</label>
-                <span id="enterSpan" class="calib-threshold-value">120</span>
+
+          <!-- Threshold sliders -->
+          <div>
+            <div class="calib-threshold-grid">
+              <div class="calib-threshold-item">
+                <div class="calib-threshold-header">
+                  <label data-i18n="calib.enter_rssi">Enter RSSI</label>
+                  <span id="enterSpan" class="calib-threshold-value">120</span>
+                </div>
+                <input type="range" min="50" max="255" step="1" id="enter" value="120" oninput="updateEnterRssi(this,value)" class="calib-slider enter-slider" />
+                <div class="calib-threshold-hint" data-i18n="calib.enter_hint">Trigger when signal rises above this</div>
               </div>
-              <input type="range" min="50" max="255" step="1" id="enter" value="120" oninput="updateEnterRssi(this,value)" class="calib-slider enter-slider" />
-              <div class="calib-threshold-hint" data-i18n="calib.enter_hint">Trigger when signal rises above this</div>
-            </div>
-            <div class="calib-threshold-item">
-              <div class="calib-threshold-header">
-                <label data-i18n="calib.exit_rssi">Exit RSSI</label>
-                <span id="exitSpan" class="calib-threshold-value">100</span>
+              <div class="calib-threshold-item">
+                <div class="calib-threshold-header">
+                  <label data-i18n="calib.exit_rssi">Exit RSSI</label>
+                  <span id="exitSpan" class="calib-threshold-value">100</span>
+                </div>
+                <input type="range" min="50" max="255" step="1" id="exit" value="100" oninput="updateExitRssi(this,value)" class="calib-slider exit-slider" />
+                <div class="calib-threshold-hint" data-i18n="calib.exit_hint">Reset when signal drops below this</div>
               </div>
-              <input type="range" min="50" max="255" step="1" id="exit" value="100" oninput="updateExitRssi(this,value)" class="calib-slider exit-slider" />
-              <div class="calib-threshold-hint" data-i18n="calib.exit_hint">Reset when signal drops below this</div>
             </div>
           </div>
           <button onclick="saveConfig()" class="calib-save-btn" data-i18n="calib.save_thresholds">Save Thresholds</button>
@@ -284,7 +297,7 @@
 
     <footer>
       <div class="footer-content">
-        <span id="footerVersion">FPVGate v1.5.6</span>
+<span id="footerVersion">FPVGate v1.6.2</span>
       </div>
     </footer>
 
@@ -319,12 +332,29 @@
     <!-- Calibration Wizard Modal -->
     <div id="calibrationWizardModal" class="modal" style="display: none">
       <div class="modal-content wizard-modal">
+
+        <!-- Phase 1: Ambient noise recording -->
+        <div id="wizardAmbient" style="display: none">
+          <h3 data-i18n="calib.wizard_title_ambient">Calibration Wizard - Ambient Noise</h3>
+          <div class="wizard-instructions">
+            <p data-i18n="calib.wizard_ambient_instructions">Keep the area clear of drones. Recording ambient noise level...</p>
+          </div>
+          <div style="text-align: center; margin: 32px 0">
+            <div id="ambientCountdown" style="font-size: 72px; font-weight: bold; color: var(--primary-color)">5</div>
+            <div style="font-size: 14px; color: var(--secondary-color)" data-i18n="calib.wizard_ambient_wait">seconds remaining</div>
+          </div>
+          <div style="display: flex; gap: 12px; margin-top: 16px">
+            <button onclick="cancelCalibrationWizard()" style="flex: 1; background-color: var(--secondary-color)" data-i18n="modals.track.cancel">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Phase 2: Flight recording -->
         <div id="wizardRecording" style="display: none">
           <h3 data-i18n="calib.wizard_title_recording">Calibration Wizard - Recording</h3>
           <div class="wizard-instructions">
             <p><strong data-i18n="calib.wizard_instructions_title">Instructions:</strong></p>
             <ol>
-              <li data-i18n="calib.wizard_step1">Fly through the gate 3 times</li>
+              <li data-i18n="calib.wizard_step1">Fly through the gate 3+ times</li>
               <li data-i18n="calib.wizard_step2">Make sure you get clear signal peaks on each pass</li>
               <li data-i18n="calib.wizard_step3">Click "Stop Recording" when finished</li>
             </ol>
@@ -342,42 +372,56 @@
           </div>
         </div>
 
-        <div id="wizardMarking" style="display: none">
+        <!-- Manual peak marking fallback -->
+        <div id="wizardManualMarking" style="display: none">
           <h3 data-i18n="calib.wizard_title_marking">Calibration Wizard - Mark Lap Peaks</h3>
           <div class="wizard-instructions">
             <p><strong data-i18n="calib.wizard_marking_instructions">Click on the chart to mark the highest point (peak) for each lap:</strong></p>
-            <ul>
-              <li data-i18n="calib.wizard_highest_peak_tip">Click at the <span style="color: #ff5555">highest peak</span> for each gate pass</li>
-              <li data-i18n="calib.wizard_mark_peaks_tip">Mark 3 peaks total (one for each lap)</li>
-              <li data-i18n="calib.wizard_auto_calc_tip">Entry/Exit thresholds will be calculated automatically</li>
-            </ul>
           </div>
-          <div id="wizardMarkingStatus" style="margin: 12px 0; padding: 8px; background-color: var(--bg-secondary); border-radius: 4px; font-weight: bold" data-i18n="calib.wizard_mark_peak_n">Mark Peak 1</div>
+          <div id="wizardManualStatus" style="margin: 12px 0; padding: 8px; background-color: var(--bg-secondary); border-radius: 4px; font-weight: bold">Mark Peak 1</div>
           <div style="position: relative">
             <canvas id="wizardChart" style="cursor: crosshair; border: 2px solid var(--border-color); border-radius: 4px"></canvas>
           </div>
           <div style="display: flex; gap: 12px; margin-top: 16px">
-            <button id="wizardUndoButton" onclick="undoLastMarker()" disabled style="flex: 1; background-color: var(--secondary-color)" data-i18n="calib.wizard_undo">Undo Last</button>
-            <button id="wizardCalculateButton" onclick="calculateThresholds()" disabled style="flex: 1" data-i18n="calib.wizard_calculate">Calculate Thresholds</button>
+            <button id="wizardManualUndoButton" onclick="undoLastMarker()" disabled style="flex: 1; background-color: var(--secondary-color)" data-i18n="calib.wizard_undo">Undo Last</button>
+            <button id="wizardManualCalcButton" onclick="calculateThresholdsManual()" disabled style="flex: 1" data-i18n="calib.wizard_calculate">Calculate Thresholds</button>
             <button onclick="cancelCalibrationWizard()" style="flex: 1; background-color: var(--secondary-color)" data-i18n="modals.track.cancel">Cancel</button>
           </div>
         </div>
 
+        <!-- Results -->
         <div id="wizardResults" style="display: none">
-          <h3 data-i18n="calib.wizard_title_results">Calibration Wizard - Results</h3>
+          <h3 data-i18n="calib.wizard_title_results">Calibration Results</h3>
+          <div style="position: relative; margin-bottom: 16px">
+            <canvas id="wizardResultsChart" style="width: 100%; border: 2px solid var(--border-color); border-radius: 4px"></canvas>
+          </div>
           <div class="wizard-results-box">
             <div class="result-item">
-              <label data-i18n="calib.wizard_enter_rssi">Calculated Enter RSSI:</label>
+              <label data-i18n="calib.wizard_enter_rssi">Enter RSSI:</label>
               <span id="calculatedEnterRssi" class="result-value">--</span>
             </div>
             <div class="result-item">
-              <label data-i18n="calib.wizard_exit_rssi">Calculated Exit RSSI:</label>
+              <label data-i18n="calib.wizard_exit_rssi">Exit RSSI:</label>
               <span id="calculatedExitRssi" class="result-value">--</span>
             </div>
+            <div class="result-item">
+              <label data-i18n="calib.wizard_min_lap">Min Lap Time:</label>
+              <span id="calculatedMinLap" class="result-value">--</span>
+            </div>
+            <div class="result-item" style="font-size: 12px; color: var(--secondary-color)">
+              <label data-i18n="calib.wizard_peaks_detected">Peaks Detected:</label>
+              <span id="calculatedPeakCount">--</span>
+              &nbsp;|&nbsp;
+              <label data-i18n="calib.wizard_noise_ceiling">Noise Ceiling:</label>
+              <span id="calculatedNoiseCeiling">--</span>
+              &nbsp;|&nbsp;
+              <label data-i18n="calib.wizard_avg_peak">Avg Peak:</label>
+              <span id="calculatedAvgPeak">--</span>
+            </div>
           </div>
-          <div style="margin: 16px 0; padding: 12px; background-color: var(--bg-secondary); border-radius: 4px; font-size: 14px"><strong data-i18n="calib.wizard_note_title">Note:</strong> <span data-i18n="calib.wizard_results_note">These values have been calculated based on your lap data with safety margins. You can apply them now and fine-tune manually if needed.</span></div>
+          <div style="margin: 16px 0; padding: 12px; background-color: var(--bg-secondary); border-radius: 4px; font-size: 14px"><strong data-i18n="calib.wizard_note_title">Note:</strong> <span data-i18n="calib.wizard_results_note">These values have been auto-calculated from your flight data. Apply them and fine-tune manually if needed.</span></div>
           <div style="display: flex; gap: 12px; margin-top: 16px">
-            <button onclick="applyCalculatedThresholds()" style="flex: 1" data-i18n="calib.wizard_apply">Apply Thresholds</button>
+            <button onclick="applyCalculatedThresholds()" style="flex: 1" data-i18n="calib.wizard_apply">Apply All</button>
             <button onclick="closeCalibrationWizard()" style="flex: 1; background-color: var(--secondary-color)" data-i18n="history.close">Close</button>
           </div>
         </div>
@@ -892,7 +936,96 @@
             <div id="settings-system" class="settings-section">
               <h2 data-i18n="settings.system.title">System Settings</h2>
 
-              <h3 style="margin-top: 0" data-i18n="settings.system.battery">Battery Monitoring</h3>
+              <h3 style="margin-top: 0" data-i18n="settings.system.receiver_radio">Receiver Radio</h3>
+              <div class="config-item">
+                <label for="receiverRadio" data-i18n="settings.system.receiver_label">Receiver Module:</label>
+                <select id="receiverRadio" onchange="toggleNovaFilterSection()">
+                  <option value="0" data-i18n="settings.system.receiver_options.rx5808">RX5808</option>
+                  <option value="1" data-i18n="settings.system.receiver_options.novacore">Novacore</option>
+                </select>
+              </div>
+
+              <!-- Novacore Signal Filtering (shown when Novacore selected) -->
+              <div id="novaFilterSection" style="display: none; margin-top: 12px; padding: 16px; background-color: var(--bg-secondary); border-radius: 8px;">
+                <h4 style="margin: 0 0 4px 0" data-i18n="settings.system.filter_title">Signal Filtering</h4>
+                <p style="margin: 0 0 16px 0; font-size: 12px; color: var(--secondary-color)" data-i18n="settings.system.filter_desc">Configure which filters are applied to the RSSI signal. Fewer filters = lower latency but more noise.</p>
+
+                <!-- Kalman Filter -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div>
+                    <label style="font-weight: bold; display: block; font-size: 14px;" data-i18n="settings.system.filter_kalman">Kalman Filter</label>
+                    <span style="font-size: 11px; color: var(--secondary-color);" data-i18n="settings.system.filter_kalman_desc">Predictive noise reduction. Smooths signal based on expected behavior.</span>
+                  </div>
+                  <label class="switch"><input type="checkbox" id="novaFilterKalman" checked onchange="toggleNovaFilterSlider('kalman')"><span class="slider"></span></label>
+                </div>
+                <div id="novaKalmanSlider" style="margin: 0 0 12px 0;">
+                  <div class="config-item" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; min-width: 100px;" data-i18n="settings.system.filter_kalman_strength">Strength:</label>
+                    <div class="input-with-value" style="flex: 1;">
+                      <span class="val" id="novaKalmanQValue">2.0</span>
+                      <input type="range" id="novaKalmanQ" min="100" max="1500" step="50" value="200" oninput="document.getElementById('novaKalmanQValue').textContent=(this.value/100).toFixed(1)" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Median Filter -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <div>
+                    <label style="font-weight: bold; display: block; font-size: 14px;" data-i18n="settings.system.filter_median">Median Filter</label>
+                    <span style="font-size: 11px; color: var(--secondary-color);" data-i18n="settings.system.filter_median_desc">Picks the middle value from 3 samples. Kills single-sample glitches.</span>
+                  </div>
+                  <label class="switch"><input type="checkbox" id="novaFilterMedian"><span class="slider"></span></label>
+                </div>
+
+                <!-- Moving Average -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <div>
+                    <label style="font-weight: bold; display: block; font-size: 14px;" data-i18n="settings.system.filter_ma">Moving Average</label>
+                    <span style="font-size: 11px; color: var(--secondary-color);" data-i18n="settings.system.filter_ma_desc">Averages the last 7 samples. Smooths short spikes at the cost of latency.</span>
+                  </div>
+                  <label class="switch"><input type="checkbox" id="novaFilterMA"><span class="slider"></span></label>
+                </div>
+
+                <!-- EMA Low-Pass -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div>
+                    <label style="font-weight: bold; display: block; font-size: 14px;" data-i18n="settings.system.filter_ema">EMA Low-Pass</label>
+                    <span style="font-size: 11px; color: var(--secondary-color);" data-i18n="settings.system.filter_ema_desc">Exponential smoothing. Lower alpha = heavier smoothing, more latency.</span>
+                  </div>
+                  <label class="switch"><input type="checkbox" id="novaFilterEMA" onchange="toggleNovaFilterSlider('ema')"><span class="slider"></span></label>
+                </div>
+                <div id="novaEmaSlider" style="display: none; margin: 0 0 12px 0;">
+                  <div class="config-item" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; min-width: 100px;" data-i18n="settings.system.filter_ema_alpha">Alpha:</label>
+                    <div class="input-with-value" style="flex: 1;">
+                      <span class="val" id="novaEmaAlphaValue">0.15</span>
+                      <input type="range" id="novaEmaAlpha" min="5" max="80" step="5" value="15" oninput="document.getElementById('novaEmaAlphaValue').textContent=(this.value/100).toFixed(2)" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Step Limiter -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div>
+                    <label style="font-weight: bold; display: block; font-size: 14px;" data-i18n="settings.system.filter_step">Step Limiter</label>
+                    <span style="font-size: 11px; color: var(--secondary-color);" data-i18n="settings.system.filter_step_desc">Limits max change per sample. Prevents sudden jumps from causing false triggers.</span>
+                  </div>
+                  <label class="switch"><input type="checkbox" id="novaFilterStepLimiter" checked onchange="toggleNovaFilterSlider('step')"><span class="slider"></span></label>
+                </div>
+                <div id="novaStepSlider" style="margin: 0 0 4px 0;">
+                  <div class="config-item" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; min-width: 100px;" data-i18n="settings.system.filter_step_max">Max Step:</label>
+                    <div class="input-with-value" style="flex: 1;">
+                      <span class="val" id="novaStepMaxValue">20</span>
+                      <input type="range" id="novaStepMax" min="5" max="50" step="1" value="20" oninput="document.getElementById('novaStepMaxValue').textContent=this.value" />
+                    </div>
+                  </div>
+                </div>
+
+                <button onclick="restoreDefaultNovaFilters()" style="margin-top: 12px; padding: 6px 14px; font-size: 12px; background: transparent; border: 1px solid var(--secondary-color); color: var(--secondary-color); border-radius: 6px; cursor: pointer;" data-i18n="settings.system.filter_restore_defaults">Restore Defaults</button>
+              </div>
+
+              <h3 data-i18n="settings.system.battery">Battery Monitoring</h3>
               <div class="config-item">
                 <label for="batteryMonitorToggle" data-i18n="settings.system.enable_battery">Battery Monitoring:</label>
                 <div style="flex: 1">
@@ -1079,15 +1212,18 @@
             <div id="settings-diagnostics" class="settings-section">
               <h2 data-i18n="settings.diagnostics.title">System Diagnostics</h2>
 
-              <h3 style="margin-top: 0" data-i18n="settings.diagnostics.rssi_detection">RSSI Detection</h3>
-              <div class="config-item">
-                <label for="rssiSensitivity" data-i18n="settings.diagnostics.rssi_sensitivity">RSSI Sensitivity:</label>
-                <select id="rssiSensitivity">
-                  <option value="0" data-i18n="settings.diagnostics.sensitivity_options.normal">Normal (Legacy)</option>
-                  <option value="1" selected data-i18n="settings.diagnostics.sensitivity_options.high">High (1.5x Boost)</option>
-                </select>
+              <!-- Debug Mode Toggle -->
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 12px; background-color: var(--bg-secondary, rgba(0,0,0,0.15)); border-radius: 8px;">
+                <div>
+                  <label style="font-weight: bold; display: block;" data-i18n="settings.diagnostics.debug_mode">Debug Mode</label>
+                  <span style="font-size: 12px; color: var(--secondary-color);" data-i18n="settings.diagnostics.debug_mode_tip">Show live RSSI graph overlay on the race screen</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="debugModeToggle" onchange="toggleDebugMode(this.checked)">
+                  <span class="slider"></span>
+                </label>
               </div>
-              <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.diagnostics.sensitivity_tip">High sensitivity provides better weak signal detection. Use Normal if experiencing false triggers.</div>
+
 
               <h3 data-i18n="settings.diagnostics.hardware_tests">Hardware Tests</h3>
               <div style="margin-bottom: 16px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 14px">

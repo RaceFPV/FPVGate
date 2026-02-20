@@ -338,6 +338,28 @@
             "enable_battery": "电池监控:",
             "low_battery": "低电量报警:",
             "battery_voltage": "电池电压:",
+            "receiver_radio": "接收器模块",
+            "receiver_label": "接收器模块:",
+            "receiver_options": {
+                "rx5808": "RX5808",
+                "novacore": "Novacore"
+            },
+            "filter_title": "信号滤波",
+            "filter_desc": "配置应用于 RSSI 信号的滤波器。滤波器越少 = 延迟越低但噪声越多。",
+            "filter_kalman": "卡尔曼滤波",
+            "filter_kalman_desc": "预测性降噪。根据预期行为平滑信号。",
+            "filter_kalman_strength": "强度:",
+            "filter_median": "中值滤波",
+            "filter_median_desc": "从3个样本中取中间值。消除单样本毛刺。",
+            "filter_ma": "移动平均",
+            "filter_ma_desc": "对最近7个样本取平均。以延迟为代价平滑短脉冲。",
+            "filter_ema": "EMA 低通",
+            "filter_ema_desc": "指数平滑。Alpha 越低 = 平滑越强，延迟越大。",
+            "filter_ema_alpha": "Alpha:",
+            "filter_step": "步幅限制器",
+            "filter_step_desc": "限制每个样本的最大变化。防止突然跳变导致误触发。",
+            "filter_step_max": "最大步幅:",
+            "filter_restore_defaults": "恢复默认值",
             "appearance": "外观",
             "language": "语言:",
             "theme": "主题:"
@@ -377,13 +399,6 @@
         },
         "diagnostics": {
             "title": "诊断",
-            "rssi_detection": "RSSI 检测",
-            "rssi_sensitivity": "RSSI 灵敏度:",
-            "sensitivity_options": {
-                "normal": "标准 (经典)",
-                "high": "高 (1.5倍增强)"
-            },
-            "sensitivity_tip": "高灵敏度可提供更好的弱信号检测。如果出现误触发,请使用标准模式。",
             "hardware_tests": "硬件测试",
             "description": "运行全面的硬件和软件测试，验证所有 FPVGate 组件是否正常运行。",
             "run_test": "运行系统自检",
