@@ -126,7 +126,12 @@
         "wizard_exit_rssi": "Berechneter Ausgang RSSI:",
         "wizard_note_title": "Hinweis:",
         "wizard_results_note": "Diese Werte wurden basierend auf deinen Rundendaten mit Sicherheitsreserven berechnet. Du kannst sie jetzt anwenden und bei Bedarf manuell feinabstimmen.",
-        "wizard_apply": "Schwellwerte Anwenden"
+        "wizard_apply": "Schwellwerte Anwenden",
+        "ignore_hint": "Ziehen um einen Bereich zu ignorieren. Rechtsklick zum Entfernen.",
+        "ignore_clear": "Ignorierte Loschen",
+        "ignore_warning_title": "Nicht genug Spitzen!",
+        "ignore_warning_desc": "Zu viele Bereiche ignoriert. Mindestens 3 Spitzen werden benotigt.",
+        "rerecord": "Flugdaten Neu Aufzeichnen"
     },
     "settings": {
         "title": "Einstellungen",
@@ -339,6 +344,28 @@
             "enable_battery": "Batterieüberwachung:",
             "low_battery": "Schwache Batterie Alarm:",
             "battery_voltage": "Batteriespannung:",
+            "receiver_radio": "Empfänger-Radio",
+            "receiver_label": "Empfängermodul:",
+            "receiver_options": {
+                "rx5808": "RX5808",
+                "novacore": "Novacore"
+            },
+            "filter_title": "Signalfilterung",
+            "filter_desc": "Konfiguriere welche Filter auf das RSSI-Signal angewendet werden. Weniger Filter = geringere Latenz aber mehr Rauschen.",
+            "filter_kalman": "Kalman-Filter",
+            "filter_kalman_desc": "Vorhersagende Rauschunterdruckung. Glattet Signal basierend auf erwartetem Verhalten.",
+            "filter_kalman_strength": "Starke:",
+            "filter_median": "Median-Filter",
+            "filter_median_desc": "Wahlt den mittleren Wert aus 3 Abtastungen. Eliminiert Einzelabtast-Storungen.",
+            "filter_ma": "Gleitender Durchschnitt",
+            "filter_ma_desc": "Mittelt die letzten 7 Abtastungen. Glattet kurze Spitzen auf Kosten der Latenz.",
+            "filter_ema": "EMA-Tiefpass",
+            "filter_ema_desc": "Exponentielle Glattung. Niedrigeres Alpha = starkere Glattung, mehr Latenz.",
+            "filter_ema_alpha": "Alpha:",
+            "filter_step": "Schrittbegrenzer",
+            "filter_step_desc": "Begrenzt max. Anderung pro Abtastung. Verhindert plotzliche Sprunge als Fehlausloser.",
+            "filter_step_max": "Max. Schritt:",
+            "filter_restore_defaults": "Standardwerte Wiederherstellen",
             "appearance": "Aussehen",
             "language": "Sprache:",
             "theme": "Thema:"
@@ -378,13 +405,6 @@
         },
         "diagnostics": {
             "title": "Diagnostik",
-            "rssi_detection": "RSSI-Erkennung",
-            "rssi_sensitivity": "RSSI-Empfindlichkeit:",
-            "sensitivity_options": {
-                "normal": "Normal (Legacy)",
-                "high": "Hoch (1.5x Boost)"
-            },
-            "sensitivity_tip": "Hohe Empfindlichkeit bietet bessere Schwachsignalerkennung. Verwende Normal bei Fehlauslösungen.",
             "hardware_tests": "Hardware-Tests",
             "description": "Umfassende Hardware- und Software-Tests ausführen um alle FPVGate-Komponenten zu verifizieren.",
             "run_test": "System-Selbsttest Ausführen",

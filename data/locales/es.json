@@ -126,7 +126,12 @@
         "wizard_exit_rssi": "RSSI Salida Calculado:",
         "wizard_note_title": "Nota:",
         "wizard_results_note": "Estos valores se han calculado basándose en tus datos de vuelta con márgenes de seguridad. Puedes aplicarlos ahora y ajustarlos manualmente si es necesario.",
-        "wizard_apply": "Aplicar Umbrales"
+        "wizard_apply": "Aplicar Umbrales",
+        "ignore_hint": "Arrastra para ignorar una region. Clic derecho para eliminarla.",
+        "ignore_clear": "Limpiar Ignorados",
+        "ignore_warning_title": "No hay suficientes picos!",
+        "ignore_warning_desc": "Demasiadas regiones ignoradas. Se necesitan al menos 3 picos para calcular umbrales.",
+        "rerecord": "Volver a Grabar Datos de Vuelo"
     },
     "settings": {
         "title": "Configuración",
@@ -339,6 +344,28 @@
             "enable_battery": "Monitoreo Batería:",
             "low_battery": "Alarma Batería Baja:",
             "battery_voltage": "Voltaje Batería:",
+            "receiver_radio": "Radio Receptor",
+            "receiver_label": "Modulo Receptor:",
+            "receiver_options": {
+                "rx5808": "RX5808",
+                "novacore": "Novacore"
+            },
+            "filter_title": "Filtrado de Senal",
+            "filter_desc": "Configura que filtros se aplican a la senal RSSI. Menos filtros = menor latencia pero mas ruido.",
+            "filter_kalman": "Filtro Kalman",
+            "filter_kalman_desc": "Reduccion predictiva de ruido. Suaviza la senal segun el comportamiento esperado.",
+            "filter_kalman_strength": "Intensidad:",
+            "filter_median": "Filtro Mediana",
+            "filter_median_desc": "Toma el valor medio de 3 muestras. Elimina glitches de muestra unica.",
+            "filter_ma": "Media Movil",
+            "filter_ma_desc": "Promedia las ultimas 7 muestras. Suaviza picos cortos a costa de latencia.",
+            "filter_ema": "Paso Bajo EMA",
+            "filter_ema_desc": "Suavizado exponencial. Alfa mas bajo = suavizado mas fuerte, mas latencia.",
+            "filter_ema_alpha": "Alfa:",
+            "filter_step": "Limitador de Paso",
+            "filter_step_desc": "Limita el cambio maximo por muestra. Evita que saltos repentinos causen falsos disparos.",
+            "filter_step_max": "Paso Max:",
+            "filter_restore_defaults": "Restaurar Valores Predeterminados",
             "appearance": "Apariencia",
             "language": "Idioma:",
             "theme": "Tema:"
@@ -378,13 +405,6 @@
         },
         "diagnostics": {
             "title": "Diagnósticos",
-            "rssi_detection": "Detección RSSI",
-            "rssi_sensitivity": "Sensibilidad RSSI:",
-            "sensitivity_options": {
-                "normal": "Normal (Heredado)",
-                "high": "Alta (1.5x Boost)"
-            },
-            "sensitivity_tip": "Sensibilidad alta ofrece mejor detección señal débil. Usa Normal si hay activaciones falsas.",
             "hardware_tests": "Pruebas Hardware",
             "description": "Ejecutar pruebas completas hardware y software para verificar todos los componentes FPVGate.",
             "run_test": "Ejecutar Auto-Test Sistema",

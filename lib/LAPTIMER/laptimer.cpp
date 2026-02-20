@@ -12,8 +12,12 @@ extern RgbLed* g_rgbLed;
 // Kalman filtering tuning
 // Higher Q = trust measurements less (more smoothing)
 // Lower R = assume system changes slower (more smoothing)
-const uint16_t rssi_filter_q = 900;
-const uint16_t rssi_filter_r = 20;
+// RX5808: heavy smoothing for noisy analog signal
+static const float kKalmanQ_RX5808 = 9.0f;    // measurement noise (high = smooth more)
+static const float kKalmanR_RX5808 = 0.002f;   // process noise
+// Novacore: light smoothing for cleaner digital signal
+static const float kKalmanQ_Novacore = 2.0f;   // trust measurements more
+static const float kKalmanR_Novacore = 0.002f;  // same process noise
 
 // Race debug output (Serial) — throttled so it doesn't overwhelm.
 // Set to 0 to compile out the periodic race debug print.
@@ -34,10 +38,11 @@ static const uint8_t kMaWindow = 7;
 // alpha closer to 1 = weaker smoothing (faster response)
 static const float kEmaAlpha = 0.15f;
 
-// NEW: reject one-sample "teleport" drops/rises with a step limiter.
+// Reject one-sample "teleport" drops/rises with a step limiter.
 // This is NOT a low-pass; it only clamps absurd per-sample jumps.
 // Lower = stricter (less likely to false-trigger), Higher = more responsive.
-static const int kMaxStepPerSample = 12;
+static const int kMaxStepPerSample_RX5808 = 12;
+static const int kMaxStepPerSample_Novacore = 20;  // More responsive for cleaner signal
 
 // NEW: require N consecutive samples below exit to confirm "exit"
 static const uint8_t kExitConfirmSamples = 2;
@@ -49,8 +54,18 @@ void LapTimer::init(Config *config, RX5808 *rx5808, Buzzer *buzzer, Led *l, Webh
     led = l;
     webhooks = webhook;
 
-    filter.setMeasurementNoise(rssi_filter_q * 0.01f);
-    filter.setProcessNoise(rssi_filter_r * 0.0001f);
+    // Set Kalman tuning based on receiver type
+    activeReceiverRadio = conf->getReceiverRadio();
+    if (activeReceiverRadio == 1) {
+        float novaQ = (float)conf->getNovaKalmanQ() / 100.0f;
+        filter.setMeasurementNoise(novaQ);
+        filter.setProcessNoise(kKalmanR_Novacore);
+        DEBUG("Filter mode: Novacore (Q=%.1f, configurable chain)\n", novaQ);
+    } else {
+        filter.setMeasurementNoise(kKalmanQ_RX5808);
+        filter.setProcessNoise(kKalmanR_RX5808);
+        DEBUG("Filter mode: RX5808 (full 5-stage chain)\n");
+    }
 
     selectedTrack = nullptr;
     totalDistanceTravelled = 0.0f;
@@ -71,6 +86,7 @@ void LapTimer::init(Config *config, RX5808 *rx5808, Buzzer *buzzer, Led *l, Webh
     gateExited = true;
     enterHoldSamples = 0;
     enterHoldStartMs = 0;
+
 }
 
 void LapTimer::start() {
@@ -82,10 +98,9 @@ void LapTimer::start() {
     DEBUG("\nCurrent RSSI: %u\n", rssi[rssiCount]);
     DEBUG("====================\n\n");
 
-    // Reset filter state at race start so we don't carry stale estimates.
-    filter = KalmanFilter();
-    filter.setMeasurementNoise(rssi_filter_q * 0.01f);
-    filter.setProcessNoise(rssi_filter_r * 0.0001f);
+    // Keep the Kalman filter running - resetting it causes a transient ramp
+    // that can false-trigger the first lap. The step limiter rate-limits
+    // output changes anyway, so a reset provides no benefit.
 
     raceStartTimeMs = millis();
     startTimeMs = raceStartTimeMs;
@@ -149,51 +164,135 @@ void LapTimer::stop() {
 }
 
 void LapTimer::handleLapTimerUpdate(uint32_t currentTimeMs) {
+    // Check if receiver type changed and update Kalman tuning
+    uint8_t currentRadio = conf->getReceiverRadio();
+    if (currentRadio != activeReceiverRadio) {
+        activeReceiverRadio = currentRadio;
+        if (activeReceiverRadio == 1) {
+            float novaQ = (float)conf->getNovaKalmanQ() / 100.0f;
+            filter.setMeasurementNoise(novaQ);
+            filter.setProcessNoise(kKalmanR_Novacore);
+            DEBUG("Filter mode switched: Novacore (Q=%.1f, configurable chain)\n", novaQ);
+        } else {
+            filter.setMeasurementNoise(kKalmanQ_RX5808);
+            filter.setProcessNoise(kKalmanR_RX5808);
+            DEBUG("Filter mode switched: RX5808 (full 5-stage chain)\n");
+        }
+    }
+
     // --- Stage 1: raw RSSI ---
     uint8_t rawRssi = rx->readRssi();
 
     // --- Stage 2: Kalman filter ---
     uint8_t kalman_filtered = (uint8_t)round(filter.filter(rawRssi, 0));
 
-    // --- Stage 2.5: Median-of-3 on Kalman (kills single-sample glitches) ---
-    static uint8_t kHist[3] = {0, 0, 0};
-    static uint8_t kHistIdx = 0;
-    kHist[kHistIdx] = kalman_filtered;
-    kHistIdx = (kHistIdx + 1) % 3;
-
-    uint8_t a = kHist[0], b = kHist[1], c = kHist[2];
-    uint8_t median_kal =
-        (a > b) ? ((b > c) ? b : ((a > c) ? c : a))
-                : ((a > c) ? a : ((b > c) ? c : b));
-
-    // --- Stage 3: Moving average (kills short spikes) ---
-    rssi_window[rssi_window_index] = median_kal;
-    rssi_window_index = (rssi_window_index + 1) % kMaWindow;
-
-    uint16_t sum = 0;
-    for (int i = 0; i < kMaWindow; i++) sum += rssi_window[i];
-    uint8_t ma = (uint8_t)(sum / kMaWindow);
-
-    // --- Stage 4: EMA low-pass ---
-    static float ema = NAN;
-    if (isnan(ema)) {
-        ema = (float)ma;
-    } else {
-        ema = (kEmaAlpha * (float)ma) + ((1.0f - kEmaAlpha) * ema);
-    }
-    uint8_t lp = (uint8_t)lroundf(ema);
-
-    // --- Stage 5: Step limiter (prevents one-sample cliff drops that cause false exits) ---
+    // Step limiter state (shared across both paths)
     static bool outInit = false;
     static uint8_t outPrev = 0;
-    uint8_t out = lp;
+    uint8_t out;
 
-    if (outInit) {
-        int delta = (int)lp - (int)outPrev;
-        if (delta > kMaxStepPerSample) out = (uint8_t)(outPrev + kMaxStepPerSample);
-        else if (delta < -kMaxStepPerSample) out = (uint8_t)(outPrev - kMaxStepPerSample);
+    // Debug intermediate values
+    uint8_t median_kal = kalman_filtered;
+    uint8_t ma = kalman_filtered;
+    uint8_t lp = kalman_filtered;
+
+    if (activeReceiverRadio == 1) {
+        // === NOVACORE PATH: config-driven filter chain ===
+
+        // Stage 1: Kalman (already applied above if enabled)
+        out = conf->getNovaFilterKalman() ? kalman_filtered : rawRssi;
+
+        // Stage 2: Median-of-3
+        if (conf->getNovaFilterMedian()) {
+            static uint8_t nMedianHist[3] = {0, 0, 0};
+            static uint8_t nMedianIdx = 0;
+            nMedianHist[nMedianIdx] = out;
+            nMedianIdx = (nMedianIdx + 1) % 3;
+            uint8_t a = nMedianHist[0], b = nMedianHist[1], c = nMedianHist[2];
+            out = (a > b) ? ((b > c) ? b : ((a > c) ? c : a))
+                          : ((a > c) ? a : ((b > c) ? c : b));
+            median_kal = out;
+        }
+
+        // Stage 3: Moving average (7-sample)
+        if (conf->getNovaFilterMA()) {
+            static uint8_t nMaWin[7] = {0};
+            static uint8_t nMaIdx = 0;
+            nMaWin[nMaIdx] = out;
+            nMaIdx = (nMaIdx + 1) % 7;
+            uint16_t s = 0;
+            for (int i = 0; i < 7; i++) s += nMaWin[i];
+            out = (uint8_t)(s / 7);
+            ma = out;
+        }
+
+        // Stage 4: EMA low-pass
+        if (conf->getNovaFilterEMA()) {
+            static float nEma = NAN;
+            float alpha = (float)conf->getNovaEmaAlpha() / 100.0f;
+            if (isnan(nEma)) {
+                nEma = (float)out;
+            } else {
+                nEma = (alpha * (float)out) + ((1.0f - alpha) * nEma);
+            }
+            out = (uint8_t)lroundf(nEma);
+            lp = out;
+        }
+
+        // Stage 5: Step limiter
+        if (conf->getNovaFilterStepLimiter()) {
+            int maxStep = (int)conf->getNovaStepMax();
+            if (outInit) {
+                int delta = (int)out - (int)outPrev;
+                if (delta > maxStep) out = (uint8_t)(outPrev + maxStep);
+                else if (delta < -maxStep) out = (uint8_t)(outPrev - maxStep);
+            } else {
+                outInit = true;
+            }
+        } else if (!outInit) {
+            outInit = true;
+        }
     } else {
-        outInit = true;
+        // === RX5808 PATH: Full 5-stage filter chain ===
+
+        // --- Stage 2.5: Median-of-3 on Kalman (kills single-sample glitches) ---
+        static uint8_t kHist[3] = {0, 0, 0};
+        static uint8_t kHistIdx = 0;
+        kHist[kHistIdx] = kalman_filtered;
+        kHistIdx = (kHistIdx + 1) % 3;
+
+        uint8_t a = kHist[0], b = kHist[1], c = kHist[2];
+        median_kal =
+            (a > b) ? ((b > c) ? b : ((a > c) ? c : a))
+                    : ((a > c) ? a : ((b > c) ? c : b));
+
+        // --- Stage 3: Moving average (kills short spikes) ---
+        rssi_window[rssi_window_index] = median_kal;
+        rssi_window_index = (rssi_window_index + 1) % kMaWindow;
+
+        uint16_t sum = 0;
+        for (int i = 0; i < kMaWindow; i++) sum += rssi_window[i];
+        ma = (uint8_t)(sum / kMaWindow);
+
+        // --- Stage 4: EMA low-pass ---
+        static float ema = NAN;
+        if (isnan(ema)) {
+            ema = (float)ma;
+        } else {
+            ema = (kEmaAlpha * (float)ma) + ((1.0f - kEmaAlpha) * ema);
+        }
+        lp = (uint8_t)lroundf(ema);
+
+        // --- Stage 5: Step limiter ---
+        out = lp;
+
+        if (outInit) {
+            int delta = (int)lp - (int)outPrev;
+            if (delta > kMaxStepPerSample_RX5808) out = (uint8_t)(outPrev + kMaxStepPerSample_RX5808);
+            else if (delta < -kMaxStepPerSample_RX5808) out = (uint8_t)(outPrev - kMaxStepPerSample_RX5808);
+        } else {
+            outInit = true;
+        }
     }
     outPrev = out;
 
@@ -287,12 +386,20 @@ void LapTimer::handleLapTimerUpdate(uint32_t currentTimeMs) {
 
 void LapTimer::lapPeakCapture() {
     const uint8_t cur = rssi[rssiCount];
-    const uint8_t enter = conf->getEnterRssi();
-    const uint8_t exitT = conf->getExitRssi();
     const uint32_t now = millis();
 
-    // Debounce: require consecutive samples at/above enter before peak tracking
-    if (cur >= enter) {
+    bool entryCondition;
+    bool noiseBlipExit;
+
+    {
+        const uint8_t enter = conf->getEnterRssi();
+        const uint8_t exitT = conf->getExitRssi();
+        entryCondition = (cur >= enter);
+        noiseBlipExit = (cur < exitT && rssiPeak == 0);
+    }
+
+    // Debounce: require consecutive samples meeting entry condition
+    if (entryCondition) {
         if (!enteredGate) {
             enteredGate = true;
             enterHoldSamples = 1;
@@ -300,20 +407,32 @@ void LapTimer::lapPeakCapture() {
             gateExited = false;
         } else {
             if (enterHoldSamples < 255) enterHoldSamples++;
+            
+            // Timeout: if gate stays entered for >3s, something is wrong - reset
+            if ((now - enterHoldStartMs) > 3000) {
+                DEBUG("[Timeout] Gate entered for >500ms - ceiling drift detected, resetting\n");
+                enteredGate = false;
+                gateExited = true;
+                enterHoldSamples = 0;
+                enterHoldStartMs = 0;
+                rssiPeak = 0;
+                rssiPeakTimeMs = 0;
+                return; // Skip peak capture this cycle
+            }
         }
 
         if (enterHoldSamples >= kEnterHoldSamplesMin) {
             if (cur > rssiPeak) {
                 rssiPeak = cur;
                 rssiPeakTimeMs = now;
-                DEBUG("*** PEAK CAPTURED: %u (raw=%u kal=%u ma=%u) at %lu ms (since lap start: %lu ms) ***\n",
+                DEBUG("*** PEAK CAPTURED: %u (raw=%u kal=%u ma=%u) at %lu ms ***\n",
                       rssiPeak, lastRawRssi, lastKalmanRssi, lastAvgRssi,
-                      (unsigned long)rssiPeakTimeMs, (unsigned long)(rssiPeakTimeMs - startTimeMs));
+                      (unsigned long)(rssiPeakTimeMs - startTimeMs));
             }
         }
     } else {
-        if (enteredGate && cur < exitT && rssiPeak == 0) {
-            // noise blip: dipped below exit without any peak
+        if (enteredGate && noiseBlipExit) {
+            // noise blip: dipped below without any peak
             enteredGate = false;
             gateExited = true;
             enterHoldSamples = 0;
@@ -325,20 +444,23 @@ void LapTimer::lapPeakCapture() {
 }
 
 bool LapTimer::lapPeakCaptured() {
-    const uint8_t enter = conf->getEnterRssi();
-    const uint8_t exitT = conf->getExitRssi();
+    bool validPeak;
+    bool droppedBelowExit;
 
-    bool validPeak = (rssiPeak > 0) &&
+    {
+        const uint8_t enter = conf->getEnterRssi();
+        const uint8_t exitT = conf->getExitRssi();
+
+        validPeak = (rssiPeak > 0) &&
                      (rssiPeak >= enter) &&
                      (rssiPeak > (exitT + 5));
 
-    // NEW: confirm "below exit" for 2 consecutive samples (rejects one-sample cliff drops)
-    bool droppedBelowExit = false;
-    if (kExitConfirmSamples <= 1) {
-        droppedBelowExit = (rssi[rssiCount] < exitT);
-    } else {
-        uint16_t prevIdx = (rssiCount + LAPTIMER_RSSI_HISTORY - 1) % LAPTIMER_RSSI_HISTORY;
-        droppedBelowExit = (rssi[rssiCount] < exitT) && (rssi[prevIdx] < exitT);
+        if (kExitConfirmSamples <= 1) {
+            droppedBelowExit = (rssi[rssiCount] < exitT);
+        } else {
+            uint16_t prevIdx = (rssiCount + LAPTIMER_RSSI_HISTORY - 1) % LAPTIMER_RSSI_HISTORY;
+            droppedBelowExit = (rssi[rssiCount] < exitT) && (rssi[prevIdx] < exitT);
+        }
     }
 
     bool captured = enteredGate && validPeak && droppedBelowExit;
@@ -347,14 +469,12 @@ bool LapTimer::lapPeakCaptured() {
         DEBUG("\n*** LAP DETECTED! ***\n");
         DEBUG("  Current RSSI: %u\n", rssi[rssiCount]);
         DEBUG("  Peak was: %u\n", rssiPeak);
-        DEBUG("  Enter threshold: %u\n", enter);
-        DEBUG("  Exit threshold: %u\n", exitT);
-        DEBUG("  Peak margin above exit: %d\n", rssiPeak - exitT);
+        DEBUG("  Enter: %u  Exit: %u\n", conf->getEnterRssi(), conf->getExitRssi());
         DEBUG("******************\n\n");
     }
 
     if (!captured && enteredGate && droppedBelowExit && !validPeak) {
-        // enteredGate without a real peak, then fell below exit → reset
+        // enteredGate without a real peak, then fell below exit -> reset
         enteredGate = false;
         gateExited = true;
         enterHoldSamples = 0;
@@ -506,4 +626,20 @@ float LapTimer::getDistanceRemaining() {
 
 Track* LapTimer::getSelectedTrack() {
     return selectedTrack;
+}
+
+uint8_t LapTimer::getEffectiveEnterRssi() {
+    return conf->getEnterRssi();
+}
+
+uint8_t LapTimer::getEffectiveExitRssi() {
+    return conf->getExitRssi();
+}
+
+uint8_t LapTimer::getBaselineRssi() {
+    return 0;
+}
+
+uint8_t LapTimer::getNoiseCeiling() {
+    return 0;
 }

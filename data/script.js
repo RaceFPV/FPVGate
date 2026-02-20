@@ -96,6 +96,7 @@ var enterRssi = 120,
 var frequency = 0;
 var announcerRate = 1.0;
 
+
 var lapNo = -1;
 var lapTimes = [];
 var maxLaps = 0;
@@ -149,6 +150,12 @@ var rssiSeries = new TimeSeries();
 var rssiCrossingSeries = new TimeSeries();
 var maxRssiValue = enterRssi + 10;
 var minRssiValue = exitRssi - 10;
+
+// Debug mode state
+var debugMode = localStorage.getItem('debugMode') === '1';
+var debugRssiChart = null;
+var debugRssiSeries = new TimeSeries();
+var debugCrossingSeries = new TimeSeries();
 
 // Fetch and display version
 async function fetchVersion() {
@@ -408,6 +415,7 @@ function setupWiFiEvents() {
       },
       false
     );
+
 
     eventSource.addEventListener(
       "lap",
@@ -1131,6 +1139,10 @@ onload = async function (e) {
     timer.innerHTML = i18n.t("race.timer_default");
     clearLaps();
     createRssiChart();
+    // Restore debug mode toggle from localStorage
+    var debugToggle = document.getElementById("debugModeToggle");
+    if (debugToggle) debugToggle.checked = debugMode;
+    updateDebugOverlay();
     // Auto-enable voice on load
     enableAudioLoop();
     // Setup pilot color preview
@@ -1278,11 +1290,38 @@ onload = async function (e) {
       batterySection.style.display = batteryToggle.checked ? "block" : "none";
     }
 
-    // Load RSSI sensitivity setting
-    const rssiSensitivitySelect = document.getElementById("rssiSensitivity");
-    if (rssiSensitivitySelect && configData.rssiSens !== undefined) {
-      rssiSensitivitySelect.value = configData.rssiSens;
+    // Load receiver radio setting
+    const receiverRadioSelect = document.getElementById("receiverRadio");
+    if (receiverRadioSelect && configData.receiverRadio !== undefined) {
+      receiverRadioSelect.value = configData.receiverRadio;
     }
+
+    // Load Novacore filter settings
+    const filterFields = [
+      { id: "novaFilterKalman", key: "novaFilterKalman", type: "toggle" },
+      { id: "novaFilterMedian", key: "novaFilterMedian", type: "toggle" },
+      { id: "novaFilterMA", key: "novaFilterMA", type: "toggle" },
+      { id: "novaFilterEMA", key: "novaFilterEMA", type: "toggle" },
+      { id: "novaFilterStepLimiter", key: "novaFilterStepLimiter", type: "toggle" },
+      { id: "novaKalmanQ", key: "novaKalmanQ", type: "range", display: "novaKalmanQValue", fmt: function(v){ return (v/100).toFixed(1); } },
+      { id: "novaEmaAlpha", key: "novaEmaAlpha", type: "range", display: "novaEmaAlphaValue", fmt: function(v){ return (v/100).toFixed(2); } },
+      { id: "novaStepMax", key: "novaStepMax", type: "range", display: "novaStepMaxValue", fmt: function(v){ return v; } },
+    ];
+    filterFields.forEach(function(f) {
+      var el = document.getElementById(f.id);
+      if (!el || configData[f.key] === undefined) return;
+      if (f.type === "toggle") {
+        el.checked = configData[f.key] === 1;
+      } else {
+        el.value = configData[f.key];
+        var disp = document.getElementById(f.display);
+        if (disp) disp.textContent = f.fmt(configData[f.key]);
+      }
+    });
+    toggleNovaFilterSection();
+
+    // Mark config as loaded so saves from calibration tab work
+    configLoaded = true;
   }
 };
 
@@ -1457,8 +1496,12 @@ batteryVoltageInterval = setInterval(getBatteryVoltage, 2000);
 function addRssiPoint() {
   if (!rssiChart) return; // Chart not initialized yet
 
-  if (calib.style.display != "none") {
-    rssiChart.start();
+  var calibVisible = calib.style.display != "none";
+  var raceVisible = race.style.display != "none";
+  var debugActive = debugMode && raceVisible && debugRssiChart;
+
+  if (calibVisible || debugActive) {
+    // Consume RSSI data from buffer
     if (rssiBuffer.length > 0) {
       rssiValue = parseInt(rssiBuffer.shift());
       if (crossing && rssiValue < exitRssi) {
@@ -1470,22 +1513,44 @@ function addRssiPoint() {
       minRssiValue = Math.min(minRssiValue, rssiValue);
     }
 
-    // update horizontal lines and min max values
-    rssiChart.options.horizontalLines = [
-      { color: "hsl(8.2, 86.5%, 53.7%)", lineWidth: 1.7, value: enterRssi }, // red
-      { color: "hsl(25, 85%, 55%)", lineWidth: 1.7, value: exitRssi }, // orange
-    ];
-
-    rssiChart.options.maxValue = Math.max(maxRssiValue, enterRssi + 10);
-
-    rssiChart.options.minValue = Math.max(0, Math.min(minRssiValue, exitRssi - 10));
-
     var now = Date.now();
-    rssiSeries.append(now, rssiValue);
-    if (crossing) {
-      rssiCrossingSeries.append(now, 256);
+
+    // Feed calibration chart (when visible)
+    if (calibVisible) {
+      rssiChart.start();
+      rssiChart.options.horizontalLines = [
+        { color: "hsl(8.2, 86.5%, 53.7%)", lineWidth: 1.7, value: enterRssi },
+        { color: "hsl(25, 85%, 55%)", lineWidth: 1.7, value: exitRssi },
+      ];
+      rssiChart.options.maxValue = Math.max(maxRssiValue, enterRssi + 10);
+      rssiChart.options.minValue = Math.max(0, Math.min(minRssiValue, exitRssi - 10));
+      rssiSeries.append(now, rssiValue);
+      if (crossing) {
+        rssiCrossingSeries.append(now, 256);
+      } else {
+        rssiCrossingSeries.append(now, -10);
+      }
     } else {
-      rssiCrossingSeries.append(now, -10);
+      rssiChart.stop();
+    }
+
+    // Feed debug overlay chart (when race tab visible + debug mode on)
+    if (debugActive) {
+      debugRssiSeries.append(now, rssiValue);
+      if (crossing) {
+        debugCrossingSeries.append(now, 256);
+      } else {
+        debugCrossingSeries.append(now, -10);
+      }
+      debugRssiChart.options.horizontalLines = [
+        { color: "hsl(8.2, 86.5%, 53.7%)", lineWidth: 1.7, value: enterRssi },
+        { color: "hsl(25, 85%, 55%)", lineWidth: 1.7, value: exitRssi },
+      ];
+      debugRssiChart.options.maxValue = Math.max(maxRssiValue, enterRssi + 10);
+      debugRssiChart.options.minValue = Math.max(0, Math.min(minRssiValue, exitRssi - 10));
+      // Update RSSI readout
+      var dbgVal = document.getElementById("debugRssiValue");
+      if (dbgVal) dbgVal.textContent = rssiValue > 0 ? rssiValue : "--";
     }
   } else {
     rssiChart.stop();
@@ -1523,6 +1588,128 @@ function createRssiChart() {
     fillStyle: "hsla(136, 71%, 70%, 0.3)",
   });
   rssiChart.streamTo(document.getElementById("rssiChart"), 200);
+
+  // Create debug overlay chart
+  createDebugRssiChart();
+}
+
+function createDebugRssiChart() {
+  debugRssiChart = new SmoothieChart({
+    responsive: true,
+    millisPerPixel: 80,
+    grid: {
+      strokeStyle: "rgba(255,255,255,0.15)",
+      sharpLines: true,
+      verticalSections: 0,
+      borderVisible: false,
+    },
+    labels: {
+      precision: 0,
+      fontSize: 9,
+    },
+    maxValue: 1,
+    minValue: 0,
+  });
+  debugRssiChart.addTimeSeries(debugRssiSeries, {
+    lineWidth: 1.2,
+    strokeStyle: "hsl(214, 53%, 60%)",
+    fillStyle: "hsla(214, 53%, 60%, 0.3)",
+  });
+  debugRssiChart.addTimeSeries(debugCrossingSeries, {
+    lineWidth: 1,
+    strokeStyle: "none",
+    fillStyle: "hsla(136, 71%, 70%, 0.25)",
+  });
+  debugRssiChart.streamTo(document.getElementById("debugRssiChart"), 200);
+}
+
+function toggleNovaFilterSection() {
+  var sel = document.getElementById("receiverRadio");
+  var section = document.getElementById("novaFilterSection");
+  if (!sel || !section) return;
+  section.style.display = sel.value === "1" ? "block" : "none";
+  // Sync slider visibility with toggle state
+  toggleNovaFilterSlider("kalman");
+  toggleNovaFilterSlider("ema");
+  toggleNovaFilterSlider("step");
+}
+
+function restoreDefaultNovaFilters() {
+  document.getElementById("novaFilterKalman").checked = true;
+  document.getElementById("novaFilterMedian").checked = false;
+  document.getElementById("novaFilterMA").checked = false;
+  document.getElementById("novaFilterEMA").checked = false;
+  document.getElementById("novaFilterStepLimiter").checked = true;
+  document.getElementById("novaKalmanQ").value = 200;
+  document.getElementById("novaKalmanQValue").textContent = "2.0";
+  document.getElementById("novaEmaAlpha").value = 15;
+  document.getElementById("novaEmaAlphaValue").textContent = "0.15";
+  document.getElementById("novaStepMax").value = 20;
+  document.getElementById("novaStepMaxValue").textContent = "20";
+  toggleNovaFilterSlider("kalman");
+  toggleNovaFilterSlider("ema");
+  toggleNovaFilterSlider("step");
+  autoSaveConfig();
+}
+
+function toggleNovaFilterSlider(filter) {
+  var map = {
+    kalman: { toggle: "novaFilterKalman", slider: "novaKalmanSlider" },
+    ema: { toggle: "novaFilterEMA", slider: "novaEmaSlider" },
+    step: { toggle: "novaFilterStepLimiter", slider: "novaStepSlider" },
+  };
+  var entry = map[filter];
+  if (!entry) return;
+  var tog = document.getElementById(entry.toggle);
+  var slider = document.getElementById(entry.slider);
+  if (tog && slider) {
+    slider.style.display = tog.checked ? "block" : "none";
+  }
+}
+
+function toggleDebugMode(enabled) {
+  debugMode = enabled;
+  localStorage.setItem('debugMode', enabled ? '1' : '0');
+  updateDebugOverlay();
+}
+
+function updateDebugOverlay() {
+  var overlay = document.getElementById("debugRssiOverlay");
+  if (!overlay) return;
+  var raceVisible = race.style.display != "none";
+  if (debugMode && raceVisible) {
+    overlay.style.display = "block";
+    if (debugRssiChart) debugRssiChart.start();
+    // Ensure RSSI streaming is active
+    if (!rssiSending) startRssiStreaming();
+  } else {
+    overlay.style.display = "none";
+    if (debugRssiChart) debugRssiChart.stop();
+  }
+}
+
+function startRssiStreaming() {
+  if (rssiSending) return;
+  if (usbConnected && transportManager) {
+    transportManager.sendCommand("timer/rssiStart", "POST")
+      .then(function() { rssiSending = true; })
+      .catch(function(err) { console.error("Failed to start RSSI:", err); });
+  } else {
+    fetch("/timer/rssiStart", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" } })
+      .then(function(r) { if (r.ok) rssiSending = true; });
+  }
+}
+
+function stopRssiStreaming() {
+  if (!rssiSending) return;
+  if (usbConnected && transportManager) {
+    transportManager.sendCommand("timer/rssiStop", "POST")
+      .then(function() { rssiSending = false; })
+      .catch(function(err) { console.error("Failed to stop RSSI:", err); });
+  } else {
+    fetch("/timer/rssiStop", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" } })
+      .then(function(r) { if (r.ok) rssiSending = false; });
+  }
 }
 
 function openTab(evt, tabName) {
@@ -1545,54 +1732,17 @@ function openTab(evt, tabName) {
   document.getElementById(tabName).style.display = "block";
   evt.currentTarget.className += " active";
 
-  // if event comes from calibration tab, signal to start sending RSSI events
-  if (tabName === "calib" && !rssiSending) {
-    if (usbConnected && transportManager) {
-      transportManager
-        .sendCommand("timer/rssiStart", "POST")
-        .then((response) => {
-          rssiSending = true;
-          console.log("/timer/rssiStart:", response);
-        })
-        .catch((err) => console.error("Failed to start RSSI:", err));
-    } else {
-      fetch("/timer/rssiStart", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-      })
-        .then((response) => {
-          if (response.ok) rssiSending = true;
-          return response.json();
-        })
-        .then((response) => console.log("/timer/rssiStart:" + JSON.stringify(response)));
-    }
-  } else if (rssiSending) {
-    if (usbConnected && transportManager) {
-      transportManager
-        .sendCommand("timer/rssiStop", "POST")
-        .then((response) => {
-          rssiSending = false;
-          console.log("/timer/rssiStop:", response);
-        })
-        .catch((err) => console.error("Failed to stop RSSI:", err));
-    } else {
-      fetch("/timer/rssiStop", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-      })
-        .then((response) => {
-          if (response.ok) rssiSending = false;
-          return response.json();
-        })
-        .then((response) => console.log("/timer/rssiStop:" + JSON.stringify(response)));
-    }
+  // Start/stop RSSI streaming based on tab and debug mode
+  if (tabName === "calib" || (tabName === "race" && debugMode)) {
+    startRssiStreaming();
+  } else if (rssiSending && !(tabName === "race" && debugMode)) {
+    // Only stop if not needed by debug overlay on race tab
+    var needsRssi = (debugMode && document.getElementById("race").style.display != "none");
+    if (!needsRssi) stopRssiStreaming();
   }
+
+  // Update debug overlay visibility
+  updateDebugOverlay();
 
   // Load race history when opening history tab
   if (tabName === "history") {
@@ -1625,6 +1775,7 @@ function updateExitRssi(obj, value) {
   }
 }
 
+
 // Debounced auto-save to prevent excessive API calls
 let saveTimeout = null;
 function autoSaveConfig() {
@@ -1656,7 +1807,7 @@ async function saveConfig() {
   }
 
   // Save all settings to device
-  const rssiSensitivitySelect = document.getElementById("rssiSensitivity");
+  const receiverRadioSelect = document.getElementById("receiverRadio");
   
   // Save band and channel indices along with frequency for accurate restoration
   // Get the actual band index from the dataset
@@ -1694,7 +1845,15 @@ async function saveConfig() {
     enterRssi: enterRssi,
     exitRssi: exitRssi,
     maxLaps: maxLaps,
-    rssiSens: rssiSensitivitySelect ? parseInt(rssiSensitivitySelect.value) : 1,
+    receiverRadio: receiverRadioSelect ? parseInt(receiverRadioSelect.value) : 0,
+    novaFilterKalman: document.getElementById("novaFilterKalman") ? (document.getElementById("novaFilterKalman").checked ? 1 : 0) : 1,
+    novaFilterMedian: document.getElementById("novaFilterMedian") ? (document.getElementById("novaFilterMedian").checked ? 1 : 0) : 0,
+    novaFilterMA: document.getElementById("novaFilterMA") ? (document.getElementById("novaFilterMA").checked ? 1 : 0) : 0,
+    novaFilterEMA: document.getElementById("novaFilterEMA") ? (document.getElementById("novaFilterEMA").checked ? 1 : 0) : 0,
+    novaFilterStepLimiter: document.getElementById("novaFilterStepLimiter") ? (document.getElementById("novaFilterStepLimiter").checked ? 1 : 0) : 1,
+    novaKalmanQ: parseInt(document.getElementById("novaKalmanQ")?.value || 200),
+    novaEmaAlpha: parseInt(document.getElementById("novaEmaAlpha")?.value || 15),
+    novaStepMax: parseInt(document.getElementById("novaStepMax")?.value || 20),
     name: pilotNameInput.value,
     pilotCallsign: callsignInput ? callsignInput.value : "",
     pilotPhonetic: phoneticInput ? phoneticInput.value : "",
@@ -5788,40 +5947,39 @@ function importConfig(input) {
 
 // Calibration Wizard
 let wizardState = {
-  recording: false,
+  phase: "idle", // idle | ambient | recording | processing | results
   data: [],
-  markers: [], // Array of {index, lap: 1|2|3} - only peaks!
-  currentLap: 1,
-  chart: null,
+  ambientEnd: 0,   // index where ambient phase ends
+  peaks: [],       // auto-detected peak indices
+  allPeaks: [],    // original unfiltered peaks (preserved for ignore recalc)
+  ignoredRegions: [], // [{startIdx, endIdx}]
   calculatedEnter: 0,
   calculatedExit: 0,
+  calculatedMinLap: 0,
+  noiseCeiling: 0,
+  avgPeak: 0,
 };
 
 function startCalibrationWizard() {
-  // Reset wizard state
   wizardState = {
-    recording: false,
-    data: [],
-    markers: [],
-    currentLap: 1,
-    chart: null,
-    calculatedEnter: 0,
-    calculatedExit: 0,
+    phase: "idle", data: [], ambientEnd: 0, peaks: [], allPeaks: [],
+    ignoredRegions: [],
+    calculatedEnter: 0, calculatedExit: 0, calculatedMinLap: 0,
+    noiseCeiling: 0, avgPeak: 0,
   };
 
-  // Show modal and recording screen
+  // Show modal with ambient countdown
   document.getElementById("calibrationWizardModal").style.display = "flex";
-  document.getElementById("wizardRecording").style.display = "block";
-  document.getElementById("wizardMarking").style.display = "none";
+  document.getElementById("wizardAmbient").style.display = "block";
+  document.getElementById("wizardRecording").style.display = "none";
   document.getElementById("wizardResults").style.display = "none";
 
-  // Start recording
+  // Start device recording
   fetch("/calibration/start", { method: "POST" })
-    .then((response) => response.json())
-    .then((data) => {
-      console.log("Calibration wizard started:", data);
-      wizardState.recording = true;
-      wizardRecordingLoop();
+    .then((r) => r.json())
+    .then(() => {
+      wizardState.phase = "ambient";
+      runAmbientCountdown(5);
     })
     .catch((error) => {
       console.error("Error starting calibration wizard:", error);
@@ -5830,49 +5988,63 @@ function startCalibrationWizard() {
     });
 }
 
-function wizardRecordingLoop() {
-  if (!wizardState.recording) return;
+function runAmbientCountdown(seconds) {
+  const el = document.getElementById("ambientCountdown");
+  if (!el) return;
+  if (seconds <= 0) {
+    // Ambient phase done - mark the boundary, switch to flight recording
+    fetch("/calibration/data")
+      .then((r) => r.json())
+      .then((data) => {
+        wizardState.ambientEnd = data.count;
+        console.log("[Wizard] Ambient phase captured", wizardState.ambientEnd, "samples");
+        wizardState.phase = "recording";
+        document.getElementById("wizardAmbient").style.display = "none";
+        document.getElementById("wizardRecording").style.display = "block";
+        wizardRecordingLoop();
+      })
+      .catch(() => {
+        wizardState.ambientEnd = 250; // ~5s at 50Hz fallback
+        wizardState.phase = "recording";
+        document.getElementById("wizardAmbient").style.display = "none";
+        document.getElementById("wizardRecording").style.display = "block";
+        wizardRecordingLoop();
+      });
+    return;
+  }
+  el.textContent = seconds;
+  setTimeout(() => runAmbientCountdown(seconds - 1), 1000);
+}
 
-  // Fetch current sample count
+function wizardRecordingLoop() {
+  if (wizardState.phase !== "recording") return;
   fetch("/calibration/data")
-    .then((response) => response.json())
+    .then((r) => r.json())
     .then((data) => {
-      document.getElementById("wizardSampleCount").textContent = `Samples: ${data.count}`;
-      if (wizardState.recording) {
+      var flightSamples = Math.max(0, data.count - wizardState.ambientEnd);
+      document.getElementById("wizardSampleCount").textContent =
+        i18n.t("calib.wizard_samples", { n: flightSamples });
+      if (wizardState.phase === "recording") {
         setTimeout(wizardRecordingLoop, 200);
       }
     })
-    .catch((error) => {
-      console.error("Error fetching calibration data:", error);
-    });
+    .catch((err) => console.error("Error fetching calibration data:", err));
 }
 
 function stopCalibrationWizard() {
-  wizardState.recording = false;
-
+  wizardState.phase = "processing";
   fetch("/calibration/stop", { method: "POST" })
-    .then((response) => response.json())
-    .then(() => {
-      // Fetch recorded data
-      return fetch("/calibration/data");
-    })
-    .then((response) => response.json())
+    .then((r) => r.json())
+    .then(() => fetch("/calibration/data"))
+    .then((r) => r.json())
     .then((data) => {
-      console.log("Calibration data received:", data.count, "samples");
       wizardState.data = data.data;
-
-      if (wizardState.data.length < 10) {
+      if (wizardState.data.length < 50) {
         alert(i18n.t("messages.calib_not_enough_data"));
         closeCalibrationWizard();
         return;
       }
-
-      // Show marking screen
-      document.getElementById("wizardRecording").style.display = "none";
-      document.getElementById("wizardMarking").style.display = "block";
-
-      // Draw chart
-      drawWizardChart();
+      autoDetectAndShow();
     })
     .catch((error) => {
       console.error("Error stopping calibration wizard:", error);
@@ -5881,258 +6053,535 @@ function stopCalibrationWizard() {
     });
 }
 
-function drawWizardChart() {
-  const canvas = document.getElementById("wizardChart");
-  const ctx = canvas.getContext("2d");
+// Auto-detect peaks and calculate thresholds
+function autoDetectAndShow() {
+  var allData = wizardState.data;
+  var ambientEnd = Math.min(wizardState.ambientEnd, allData.length);
 
-  // Set canvas size
-  canvas.width = canvas.offsetWidth;
-  canvas.height = 400;
+  // Compute noise ceiling from ambient phase
+  var ambientValues = allData.slice(0, ambientEnd).map((d) => d.rssi);
+  if (ambientValues.length < 10) ambientValues = allData.slice(0, 50).map((d) => d.rssi);
+  ambientValues.sort((a, b) => a - b);
+  var noiseCeiling = ambientValues[Math.floor(ambientValues.length * 0.95)];
+  wizardState.noiseCeiling = noiseCeiling;
 
-  const width = canvas.width;
-  const height = canvas.height;
-  const padding = 40;
-  const chartWidth = width - 2 * padding;
-  const chartHeight = height - 2 * padding;
+  // Detect peaks in flight phase: local maxima above noiseCeiling+margin with 2s min separation
+  var flightData = allData.slice(ambientEnd);
+  var peakThreshold = noiseCeiling + 5;
+  var minSepMs = 2000;
+  var peaks = []; // [{index (global), rssi, timeMs}]
 
-  // Get RSSI values
-  const rssiValues = wizardState.data.map((d) => d.rssi);
-  const minRssi = Math.min(...rssiValues);
-  const maxRssi = Math.max(...rssiValues);
-  const rssiRange = maxRssi - minRssi;
-
-  // Apply visual smoothing with moving average (window size 15 for smoother appearance)
-  // IMPORTANT: This is ONLY for visual display - does NOT affect actual data
-  const smoothedRssi = [];
-  const windowSize = 15;
-  for (let i = 0; i < rssiValues.length; i++) {
-    let sum = 0;
-    let count = 0;
-    for (let j = Math.max(0, i - Math.floor(windowSize / 2)); j <= Math.min(rssiValues.length - 1, i + Math.floor(windowSize / 2)); j++) {
-      sum += rssiValues[j];
-      count++;
+  // Smooth flight data for peak detection (window=15)
+  var smoothed = [];
+  for (var i = 0; i < flightData.length; i++) {
+    var sum = 0, cnt = 0;
+    for (var j = Math.max(0, i - 7); j <= Math.min(flightData.length - 1, i + 7); j++) {
+      sum += flightData[j].rssi; cnt++;
     }
-    smoothedRssi.push(sum / count);
+    smoothed.push(sum / cnt);
   }
 
-  // Clear canvas
-  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg-primary").trim();
-  ctx.fillRect(0, 0, width, height);
-
-  // Draw axes
-  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--border-color").trim();
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(padding, padding);
-  ctx.lineTo(padding, height - padding);
-  ctx.lineTo(width - padding, height - padding);
-  ctx.stroke();
-
-  // Draw filled area under RSSI line (similar to SmoothieChart style)
-  ctx.fillStyle = "rgba(0, 212, 255, 0.4)";
-  ctx.beginPath();
-
-  for (let i = 0; i < smoothedRssi.length; i++) {
-    const x = padding + (i / (smoothedRssi.length - 1)) * chartWidth;
-    const rssi = smoothedRssi[i];
-    const y = height - padding - ((rssi - minRssi) / rssiRange) * chartHeight;
-
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
+  // Find local maxima
+  for (var i = 1; i < smoothed.length - 1; i++) {
+    if (smoothed[i] > peakThreshold && smoothed[i] >= smoothed[i - 1] && smoothed[i] >= smoothed[i + 1]) {
+      var globalIdx = ambientEnd + i;
+      var tMs = allData[globalIdx].time;
+      // Enforce min separation
+      if (peaks.length === 0 || (tMs - peaks[peaks.length - 1].timeMs) >= minSepMs) {
+        // Check if this is higher than a recent peak within separation window (keep highest)
+        if (peaks.length > 0 && (tMs - peaks[peaks.length - 1].timeMs) < minSepMs) continue;
+        peaks.push({ index: globalIdx, rssi: flightData[i].rssi, timeMs: tMs });
+      } else if (flightData[i].rssi > peaks[peaks.length - 1].rssi) {
+        // Replace last peak if this one is higher and within separation
+        peaks[peaks.length - 1] = { index: globalIdx, rssi: flightData[i].rssi, timeMs: tMs };
+      }
     }
   }
-  // Complete the filled area by drawing to bottom corners
-  ctx.lineTo(width - padding, height - padding);
-  ctx.lineTo(padding, height - padding);
-  ctx.closePath();
-  ctx.fill();
 
-  // Draw RSSI line on top (smoothed for visual clarity)
-  ctx.strokeStyle = "#00d4ff";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
+  wizardState.peaks = peaks;
+  wizardState.allPeaks = peaks.slice(); // preserve original set
+  wizardState.ignoredRegions = [];
+  console.log("[Wizard] Detected", peaks.length, "peaks, noiseCeiling=", noiseCeiling);
 
-  for (let i = 0; i < smoothedRssi.length; i++) {
-    const x = padding + (i / (smoothedRssi.length - 1)) * chartWidth;
-    const rssi = smoothedRssi[i];
-    const y = height - padding - ((rssi - minRssi) / rssiRange) * chartHeight;
-
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
+  if (peaks.length < 3) {
+    // Fall back to manual peak-marking
+    alert(i18n.t("messages.calib_auto_few_peaks", { n: peaks.length }));
+    showManualPeakMarking();
+    return;
   }
-  ctx.stroke();
 
-  // Draw peak markers
-  wizardState.markers.forEach((marker) => {
-    const x = padding + (marker.index / (wizardState.data.length - 1)) * chartWidth;
-    const rssi = wizardState.data[marker.index].rssi;
-    const y = height - padding - ((rssi - minRssi) / rssiRange) * chartHeight;
+  // Calculate thresholds
+  var peakRssiValues = peaks.map((p) => p.rssi);
+  var avgPeak = peakRssiValues.reduce((a, b) => a + b, 0) / peakRssiValues.length;
+  wizardState.avgPeak = avgPeak;
 
-    ctx.fillStyle = "#ff5555";
-    ctx.beginPath();
-    ctx.arc(x, y, 8, 0, 2 * Math.PI);
-    ctx.fill();
+  // enter = noiseCeiling + 0.6*(avgPeak - noiseCeiling)
+  // exit  = noiseCeiling + 0.3*(avgPeak - noiseCeiling)
+  var range = avgPeak - noiseCeiling;
+  var calcEnter = Math.round(noiseCeiling + 0.6 * range);
+  var calcExit = Math.round(noiseCeiling + 0.3 * range);
 
-    // Draw label
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "14px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(`Peak ${marker.lap}`, x, y - 12);
+  // Enforce minimum gap
+  if (calcEnter <= calcExit + 5) calcEnter = calcExit + 10;
+  calcEnter = Math.max(50, Math.min(255, calcEnter));
+  calcExit = Math.max(50, Math.min(255, calcExit));
+
+  wizardState.calculatedEnter = calcEnter;
+  wizardState.calculatedExit = calcExit;
+
+  // Min lap time: 70% of shortest gap between consecutive peaks, clamped 1-20s
+  var gaps = [];
+  for (var i = 1; i < peaks.length; i++) {
+    gaps.push(peaks[i].timeMs - peaks[i - 1].timeMs);
+  }
+  var minGap = Math.min(...gaps);
+  var calcMinLap = Math.round(minGap * 0.7);
+  calcMinLap = Math.max(1000, Math.min(20000, calcMinLap));
+  wizardState.calculatedMinLap = calcMinLap;
+
+  showResults();
+}
+
+function showManualPeakMarking() {
+  // Fallback: show chart with manual click-to-mark peaks
+  document.getElementById("wizardRecording").style.display = "none";
+  document.getElementById("wizardManualMarking").style.display = "block";
+  wizardState.phase = "manual";
+  wizardState.peaks = [];
+  drawWizardChart();
+}
+
+function showResults() {
+  document.getElementById("wizardRecording").style.display = "none";
+  document.getElementById("wizardAmbient").style.display = "none";
+  document.getElementById("wizardManualMarking").style.display = "none";
+  document.getElementById("wizardResults").style.display = "block";
+  wizardState.phase = "results";
+
+  updateResultsDisplay();
+  drawResultsChart();
+  setupIgnoreRegionHandlers();
+}
+
+function updateResultsDisplay() {
+  var activePeaks = getActivePeaks();
+  var tooFew = activePeaks.length < 3;
+
+  document.getElementById("calculatedEnterRssi").textContent = tooFew ? "--" : wizardState.calculatedEnter;
+  document.getElementById("calculatedExitRssi").textContent = tooFew ? "--" : wizardState.calculatedExit;
+  document.getElementById("calculatedMinLap").textContent = tooFew ? "--" : (wizardState.calculatedMinLap / 1000).toFixed(1) + "s";
+  document.getElementById("calculatedPeakCount").textContent = activePeaks.length;
+  document.getElementById("calculatedNoiseCeiling").textContent = wizardState.noiseCeiling;
+  document.getElementById("calculatedAvgPeak").textContent = tooFew ? "--" : Math.round(wizardState.avgPeak);
+
+  // Warning and apply button state
+  var warning = document.getElementById("wizardIgnoreWarning");
+  var applyBtn = document.getElementById("wizardApplyBtn");
+  if (warning) warning.style.display = tooFew ? "block" : "none";
+  if (applyBtn) applyBtn.disabled = tooFew;
+
+  // Clear button visibility
+  var clearBtn = document.getElementById("clearIgnoredBtn");
+  if (clearBtn) clearBtn.style.display = wizardState.ignoredRegions.length > 0 ? "inline-block" : "none";
+}
+
+function getActivePeaks() {
+  return wizardState.allPeaks.filter(function(p) {
+    return !wizardState.ignoredRegions.some(function(r) {
+      return p.index >= r.startIdx && p.index <= r.endIdx;
+    });
   });
+}
 
-  // Add click listener
-  canvas.onclick = function (event) {
-    const rect = canvas.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
+function recalculateWithIgnoredRegions() {
+  var activePeaks = getActivePeaks();
+  wizardState.peaks = activePeaks;
 
-    // Convert click position to data index
-    const dataIndex = Math.round(((clickX - padding) / chartWidth) * (wizardState.data.length - 1));
+  if (activePeaks.length >= 3) {
+    var peakRssiValues = activePeaks.map(function(p) { return p.rssi; });
+    var avgPeak = peakRssiValues.reduce(function(a, b) { return a + b; }, 0) / peakRssiValues.length;
+    wizardState.avgPeak = avgPeak;
 
-    if (dataIndex >= 0 && dataIndex < wizardState.data.length) {
-      addWizardMarker(dataIndex);
+    var range = avgPeak - wizardState.noiseCeiling;
+    var calcEnter = Math.round(wizardState.noiseCeiling + 0.6 * range);
+    var calcExit = Math.round(wizardState.noiseCeiling + 0.3 * range);
+    if (calcEnter <= calcExit + 5) calcEnter = calcExit + 10;
+    wizardState.calculatedEnter = Math.max(50, Math.min(255, calcEnter));
+    wizardState.calculatedExit = Math.max(50, Math.min(255, calcExit));
+
+    var gaps = [];
+    var sorted = activePeaks.slice().sort(function(a, b) { return a.timeMs - b.timeMs; });
+    for (var i = 1; i < sorted.length; i++) gaps.push(sorted[i].timeMs - sorted[i - 1].timeMs);
+    var minGap = gaps.length > 0 ? Math.min.apply(null, gaps) : 5000;
+    wizardState.calculatedMinLap = Math.max(1000, Math.min(20000, Math.round(minGap * 0.7)));
+  }
+
+  updateResultsDisplay();
+  drawResultsChart();
+}
+
+function clearIgnoredRegions() {
+  wizardState.ignoredRegions = [];
+  recalculateWithIgnoredRegions();
+}
+
+function rerecordCalibration() {
+  // Reset and restart the full wizard
+  closeCalibrationWizard();
+  startCalibrationWizard();
+}
+
+function setupIgnoreRegionHandlers() {
+  var canvas = document.getElementById("wizardResultsChart");
+  if (!canvas) return;
+  var dragStart = null;
+
+  canvas.onmousedown = function(e) {
+    if (e.button !== 0) return; // left click only for drag
+    var rect = canvas.getBoundingClientRect();
+    dragStart = e.clientX - rect.left;
+  };
+
+  canvas.onmousemove = function(e) {
+    if (dragStart === null) return;
+    var rect = canvas.getBoundingClientRect();
+    var dragEnd = e.clientX - rect.left;
+    drawResultsChart(dragStart, dragEnd);
+  };
+
+  canvas.onmouseup = function(e) {
+    if (dragStart === null) return;
+    var rect = canvas.getBoundingClientRect();
+    var dragEnd = e.clientX - rect.left;
+    var pad = 40;
+    var cw = canvas.width - 2 * pad;
+    var len = wizardState.data.length;
+
+    var startIdx = Math.round(((Math.min(dragStart, dragEnd) - pad) / cw) * (len - 1));
+    var endIdx = Math.round(((Math.max(dragStart, dragEnd) - pad) / cw) * (len - 1));
+    startIdx = Math.max(0, Math.min(len - 1, startIdx));
+    endIdx = Math.max(0, Math.min(len - 1, endIdx));
+    dragStart = null;
+
+    // Only add if region spans at least a few samples
+    if (endIdx - startIdx < 3) return;
+
+    wizardState.ignoredRegions.push({ startIdx: startIdx, endIdx: endIdx });
+    recalculateWithIgnoredRegions();
+  };
+
+  canvas.onmouseleave = function() {
+    if (dragStart !== null) {
+      dragStart = null;
+      drawResultsChart();
+    }
+  };
+
+  canvas.oncontextmenu = function(e) {
+    e.preventDefault();
+    if (wizardState.ignoredRegions.length === 0) return;
+    var rect = canvas.getBoundingClientRect();
+    var clickX = e.clientX - rect.left;
+    var pad = 40;
+    var cw = canvas.width - 2 * pad;
+    var len = wizardState.data.length;
+    var clickIdx = Math.round(((clickX - pad) / cw) * (len - 1));
+
+    // Find which region was right-clicked
+    for (var i = wizardState.ignoredRegions.length - 1; i >= 0; i--) {
+      var r = wizardState.ignoredRegions[i];
+      if (clickIdx >= r.startIdx && clickIdx <= r.endIdx) {
+        wizardState.ignoredRegions.splice(i, 1);
+        recalculateWithIgnoredRegions();
+        return;
+      }
     }
   };
 }
 
-function addWizardMarker(index) {
-  // Check if we're done
-  if (wizardState.currentLap > 3) return;
+function drawResultsChart(previewStart, previewEnd) {
+  var canvas = document.getElementById("wizardResultsChart");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d");
+  canvas.width = canvas.offsetWidth;
+  canvas.height = 300;
 
-  // Add peak marker
-  wizardState.markers.push({
-    index: index,
-    lap: wizardState.currentLap,
-  });
+  var w = canvas.width, h = canvas.height, pad = 40;
+  var cw = w - 2 * pad, ch = h - 2 * pad;
+  var allData = wizardState.data;
+  var rssiVals = allData.map(function(d) { return d.rssi; });
+  var minR = Math.min.apply(null, rssiVals), maxR = Math.max.apply(null, rssiVals);
+  var range = Math.max(maxR - minR, 1);
 
-  // Move to next lap
-  wizardState.currentLap++;
-  if (wizardState.currentLap <= 3) {
-    updateWizardStatus(`Mark Peak ${wizardState.currentLap}`);
-  } else {
-    updateWizardStatus(i18n.t("messages.calib_peaks_marked"));
-    document.getElementById("wizardCalculateButton").disabled = false;
+  // Visual smoothing
+  var sm = [];
+  for (var i = 0; i < rssiVals.length; i++) {
+    var s = 0, c = 0;
+    for (var j = Math.max(0, i - 7); j <= Math.min(rssiVals.length - 1, i + 7); j++) { s += rssiVals[j]; c++; }
+    sm.push(s / c);
   }
 
-  // Enable undo button
-  document.getElementById("wizardUndoButton").disabled = false;
+  // Background
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg-primary").trim() || "#1a1a2e";
+  ctx.fillRect(0, 0, w, h);
 
-  // Redraw chart
-  drawWizardChart();
+  // Draw ignored regions (behind everything)
+  wizardState.ignoredRegions.forEach(function(r) {
+    var x1 = pad + (r.startIdx / (allData.length - 1)) * cw;
+    var x2 = pad + (r.endIdx / (allData.length - 1)) * cw;
+    ctx.fillStyle = "rgba(231, 76, 60, 0.2)";
+    ctx.fillRect(x1, pad, x2 - x1, ch);
+    // Strikethrough line
+    ctx.strokeStyle = "rgba(231, 76, 60, 0.5)"; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(x1, pad + ch / 2); ctx.lineTo(x2, pad + ch / 2); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Draw drag preview
+  if (previewStart !== undefined && previewEnd !== undefined) {
+    var px1 = Math.min(previewStart, previewEnd);
+    var px2 = Math.max(previewStart, previewEnd);
+    ctx.fillStyle = "rgba(231, 76, 60, 0.15)";
+    ctx.fillRect(px1, pad, px2 - px1, ch);
+    ctx.strokeStyle = "rgba(231, 76, 60, 0.6)"; ctx.lineWidth = 1;
+    ctx.strokeRect(px1, pad, px2 - px1, ch);
+  }
+
+  // Axes
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--border-color").trim() || "#444";
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, h - pad); ctx.lineTo(w - pad, h - pad); ctx.stroke();
+
+  // RSSI fill
+  ctx.fillStyle = "rgba(0, 212, 255, 0.3)";
+  ctx.beginPath();
+  for (var i = 0; i < sm.length; i++) {
+    var x = pad + (i / (sm.length - 1)) * cw;
+    var y = h - pad - ((sm[i] - minR) / range) * ch;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w - pad, h - pad); ctx.lineTo(pad, h - pad); ctx.closePath(); ctx.fill();
+
+  // RSSI line
+  ctx.strokeStyle = "#00d4ff"; ctx.lineWidth = 2; ctx.beginPath();
+  for (var i = 0; i < sm.length; i++) {
+    var x = pad + (i / (sm.length - 1)) * cw;
+    var y = h - pad - ((sm[i] - minR) / range) * ch;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Ambient boundary
+  if (wizardState.ambientEnd > 0 && wizardState.ambientEnd < allData.length) {
+    var ax = pad + (wizardState.ambientEnd / (allData.length - 1)) * cw;
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ax, pad); ctx.lineTo(ax, h - pad); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = "11px Arial"; ctx.textAlign = "center";
+    ctx.fillText("Ambient", ax / 2 + pad / 2, pad - 6);
+  }
+
+  // Threshold lines (only if enough active peaks)
+  var activePeaks = getActivePeaks();
+  if (activePeaks.length >= 3) {
+    function drawHLine(val, color, label) {
+      var y = h - pad - ((val - minR) / range) * ch;
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([6, 3]);
+      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color; ctx.font = "11px Arial"; ctx.textAlign = "right";
+      ctx.fillText(label + " (" + val + ")", w - pad - 4, y - 4);
+    }
+    drawHLine(wizardState.calculatedEnter, "#ff5555", "Enter");
+    drawHLine(wizardState.calculatedExit, "#ff9944", "Exit");
+  }
+  // Always draw noise ceiling
+  var noiseY = h - pad - ((wizardState.noiseCeiling - minR) / range) * ch;
+  ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1.5; ctx.setLineDash([6, 3]);
+  ctx.beginPath(); ctx.moveTo(pad, noiseY); ctx.lineTo(w - pad, noiseY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = "11px Arial"; ctx.textAlign = "right";
+  ctx.fillText("Noise (" + wizardState.noiseCeiling + ")", w - pad - 4, noiseY - 4);
+
+  // Peak markers - all peaks from allPeaks, greyed out if ignored
+  var activeSet = new Set(activePeaks.map(function(p) { return p.index; }));
+  var activeIdx = 0;
+  wizardState.allPeaks.forEach(function(p) {
+    var x = pad + (p.index / (allData.length - 1)) * cw;
+    var y = h - pad - ((p.rssi - minR) / range) * ch;
+    var isActive = activeSet.has(p.index);
+    if (isActive) {
+      activeIdx++;
+      ctx.fillStyle = "#ff5555"; ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = "12px Arial"; ctx.textAlign = "center";
+      ctx.fillText(activeIdx.toString(), x, y - 10);
+    } else {
+      ctx.fillStyle = "rgba(150, 150, 150, 0.5)"; ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.fill();
+      // Draw X through ignored peak
+      ctx.strokeStyle = "rgba(231, 76, 60, 0.7)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - 4, y - 4); ctx.lineTo(x + 4, y + 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + 4, y - 4); ctx.lineTo(x - 4, y + 4); ctx.stroke();
+    }
+  });
+}
+
+// Manual peak-marking fallback (chart + click)
+function drawWizardChart() {
+  var canvas = document.getElementById("wizardChart");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d");
+  canvas.width = canvas.offsetWidth;
+  canvas.height = 400;
+
+  var w = canvas.width, h = canvas.height, pad = 40;
+  var cw = w - 2 * pad, ch = h - 2 * pad;
+  var rssiVals = wizardState.data.map((d) => d.rssi);
+  var minR = Math.min(...rssiVals), maxR = Math.max(...rssiVals);
+  var range = Math.max(maxR - minR, 1);
+
+  var sm = [];
+  for (var i = 0; i < rssiVals.length; i++) {
+    var s = 0, c = 0;
+    for (var j = Math.max(0, i - 7); j <= Math.min(rssiVals.length - 1, i + 7); j++) { s += rssiVals[j]; c++; }
+    sm.push(s / c);
+  }
+
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg-primary").trim() || "#1a1a2e";
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--border-color").trim() || "#444";
+  ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, h - pad); ctx.lineTo(w - pad, h - pad); ctx.stroke();
+
+  ctx.fillStyle = "rgba(0, 212, 255, 0.4)"; ctx.beginPath();
+  for (var i = 0; i < sm.length; i++) {
+    var x = pad + (i / (sm.length - 1)) * cw;
+    var y = h - pad - ((sm[i] - minR) / range) * ch;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w - pad, h - pad); ctx.lineTo(pad, h - pad); ctx.closePath(); ctx.fill();
+
+  ctx.strokeStyle = "#00d4ff"; ctx.lineWidth = 2; ctx.beginPath();
+  for (var i = 0; i < sm.length; i++) {
+    var x = pad + (i / (sm.length - 1)) * cw;
+    var y = h - pad - ((sm[i] - minR) / range) * ch;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Draw manually placed peaks
+  wizardState.peaks.forEach(function (p, idx) {
+    var x = pad + (p.index / (wizardState.data.length - 1)) * cw;
+    var rssi = wizardState.data[p.index].rssi;
+    var y = h - pad - ((rssi - minR) / range) * ch;
+    ctx.fillStyle = "#ff5555"; ctx.beginPath(); ctx.arc(x, y, 8, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = "14px Arial"; ctx.textAlign = "center";
+    ctx.fillText("Peak " + (idx + 1), x, y - 12);
+  });
+
+  canvas.onclick = function (event) {
+    if (wizardState.peaks.length >= 3) return;
+    var rect = canvas.getBoundingClientRect();
+    var clickX = event.clientX - rect.left;
+    var dataIndex = Math.round(((clickX - pad) / cw) * (wizardState.data.length - 1));
+    if (dataIndex >= 0 && dataIndex < wizardState.data.length) {
+      wizardState.peaks.push({ index: dataIndex, rssi: wizardState.data[dataIndex].rssi, timeMs: wizardState.data[dataIndex].time });
+      var status = document.getElementById("wizardManualStatus");
+      if (wizardState.peaks.length < 3) {
+        if (status) status.textContent = i18n.t("calib.wizard_mark_peak_n", { n: wizardState.peaks.length + 1 });
+      } else {
+        if (status) status.textContent = i18n.t("messages.calib_peaks_marked");
+        var calcBtn = document.getElementById("wizardManualCalcButton");
+        if (calcBtn) calcBtn.disabled = false;
+      }
+      var undoBtn = document.getElementById("wizardManualUndoButton");
+      if (undoBtn) undoBtn.disabled = false;
+      drawWizardChart();
+    }
+  };
 }
 
 function undoLastMarker() {
-  if (wizardState.markers.length === 0) return;
-
-  // Remove last marker
-  const removed = wizardState.markers.pop();
-
-  // Update state
-  wizardState.currentLap = removed.lap;
-  updateWizardStatus(`Mark Peak ${wizardState.currentLap}`);
-
-  // Disable buttons if needed
-  if (wizardState.markers.length === 0) {
-    document.getElementById("wizardUndoButton").disabled = true;
-  }
-  document.getElementById("wizardCalculateButton").disabled = true;
-
-  // Redraw chart
+  if (wizardState.peaks.length === 0) return;
+  wizardState.peaks.pop();
+  var status = document.getElementById("wizardManualStatus");
+  if (status) status.textContent = i18n.t("calib.wizard_mark_peak_n", { n: wizardState.peaks.length + 1 });
+  var undoBtn = document.getElementById("wizardManualUndoButton");
+  if (undoBtn) undoBtn.disabled = (wizardState.peaks.length === 0);
+  var calcBtn = document.getElementById("wizardManualCalcButton");
+  if (calcBtn) calcBtn.disabled = true;
   drawWizardChart();
 }
 
-function updateWizardStatus(text) {
-  document.getElementById("wizardMarkingStatus").textContent = text;
-}
-
-function calculateThresholds() {
-  if (wizardState.markers.length !== 3) {
+function calculateThresholdsManual() {
+  if (wizardState.peaks.length < 3) {
     alert(i18n.t("messages.calib_mark_all_peaks"));
     return;
   }
+  // Compute noise ceiling from ambient portion
+  var ambientEnd = Math.min(wizardState.ambientEnd, wizardState.data.length);
+  var ambientValues = wizardState.data.slice(0, Math.max(ambientEnd, 50)).map((d) => d.rssi);
+  ambientValues.sort((a, b) => a - b);
+  var noiseCeiling = ambientValues[Math.floor(ambientValues.length * 0.95)];
+  wizardState.noiseCeiling = noiseCeiling;
 
-  // Get peak RSSI values
-  const peakRssiValues = wizardState.markers.map((m) => wizardState.data[m.index].rssi);
+  var peakRssiValues = wizardState.peaks.map((p) => p.rssi);
+  var avgPeak = peakRssiValues.reduce((a, b) => a + b, 0) / peakRssiValues.length;
+  wizardState.avgPeak = avgPeak;
 
-  // Calculate baseline RSSI (minimum value from all data)
-  const allRssiValues = wizardState.data.map((d) => d.rssi);
-  const baselineRssi = Math.min(...allRssiValues);
+  var range = avgPeak - noiseCeiling;
+  var calcEnter = Math.round(noiseCeiling + 0.6 * range);
+  var calcExit = Math.round(noiseCeiling + 0.3 * range);
+  if (calcEnter <= calcExit + 5) calcEnter = calcExit + 10;
+  calcEnter = Math.max(50, Math.min(255, calcEnter));
+  calcExit = Math.max(50, Math.min(255, calcExit));
 
-  // Calculate average peak
-  const avgPeakRssi = peakRssiValues.reduce((a, b) => a + b, 0) / peakRssiValues.length;
+  wizardState.calculatedEnter = calcEnter;
+  wizardState.calculatedExit = calcExit;
 
-  // Calculate thresholds as drops from peak (more intuitive and accurate)
-  // Enter: 25% down from peak (catches rising edge well into the spike)
-  // Exit: 40% down from peak (catches falling edge, still above baseline)
-  // This typically results in ~20-30 RSSI difference between entry and exit
-  const peakRange = avgPeakRssi - baselineRssi;
-  let calculatedEnter = Math.round(avgPeakRssi - peakRange * 0.25);
-  let calculatedExit = Math.round(avgPeakRssi - peakRange * 0.4);
+  // Min lap from peak gaps
+  var gaps = [];
+  var sorted = wizardState.peaks.slice().sort((a, b) => a.timeMs - b.timeMs);
+  for (var i = 1; i < sorted.length; i++) gaps.push(sorted[i].timeMs - sorted[i - 1].timeMs);
+  var minGap = gaps.length > 0 ? Math.min(...gaps) : 5000;
+  wizardState.calculatedMinLap = Math.max(1000, Math.min(20000, Math.round(minGap * 0.7)));
 
-  // Ensure enter > exit with minimum gap and both above baseline
-  calculatedExit = Math.max(baselineRssi + 5, calculatedExit);
-  if (calculatedEnter <= calculatedExit) {
-    calculatedEnter = calculatedExit + 20;
-  }
-
-  // Clamp to valid range
-  calculatedEnter = Math.max(50, Math.min(255, calculatedEnter));
-  calculatedExit = Math.max(50, Math.min(255, calculatedExit));
-
-  // Store calculated values
-  wizardState.calculatedEnter = calculatedEnter;
-  wizardState.calculatedExit = calculatedExit;
-
-  // Show results screen
-  document.getElementById("wizardMarking").style.display = "none";
-  document.getElementById("wizardResults").style.display = "block";
-
-  document.getElementById("calculatedEnterRssi").textContent = calculatedEnter;
-  document.getElementById("calculatedExitRssi").textContent = calculatedExit;
+  document.getElementById("wizardManualMarking").style.display = "none";
+  showResults();
 }
 
 function applyCalculatedThresholds() {
-  // Apply to sliders
   enterRssiInput.value = wizardState.calculatedEnter;
   exitRssiInput.value = wizardState.calculatedExit;
   updateEnterRssi(enterRssiInput, wizardState.calculatedEnter);
   updateExitRssi(exitRssiInput, wizardState.calculatedExit);
 
-  // Save to backend
+  // Apply min lap time (stored in 0.1s units in the input)
+  minLapInput.value = (wizardState.calculatedMinLap / 1000).toFixed(1);
+  updateMinLap(minLapInput, minLapInput.value);
+
   saveConfig();
-
-  // Close wizard
   closeCalibrationWizard();
-
-  // Show success message
   alert(i18n.t("messages.calib_applied"));
 }
 
 function cancelCalibrationWizard() {
-  if (wizardState.recording) {
+  if (wizardState.phase === "ambient" || wizardState.phase === "recording") {
     fetch("/calibration/stop", { method: "POST" })
-      .then(() => {
-        closeCalibrationWizard();
-      })
-      .catch((error) => {
-        console.error("Error stopping calibration:", error);
-        closeCalibrationWizard();
-      });
+      .then(() => closeCalibrationWizard())
+      .catch(() => closeCalibrationWizard());
   } else {
     closeCalibrationWizard();
   }
 }
 
 function closeCalibrationWizard() {
-  wizardState.recording = false;
+  wizardState.phase = "idle";
   document.getElementById("calibrationWizardModal").style.display = "none";
-  document.getElementById("wizardRecording").style.display = "none";
-  document.getElementById("wizardMarking").style.display = "none";
-  document.getElementById("wizardResults").style.display = "none";
+  var ids = ["wizardAmbient", "wizardRecording", "wizardManualMarking", "wizardResults"];
+  ids.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
 }
 
 // WiFi Settings Functions
