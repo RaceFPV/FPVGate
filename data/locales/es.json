@@ -126,7 +126,12 @@
         "wizard_exit_rssi": "RSSI Salida Calculado:",
         "wizard_note_title": "Nota:",
         "wizard_results_note": "Estos valores se han calculado basándose en tus datos de vuelta con márgenes de seguridad. Puedes aplicarlos ahora y ajustarlos manualmente si es necesario.",
-        "wizard_apply": "Aplicar Umbrales"
+        "wizard_apply": "Aplicar Umbrales",
+        "ignore_hint": "Arrastra para ignorar una region. Clic derecho para eliminarla.",
+        "ignore_clear": "Limpiar Ignorados",
+        "ignore_warning_title": "No hay suficientes picos!",
+        "ignore_warning_desc": "Demasiadas regiones ignoradas. Se necesitan al menos 3 picos para calcular umbrales.",
+        "rerecord": "Volver a Grabar Datos de Vuelo"
     },
     "settings": {
         "title": "Configuración",

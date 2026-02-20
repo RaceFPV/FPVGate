@@ -126,7 +126,12 @@
         "wizard_exit_rssi": "RSSI Sortie Calculé:",
         "wizard_note_title": "Note:",
         "wizard_results_note": "Ces valeurs ont été calculées à partir de vos données de tour avec marges de sécurité. Vous pouvez les appliquer maintenant et les affiner manuellement si nécessaire.",
-        "wizard_apply": "Appliquer Seuils"
+        "wizard_apply": "Appliquer Seuils",
+        "ignore_hint": "Glissez pour ignorer une region. Clic droit pour la supprimer.",
+        "ignore_clear": "Effacer Ignores",
+        "ignore_warning_title": "Pas assez de pics!",
+        "ignore_warning_desc": "Trop de regions ignorees. Au moins 3 pics sont necessaires pour calculer les seuils.",
+        "rerecord": "Re-enregistrer les Donnees de Vol"
     },
     "settings": {
         "title": "Paramètres",

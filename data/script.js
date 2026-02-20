@@ -5951,6 +5951,8 @@ let wizardState = {
   data: [],
   ambientEnd: 0,   // index where ambient phase ends
   peaks: [],       // auto-detected peak indices
+  allPeaks: [],    // original unfiltered peaks (preserved for ignore recalc)
+  ignoredRegions: [], // [{startIdx, endIdx}]
   calculatedEnter: 0,
   calculatedExit: 0,
   calculatedMinLap: 0,
@@ -5960,7 +5962,8 @@ let wizardState = {
 
 function startCalibrationWizard() {
   wizardState = {
-    phase: "idle", data: [], ambientEnd: 0, peaks: [],
+    phase: "idle", data: [], ambientEnd: 0, peaks: [], allPeaks: [],
+    ignoredRegions: [],
     calculatedEnter: 0, calculatedExit: 0, calculatedMinLap: 0,
     noiseCeiling: 0, avgPeak: 0,
   };
@@ -6096,6 +6099,8 @@ function autoDetectAndShow() {
   }
 
   wizardState.peaks = peaks;
+  wizardState.allPeaks = peaks.slice(); // preserve original set
+  wizardState.ignoredRegions = [];
   console.log("[Wizard] Detected", peaks.length, "peaks, noiseCeiling=", noiseCeiling);
 
   if (peaks.length < 3) {
@@ -6149,20 +6154,152 @@ function showManualPeakMarking() {
 function showResults() {
   document.getElementById("wizardRecording").style.display = "none";
   document.getElementById("wizardAmbient").style.display = "none";
+  document.getElementById("wizardManualMarking").style.display = "none";
   document.getElementById("wizardResults").style.display = "block";
   wizardState.phase = "results";
 
-  document.getElementById("calculatedEnterRssi").textContent = wizardState.calculatedEnter;
-  document.getElementById("calculatedExitRssi").textContent = wizardState.calculatedExit;
-  document.getElementById("calculatedMinLap").textContent = (wizardState.calculatedMinLap / 1000).toFixed(1) + "s";
-  document.getElementById("calculatedPeakCount").textContent = wizardState.peaks.length;
-  document.getElementById("calculatedNoiseCeiling").textContent = wizardState.noiseCeiling;
-  document.getElementById("calculatedAvgPeak").textContent = Math.round(wizardState.avgPeak);
+  updateResultsDisplay();
+  drawResultsChart();
+  setupIgnoreRegionHandlers();
+}
 
+function updateResultsDisplay() {
+  var activePeaks = getActivePeaks();
+  var tooFew = activePeaks.length < 3;
+
+  document.getElementById("calculatedEnterRssi").textContent = tooFew ? "--" : wizardState.calculatedEnter;
+  document.getElementById("calculatedExitRssi").textContent = tooFew ? "--" : wizardState.calculatedExit;
+  document.getElementById("calculatedMinLap").textContent = tooFew ? "--" : (wizardState.calculatedMinLap / 1000).toFixed(1) + "s";
+  document.getElementById("calculatedPeakCount").textContent = activePeaks.length;
+  document.getElementById("calculatedNoiseCeiling").textContent = wizardState.noiseCeiling;
+  document.getElementById("calculatedAvgPeak").textContent = tooFew ? "--" : Math.round(wizardState.avgPeak);
+
+  // Warning and apply button state
+  var warning = document.getElementById("wizardIgnoreWarning");
+  var applyBtn = document.getElementById("wizardApplyBtn");
+  if (warning) warning.style.display = tooFew ? "block" : "none";
+  if (applyBtn) applyBtn.disabled = tooFew;
+
+  // Clear button visibility
+  var clearBtn = document.getElementById("clearIgnoredBtn");
+  if (clearBtn) clearBtn.style.display = wizardState.ignoredRegions.length > 0 ? "inline-block" : "none";
+}
+
+function getActivePeaks() {
+  return wizardState.allPeaks.filter(function(p) {
+    return !wizardState.ignoredRegions.some(function(r) {
+      return p.index >= r.startIdx && p.index <= r.endIdx;
+    });
+  });
+}
+
+function recalculateWithIgnoredRegions() {
+  var activePeaks = getActivePeaks();
+  wizardState.peaks = activePeaks;
+
+  if (activePeaks.length >= 3) {
+    var peakRssiValues = activePeaks.map(function(p) { return p.rssi; });
+    var avgPeak = peakRssiValues.reduce(function(a, b) { return a + b; }, 0) / peakRssiValues.length;
+    wizardState.avgPeak = avgPeak;
+
+    var range = avgPeak - wizardState.noiseCeiling;
+    var calcEnter = Math.round(wizardState.noiseCeiling + 0.6 * range);
+    var calcExit = Math.round(wizardState.noiseCeiling + 0.3 * range);
+    if (calcEnter <= calcExit + 5) calcEnter = calcExit + 10;
+    wizardState.calculatedEnter = Math.max(50, Math.min(255, calcEnter));
+    wizardState.calculatedExit = Math.max(50, Math.min(255, calcExit));
+
+    var gaps = [];
+    var sorted = activePeaks.slice().sort(function(a, b) { return a.timeMs - b.timeMs; });
+    for (var i = 1; i < sorted.length; i++) gaps.push(sorted[i].timeMs - sorted[i - 1].timeMs);
+    var minGap = gaps.length > 0 ? Math.min.apply(null, gaps) : 5000;
+    wizardState.calculatedMinLap = Math.max(1000, Math.min(20000, Math.round(minGap * 0.7)));
+  }
+
+  updateResultsDisplay();
   drawResultsChart();
 }
 
-function drawResultsChart() {
+function clearIgnoredRegions() {
+  wizardState.ignoredRegions = [];
+  recalculateWithIgnoredRegions();
+}
+
+function rerecordCalibration() {
+  // Reset and restart the full wizard
+  closeCalibrationWizard();
+  startCalibrationWizard();
+}
+
+function setupIgnoreRegionHandlers() {
+  var canvas = document.getElementById("wizardResultsChart");
+  if (!canvas) return;
+  var dragStart = null;
+
+  canvas.onmousedown = function(e) {
+    if (e.button !== 0) return; // left click only for drag
+    var rect = canvas.getBoundingClientRect();
+    dragStart = e.clientX - rect.left;
+  };
+
+  canvas.onmousemove = function(e) {
+    if (dragStart === null) return;
+    var rect = canvas.getBoundingClientRect();
+    var dragEnd = e.clientX - rect.left;
+    drawResultsChart(dragStart, dragEnd);
+  };
+
+  canvas.onmouseup = function(e) {
+    if (dragStart === null) return;
+    var rect = canvas.getBoundingClientRect();
+    var dragEnd = e.clientX - rect.left;
+    var pad = 40;
+    var cw = canvas.width - 2 * pad;
+    var len = wizardState.data.length;
+
+    var startIdx = Math.round(((Math.min(dragStart, dragEnd) - pad) / cw) * (len - 1));
+    var endIdx = Math.round(((Math.max(dragStart, dragEnd) - pad) / cw) * (len - 1));
+    startIdx = Math.max(0, Math.min(len - 1, startIdx));
+    endIdx = Math.max(0, Math.min(len - 1, endIdx));
+    dragStart = null;
+
+    // Only add if region spans at least a few samples
+    if (endIdx - startIdx < 3) return;
+
+    wizardState.ignoredRegions.push({ startIdx: startIdx, endIdx: endIdx });
+    recalculateWithIgnoredRegions();
+  };
+
+  canvas.onmouseleave = function() {
+    if (dragStart !== null) {
+      dragStart = null;
+      drawResultsChart();
+    }
+  };
+
+  canvas.oncontextmenu = function(e) {
+    e.preventDefault();
+    if (wizardState.ignoredRegions.length === 0) return;
+    var rect = canvas.getBoundingClientRect();
+    var clickX = e.clientX - rect.left;
+    var pad = 40;
+    var cw = canvas.width - 2 * pad;
+    var len = wizardState.data.length;
+    var clickIdx = Math.round(((clickX - pad) / cw) * (len - 1));
+
+    // Find which region was right-clicked
+    for (var i = wizardState.ignoredRegions.length - 1; i >= 0; i--) {
+      var r = wizardState.ignoredRegions[i];
+      if (clickIdx >= r.startIdx && clickIdx <= r.endIdx) {
+        wizardState.ignoredRegions.splice(i, 1);
+        recalculateWithIgnoredRegions();
+        return;
+      }
+    }
+  };
+}
+
+function drawResultsChart(previewStart, previewEnd) {
   var canvas = document.getElementById("wizardResultsChart");
   if (!canvas) return;
   var ctx = canvas.getContext("2d");
@@ -6172,8 +6309,8 @@ function drawResultsChart() {
   var w = canvas.width, h = canvas.height, pad = 40;
   var cw = w - 2 * pad, ch = h - 2 * pad;
   var allData = wizardState.data;
-  var rssiVals = allData.map((d) => d.rssi);
-  var minR = Math.min(...rssiVals), maxR = Math.max(...rssiVals);
+  var rssiVals = allData.map(function(d) { return d.rssi; });
+  var minR = Math.min.apply(null, rssiVals), maxR = Math.max.apply(null, rssiVals);
   var range = Math.max(maxR - minR, 1);
 
   // Visual smoothing
@@ -6187,6 +6324,28 @@ function drawResultsChart() {
   // Background
   ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--bg-primary").trim() || "#1a1a2e";
   ctx.fillRect(0, 0, w, h);
+
+  // Draw ignored regions (behind everything)
+  wizardState.ignoredRegions.forEach(function(r) {
+    var x1 = pad + (r.startIdx / (allData.length - 1)) * cw;
+    var x2 = pad + (r.endIdx / (allData.length - 1)) * cw;
+    ctx.fillStyle = "rgba(231, 76, 60, 0.2)";
+    ctx.fillRect(x1, pad, x2 - x1, ch);
+    // Strikethrough line
+    ctx.strokeStyle = "rgba(231, 76, 60, 0.5)"; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(x1, pad + ch / 2); ctx.lineTo(x2, pad + ch / 2); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Draw drag preview
+  if (previewStart !== undefined && previewEnd !== undefined) {
+    var px1 = Math.min(previewStart, previewEnd);
+    var px2 = Math.max(previewStart, previewEnd);
+    ctx.fillStyle = "rgba(231, 76, 60, 0.15)";
+    ctx.fillRect(px1, pad, px2 - px1, ch);
+    ctx.strokeStyle = "rgba(231, 76, 60, 0.6)"; ctx.lineWidth = 1;
+    ctx.strokeRect(px1, pad, px2 - px1, ch);
+  }
 
   // Axes
   ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--border-color").trim() || "#444";
@@ -6222,26 +6381,47 @@ function drawResultsChart() {
     ctx.fillText("Ambient", ax / 2 + pad / 2, pad - 6);
   }
 
-  // Threshold lines
-  function drawHLine(val, color, label) {
-    var y = h - pad - ((val - minR) / range) * ch;
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([6, 3]);
-    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = color; ctx.font = "11px Arial"; ctx.textAlign = "right";
-    ctx.fillText(label + " (" + val + ")", w - pad - 4, y - 4);
+  // Threshold lines (only if enough active peaks)
+  var activePeaks = getActivePeaks();
+  if (activePeaks.length >= 3) {
+    function drawHLine(val, color, label) {
+      var y = h - pad - ((val - minR) / range) * ch;
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([6, 3]);
+      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color; ctx.font = "11px Arial"; ctx.textAlign = "right";
+      ctx.fillText(label + " (" + val + ")", w - pad - 4, y - 4);
+    }
+    drawHLine(wizardState.calculatedEnter, "#ff5555", "Enter");
+    drawHLine(wizardState.calculatedExit, "#ff9944", "Exit");
   }
-  drawHLine(wizardState.calculatedEnter, "#ff5555", "Enter");
-  drawHLine(wizardState.calculatedExit, "#ff9944", "Exit");
-  drawHLine(wizardState.noiseCeiling, "rgba(255,255,255,0.4)", "Noise");
+  // Always draw noise ceiling
+  var noiseY = h - pad - ((wizardState.noiseCeiling - minR) / range) * ch;
+  ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1.5; ctx.setLineDash([6, 3]);
+  ctx.beginPath(); ctx.moveTo(pad, noiseY); ctx.lineTo(w - pad, noiseY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = "11px Arial"; ctx.textAlign = "right";
+  ctx.fillText("Noise (" + wizardState.noiseCeiling + ")", w - pad - 4, noiseY - 4);
 
-  // Peak markers
-  wizardState.peaks.forEach(function (p, idx) {
+  // Peak markers - all peaks from allPeaks, greyed out if ignored
+  var activeSet = new Set(activePeaks.map(function(p) { return p.index; }));
+  var activeIdx = 0;
+  wizardState.allPeaks.forEach(function(p) {
     var x = pad + (p.index / (allData.length - 1)) * cw;
     var y = h - pad - ((p.rssi - minR) / range) * ch;
-    ctx.fillStyle = "#ff5555"; ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.font = "12px Arial"; ctx.textAlign = "center";
-    ctx.fillText((idx + 1).toString(), x, y - 10);
+    var isActive = activeSet.has(p.index);
+    if (isActive) {
+      activeIdx++;
+      ctx.fillStyle = "#ff5555"; ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = "12px Arial"; ctx.textAlign = "center";
+      ctx.fillText(activeIdx.toString(), x, y - 10);
+    } else {
+      ctx.fillStyle = "rgba(150, 150, 150, 0.5)"; ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.fill();
+      // Draw X through ignored peak
+      ctx.strokeStyle = "rgba(231, 76, 60, 0.7)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - 4, y - 4); ctx.lineTo(x + 4, y + 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + 4, y - 4); ctx.lineTo(x - 4, y + 4); ctx.stroke();
+    }
   });
 }
 

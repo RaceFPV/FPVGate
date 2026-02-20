@@ -126,7 +126,12 @@
         "wizard_exit_rssi": "计算出的退出 RSSI:",
         "wizard_note_title": "注意:",
         "wizard_results_note": "这些数值是根据您的圈数数据和安全边际计算得出的。您现在可以应用它们，如果需要也可以手动微调。",
-        "wizard_apply": "应用阈值"
+        "wizard_apply": "应用阈值",
+        "ignore_hint": "拖动以忽略区域。右键点击区域可删除。",
+        "ignore_clear": "清除忽略",
+        "ignore_warning_title": "峰值不足!",
+        "ignore_warning_desc": "忽略的区域太多。至少需要3个峰值才能计算阈值。",
+        "rerecord": "重新录制飞行数据"
     },
     "settings": {
         "title": "设置",

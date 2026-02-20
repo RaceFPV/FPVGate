@@ -126,7 +126,12 @@
         "wizard_exit_rssi": "Berechneter Ausgang RSSI:",
         "wizard_note_title": "Hinweis:",
         "wizard_results_note": "Diese Werte wurden basierend auf deinen Rundendaten mit Sicherheitsreserven berechnet. Du kannst sie jetzt anwenden und bei Bedarf manuell feinabstimmen.",
-        "wizard_apply": "Schwellwerte Anwenden"
+        "wizard_apply": "Schwellwerte Anwenden",
+        "ignore_hint": "Ziehen um einen Bereich zu ignorieren. Rechtsklick zum Entfernen.",
+        "ignore_clear": "Ignorierte Loschen",
+        "ignore_warning_title": "Nicht genug Spitzen!",
+        "ignore_warning_desc": "Zu viele Bereiche ignoriert. Mindestens 3 Spitzen werden benotigt.",
+        "rerecord": "Flugdaten Neu Aufzeichnen"
     },
     "settings": {
         "title": "Einstellungen",

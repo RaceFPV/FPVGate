@@ -143,7 +143,12 @@
         "wizard_avg_peak": "Avg Peak:",
         "wizard_note_title": "Note:",
         "wizard_results_note": "These values have been auto-calculated from your flight data. Apply them and fine-tune manually if needed.",
-        "wizard_apply": "Apply All"
+        "wizard_apply": "Apply All",
+        "ignore_hint": "Drag to ignore a region. Right-click a region to remove it.",
+        "ignore_clear": "Clear Ignored",
+        "ignore_warning_title": "Not enough peaks!",
+        "ignore_warning_desc": "Too many regions ignored. At least 3 peaks are needed to calculate thresholds.",
+        "rerecord": "Re-record Flight Data"
     },
     "settings": {
         "title": "Settings",
