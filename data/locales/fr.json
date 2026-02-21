@@ -423,7 +423,14 @@
             "some_failed": "Certains Tests Échoués",
             "error_running": "Erreur Exécution Tests",
             "run_all": "Lancer Tous Tests",
-            "run_again": "Relancer Tous Tests"
+            "run_again": "Relancer Tous Tests",
+            "spi_title": "Test Mod SPI",
+            "spi_description": "Balaye les frequences RaceBand pour verifier que le mod SPI du RX5808 fonctionne. Un module modifie montrera des RSSI varies; un module non modifie sera plat.",
+            "spi_run": "Lancer Test Mod SPI",
+            "spi_running": "Balayage des frequences...",
+            "spi_pass": "Mod SPI Verifie",
+            "spi_fail": "Mod SPI Non Detecte",
+            "spi_run_again": "Relancer Test SPI"
         }
     },
     "modals": {

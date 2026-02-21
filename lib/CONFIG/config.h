@@ -103,6 +103,11 @@
 #define PIN_SD_SCK 39
 #define PIN_SD_MOSI 38
 #define PIN_SD_MISO 40
+// Touch I2C pins (CST820 capacitive touch controller)
+#define LCD_I2C_SDA 48
+#define LCD_I2C_SCL 47
+#define LCD_TOUCH_RST -1
+#define LCD_TOUCH_INT -1
 
 // Seeed Studio XIAO ESP32S3
 #elif defined(SEEED_XIAO_ESP32S3)
@@ -328,6 +333,13 @@ class Config {
     float getLowBatteryAlarmPerCell();
     uint8_t getBatteryAlarmEnabled();
     float getBatteryVoltageDivider();
+    
+    // Band/channel access
+    uint8_t getBandIndex();
+    uint8_t getChannelIndex();
+    void setBandIndex(uint8_t idx);
+    void setChannelIndex(uint8_t idx);
+    static uint16_t getFrequencyForBandChannel(uint8_t bandIdx, uint8_t channelIdx);
     
     // Setters for RotorHazard node mode
     void setFrequency(uint16_t freq);

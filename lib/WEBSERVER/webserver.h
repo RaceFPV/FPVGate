@@ -32,6 +32,16 @@ class Webserver : public TransportInterface {
     
     // Send lap data to master (for slave mode)
     void sendLapToMaster(uint32_t lapTimeMs);
+    
+    // Public triggers (used by LCD UI to invoke the same logic as HTTP handlers)
+    void triggerStart();
+    void triggerStop();
+    void triggerClearLaps();
+    void triggerConfigUpdated();  // Notify web clients that config changed from LCD
+    
+    // Pending lap/clear for LCD display (poll from main loop)
+    bool consumePendingLap(uint32_t& lapMs);
+    bool consumePendingClear();
 
    private:
     void startServices();
@@ -59,4 +69,15 @@ class Webserver : public TransportInterface {
     bool sendRssi = false;
     uint32_t rssiSentMs = 0;
     uint32_t sseKeepaliveMs = 0;
+    
+    // Pending race state from LCD triggers (set on core 1, consumed on core 0)
+    volatile const char* pendingRaceState = nullptr;
+    
+    // Pending config update SSE notification (set on core 1, consumed on core 0)
+    volatile bool pendingConfigUpdate = false;
+    
+    // Pending lap/clear for LCD (set by HTTP handlers, consumed by main loop)
+    volatile uint32_t _pendingLcdLap = 0;
+    volatile bool _hasLcdLap = false;
+    volatile bool _pendingLcdClear = false;
 };

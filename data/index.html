@@ -1251,6 +1251,22 @@
                 <p style="margin: 0; font-size: 14px; color: var(--primary-color)" data-i18n="settings.diagnostics.running">Running tests...</p>
               </div>
 
+              <h3 data-i18n="settings.diagnostics.spi_title">SPI Mod Test</h3>
+              <div style="margin-bottom: 16px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 14px">
+                <p style="margin: 0" data-i18n="settings.diagnostics.spi_description">Sweeps RaceBand frequencies to verify the RX5808 SPI mod is working. A modded module will show varied RSSI across channels; an unmodded module will be flat.</p>
+              </div>
+
+              <button id="runSPITestButton" onclick="runSPITest()" style="width: 100%; padding: 12px; margin-bottom: 16px; background-color: var(--accent-color)" data-i18n="settings.diagnostics.spi_run">Run SPI Mod Test</button>
+
+              <div id="spiTestLoading" style="display: none; text-align: center; padding: 24px; background-color: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px">
+                <p style="margin: 0; font-size: 14px; color: var(--primary-color)" data-i18n="settings.diagnostics.spi_running">Sweeping frequencies...</p>
+              </div>
+
+              <div id="spiTestResults" style="display: none; margin-bottom: 16px">
+                <div id="spiTestVerdict"></div>
+                <div id="spiTestChart" style="padding: 16px; background-color: var(--bg-secondary); border-radius: 8px"></div>
+              </div>
+
               <h3 data-i18n="settings.diagnostics.monitor_title">System Monitor</h3>
               <div style="margin-bottom: 8px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 14px">
                 <p style="margin: 0" data-i18n="settings.diagnostics.monitor_description">Monitor real-time system events including WiFi status, race events, RSSI changes, and webhooks.</p>

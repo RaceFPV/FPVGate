@@ -14,7 +14,7 @@
 #define CONFIG_BACKUP_PATH "/config_backup.bin"
 
 // Frequency lookup table (same as frontend script.js)
-static const uint16_t freqLookup[][8] = {
+const uint16_t freqLookup[][8] = {
   {5865, 5845, 5825, 5805, 5785, 5765, 5745, 5725}, // A
   {5733, 5752, 5771, 5790, 5809, 5828, 5847, 5866}, // B
   {5705, 5685, 5665, 5645, 5885, 5905, 5925, 5945}, // E
@@ -823,6 +823,38 @@ char* Config::getSelectedVoice() {
 
 char* Config::getLapFormat() {
     return conf.lapFormat;
+}
+
+// Band/channel getters and setters
+uint8_t Config::getBandIndex() {
+    return conf.bandIndex;
+}
+
+uint8_t Config::getChannelIndex() {
+    return conf.channelIndex;
+}
+
+void Config::setBandIndex(uint8_t idx) {
+    if (conf.bandIndex != idx) {
+        conf.bandIndex = idx;
+        modified = true;
+    }
+}
+
+void Config::setChannelIndex(uint8_t idx) {
+    if (conf.channelIndex != idx) {
+        conf.channelIndex = idx;
+        modified = true;
+    }
+}
+
+extern const uint16_t freqLookup[][8];
+
+uint16_t Config::getFrequencyForBandChannel(uint8_t bandIdx, uint8_t channelIdx) {
+    if (bandIdx < 22 && channelIdx < 8) {
+        return freqLookup[bandIdx][channelIdx];
+    }
+    return 0;
 }
 
 // Setters for RotorHazard node mode

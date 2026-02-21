@@ -467,7 +467,14 @@
             "some_failed": "Some Tests Failed",
             "error_running": "Error Running Tests",
             "run_all": "Run All Tests",
-            "run_again": "Run All Tests Again"
+            "run_again": "Run All Tests Again",
+            "spi_title": "SPI Mod Test",
+            "spi_description": "Sweeps RaceBand frequencies to verify the RX5808 SPI mod is working. A modded module will show varied RSSI across channels; an unmodded module will be flat.",
+            "spi_run": "Run SPI Mod Test",
+            "spi_running": "Sweeping frequencies...",
+            "spi_pass": "SPI Mod Verified",
+            "spi_fail": "SPI Mod Not Detected",
+            "spi_run_again": "Run SPI Test Again"
         }
     },
     "modals": {

@@ -2,6 +2,9 @@
 #include "debug.h"
 #include "config.h"
 #include <FS.h>
+#if defined(WAVESHARE_ESP32S3_LCD2) && defined(ENABLE_LCD_UI) && ENABLE_LCD_UI
+#include "../LCD_UI/spi_mutex.h"
+#endif
 
 Storage::Storage() : sdAvailable(false) {
 #ifdef HAS_SD_CARD_SUPPORT
@@ -59,8 +62,15 @@ bool Storage::initSD() {
     digitalWrite(PIN_SD_CS, HIGH);
     
     // Create custom SPI bus for SD card
+#if defined(WAVESHARE_ESP32S3_LCD2)
+    // Waveshare board: SD card shares SPI pins with LCD (MOSI=38, SCK=39, MISO=40)
+    // Must use FSPI (same peripheral as LCD) with proper CS management
+    spi = new SPIClass(FSPI);
+    DEBUG("SPI bus object created (FSPI - shared with LCD)\n");
+#else
     spi = new SPIClass(HSPI);
-    DEBUG("SPI bus object created\n");
+    DEBUG("SPI bus object created (HSPI)\n");
+#endif
     
     // Begin SPI bus with correct pin order: SCK, MISO, MOSI, SS
     spi->begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, PIN_SD_CS);
@@ -68,7 +78,10 @@ bool Storage::initSD() {
     
     // Try to initialize SD card at 10MHz (safe for short wires)
     DEBUG("Attempting SD.begin() at 10MHz...\n");
-    if (!SD.begin(PIN_SD_CS, *spi, 10000000)) {
+    spiMutexTake();
+    bool sdOk = SD.begin(PIN_SD_CS, *spi, 10000000);
+    spiMutexGive();
+    if (!sdOk) {
         DEBUG("ERROR: SD.begin() failed!\n");
         DEBUG("Possible causes:\n");
         DEBUG("  1. Card not inserted\n");
@@ -119,13 +132,16 @@ bool Storage::writeFile(const String& path, const String& data) {
     
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
+        spiMutexTake();
         File file = SD.open(path, FILE_WRITE);
         if (!file) {
+            spiMutexGive();
             DEBUG("Failed to open file on SD: %s\n", path.c_str());
             return false;
         }
         size_t written = file.print(data);
         file.close();
+        spiMutexGive();
         return written > 0;
     }
 #endif
@@ -144,16 +160,20 @@ bool Storage::writeFile(const String& path, const String& data) {
 bool Storage::readFile(const String& path, String& data) {
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
+        spiMutexTake();
         if (!SD.exists(path)) {
+            spiMutexGive();
             return false;
         }
         File file = SD.open(path, FILE_READ);
         if (!file) {
+            spiMutexGive();
             DEBUG("Failed to open file on SD: %s\n", path.c_str());
             return false;
         }
         data = file.readString();
         file.close();
+        spiMutexGive();
         return true;
     }
 #endif
@@ -175,7 +195,10 @@ bool Storage::readFile(const String& path, String& data) {
 bool Storage::deleteFile(const String& path) {
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
-        return SD.remove(path);
+        spiMutexTake();
+        bool ok = SD.remove(path);
+        spiMutexGive();
+        return ok;
     }
 #endif
     return LittleFS.remove(path);
@@ -184,7 +207,10 @@ bool Storage::deleteFile(const String& path) {
 bool Storage::exists(const String& path) {
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
-        return SD.exists(path);
+        spiMutexTake();
+        bool ok = SD.exists(path);
+        spiMutexGive();
+        return ok;
     }
 #endif
     return LittleFS.exists(path);
@@ -193,7 +219,10 @@ bool Storage::exists(const String& path) {
 bool Storage::mkdir(const String& path) {
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
-        return SD.mkdir(path);
+        spiMutexTake();
+        bool ok = SD.mkdir(path);
+        spiMutexGive();
+        return ok;
     }
 #endif
     return LittleFS.mkdir(path);

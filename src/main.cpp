@@ -13,6 +13,9 @@
 #ifdef HAS_RGB_LED
 #include "rgbled.h"
 #endif
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+#include "../lib/LCD_UI/fpv_lcd_ui.h"
+#endif
 
 // ====================================================================
 // ROTORHAZARD MODE - CURRENTLY DISABLED
@@ -63,6 +66,50 @@ RgbLed* g_rgbLed = &rgbLed;
 void* g_rgbLed = nullptr;
 #endif
 static LapTimer timer;
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+static FpvLcdUI* g_lcdUi = nullptr;
+static TaskHandle_t g_lcdUiTask = nullptr;
+static uint16_t g_lastKnownFreq = 0;  // Track config frequency for web->LCD sync
+static uint8_t g_lastKnownEnter = 0;  // Track enter RSSI for web->LCD sync
+static uint8_t g_lastKnownExit = 0;   // Track exit RSSI for web->LCD sync
+static uint8_t g_currentSystem = 0;   // 0=Analog, 1=DJI, 2=HDZero, 3=WalkSnail
+
+// System definitions: { firstBandIdx, bandCount }
+static const struct { uint8_t first; uint8_t count; } g_systemBands[] = {
+    { 0, 6 },   // Analog: bands 0-5
+    { 6, 8 },   // DJI: bands 6-13
+    { 14, 4 },  // HDZero: bands 14-17
+    { 18, 4 },  // WalkSnail: bands 18-21
+};
+static const uint8_t LCD_NUM_SYSTEMS = 4;
+
+// Derive system index from band index
+static uint8_t systemFromBand(uint8_t bandIdx) {
+    if (bandIdx < 6) return 0;
+    if (bandIdx < 14) return 1;
+    if (bandIdx < 18) return 2;
+    if (bandIdx < 22) return 3;
+    return 0;
+}
+
+// Count available (non-zero freq) channels for a band
+static uint8_t countAvailableChannels(uint8_t bandIdx) {
+    uint8_t count = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+        if (Config::getFrequencyForBandChannel(bandIdx, i) > 0) count++;
+    }
+    return count;
+}
+
+// Get next available channel index (skipping 0-freq entries)
+static uint8_t nextAvailableChannel(uint8_t bandIdx, uint8_t currentCh, int8_t delta) {
+    for (uint8_t i = 0; i < 8; i++) {
+        currentCh = (currentCh + 8 + delta) % 8;
+        if (Config::getFrequencyForBandChannel(bandIdx, currentCh) > 0) return currentCh;
+    }
+    return 0;
+}
+#endif
 #ifdef HAS_BATTERY_MONITOR
 static BatteryMonitor monitor;  // Enabled for T-Energy S3 or testing
 #endif
@@ -164,6 +211,40 @@ void setup() {
         DEBUG("Generic ESP32 build - WiFi Mode\n");
 #endif
     
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+    // Initialize LVGL-based StarForge-style UI (Arduino_GFX + full-screen buffer)
+    DEBUG("Initializing LCD UI...\n");
+    
+    g_lcdUi = new FpvLcdUI();
+    if (g_lcdUi) {
+        if (g_lcdUi->begin()) {
+            BaseType_t result = xTaskCreatePinnedToCore(
+                FpvLcdUI::uiTask, 
+                "LcdUI", 
+                16384,
+                g_lcdUi,
+                1,
+                &g_lcdUiTask, 
+                0
+            );
+            
+            if (result == pdPASS) {
+                DEBUG("LCD UI task started successfully (LVGL)\n");
+            } else {
+                DEBUG("Failed to create LCD UI task\n");
+                delete g_lcdUi;
+                g_lcdUi = nullptr;
+            }
+        } else {
+            DEBUG("LCD UI begin() failed\n");
+            delete g_lcdUi;
+            g_lcdUi = nullptr;
+        }
+    } else {
+        DEBUG("Failed to allocate LCD UI instance\n");
+    }
+#endif
+    
     // Note: config.init() already called above
     rx.init();
     buzzer.init(PIN_BUZZER, BUZZER_INVERTED);
@@ -249,6 +330,21 @@ void setup() {
     
     DEBUG("Transport system initialized (WiFi + USB)\n");
     
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+    // Initialize LCD band/channel display from config
+    if (g_lcdUi) {
+        uint8_t bandIdx = config.getBandIndex();
+        uint8_t channelIdx = config.getChannelIndex();
+        uint16_t freq = config.getFrequency();
+        g_currentSystem = systemFromBand(bandIdx);
+        g_lcdUi->setBandChannelDisplay(g_currentSystem, bandIdx, channelIdx, freq);
+        g_lastKnownFreq = freq;
+        g_lastKnownEnter = config.getEnterRssi();
+        g_lastKnownExit = config.getExitRssi();
+        g_lcdUi->setThresholdDisplay(g_lastKnownEnter, g_lastKnownExit);
+    }
+#endif
+    
     led.on(400);
     buzzer.beep(200);
     initParallelTask();  // Start Core 0 task
@@ -280,10 +376,163 @@ void loop() {
     // Timing always runs
     timer.handleLapTimerUpdate(currentTimeMs);
     
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+    // Feed live RSSI to LCD UI
+    if (g_lcdUi) {
+        g_lcdUi->updateRSSI(timer.getRssi());
+        
+        // Handle LCD button presses (reuses webserver handler logic)
+        if (g_lcdUi->consumeStartRequest()) {
+            ws.triggerStart();
+        }
+        if (g_lcdUi->consumeStopRequest()) {
+            ws.triggerStop();
+        }
+        if (g_lcdUi->consumeClearRequest()) {
+            ws.triggerClearLaps();
+            g_lcdUi->clearLaps();
+        }
+        
+        // Handle LCD system/band/channel button presses
+        int8_t systemDelta = g_lcdUi->consumeSystemDelta();
+        int8_t bandDelta = g_lcdUi->consumeBandDelta();
+        int8_t channelDelta = g_lcdUi->consumeChannelDelta();
+        
+        if (systemDelta != 0 || bandDelta != 0 || channelDelta != 0) {
+            uint8_t bandIdx = config.getBandIndex();
+            uint8_t channelIdx = config.getChannelIndex();
+            uint8_t sys = g_currentSystem;
+            
+            if (systemDelta != 0) {
+                // Change system, reset to first band and first available channel
+                sys = (sys + LCD_NUM_SYSTEMS + systemDelta) % LCD_NUM_SYSTEMS;
+                g_currentSystem = sys;
+                bandIdx = g_systemBands[sys].first;
+                channelIdx = 0;
+                // Find first available channel
+                for (uint8_t i = 0; i < 8; i++) {
+                    if (Config::getFrequencyForBandChannel(bandIdx, i) > 0) {
+                        channelIdx = i;
+                        break;
+                    }
+                }
+            }
+            
+            if (bandDelta != 0) {
+                uint8_t first = g_systemBands[sys].first;
+                uint8_t count = g_systemBands[sys].count;
+                uint8_t localIdx = bandIdx - first;
+                localIdx = (localIdx + count + bandDelta) % count;
+                bandIdx = first + localIdx;
+                // Reset to first available channel when band changes
+                channelIdx = 0;
+                for (uint8_t i = 0; i < 8; i++) {
+                    if (Config::getFrequencyForBandChannel(bandIdx, i) > 0) {
+                        channelIdx = i;
+                        break;
+                    }
+                }
+            }
+            
+            if (channelDelta != 0) {
+                channelIdx = nextAvailableChannel(bandIdx, channelIdx, channelDelta);
+            }
+            
+            uint16_t newFreq = Config::getFrequencyForBandChannel(bandIdx, channelIdx);
+            if (newFreq > 0) {
+                config.setBandIndex(bandIdx);
+                config.setChannelIndex(channelIdx);
+                config.setFrequency(newFreq);
+                g_lcdUi->setBandChannelDisplay(sys, bandIdx, channelIdx, newFreq);
+                g_lastKnownFreq = newFreq;
+                ws.triggerConfigUpdated();
+                DEBUG("[LCD] System/Band/Channel: sys=%d band=%d ch=%d freq=%d\n", sys, bandIdx, channelIdx, newFreq);
+            }
+        }
+        
+        // Handle LCD threshold +/- button presses
+        int8_t enterDelta = g_lcdUi->consumeEnterDelta();
+        int8_t exitDelta = g_lcdUi->consumeExitDelta();
+        
+        if (enterDelta != 0 || exitDelta != 0) {
+            uint8_t enter = config.getEnterRssi();
+            uint8_t exit_val = config.getExitRssi();
+            
+            if (enterDelta != 0) {
+                int16_t newEnter = (int16_t)enter + enterDelta;
+                if (newEnter < 50) newEnter = 50;
+                if (newEnter > 255) newEnter = 255;
+                enter = (uint8_t)newEnter;
+                // Ensure enter > exit
+                if (enter <= exit_val) exit_val = enter - 1;
+            }
+            
+            if (exitDelta != 0) {
+                int16_t newExit = (int16_t)exit_val + exitDelta;
+                if (newExit < 50) newExit = 50;
+                if (newExit > 254) newExit = 254;
+                exit_val = (uint8_t)newExit;
+                // Ensure exit < enter
+                if (exit_val >= enter) enter = exit_val + 1;
+            }
+            
+            config.setEnterRssi(enter);
+            config.setExitRssi(exit_val);
+            g_lcdUi->setThresholdDisplay(enter, exit_val);
+            g_lastKnownEnter = enter;
+            g_lastKnownExit = exit_val;
+            ws.triggerConfigUpdated();
+            DEBUG("[LCD] Threshold: enter=%d exit=%d\n", enter, exit_val);
+        }
+        
+        // Detect web-originated frequency changes and sync to LCD
+        uint16_t currentFreq = config.getFrequency();
+        if (currentFreq != g_lastKnownFreq) {
+            g_lastKnownFreq = currentFreq;
+            uint8_t bandIdx = config.getBandIndex();
+            uint8_t channelIdx = config.getChannelIndex();
+            g_currentSystem = systemFromBand(bandIdx);
+            g_lcdUi->setBandChannelDisplay(g_currentSystem, bandIdx, channelIdx, currentFreq);
+            DEBUG("[LCD] Web config sync: sys=%d band=%d ch=%d freq=%d\n", g_currentSystem, bandIdx, channelIdx, currentFreq);
+        }
+        
+        // Handle LCD countdown buzzer beep requests
+        uint16_t beepMs = g_lcdUi->consumeBuzzerBeep();
+        if (beepMs > 0) {
+            buzzer.beep(beepMs);
+        }
+        
+        // Detect web-originated threshold changes and sync to LCD
+        uint8_t curEnter = config.getEnterRssi();
+        uint8_t curExit = config.getExitRssi();
+        if (curEnter != g_lastKnownEnter || curExit != g_lastKnownExit) {
+            g_lastKnownEnter = curEnter;
+            g_lastKnownExit = curExit;
+            g_lcdUi->setThresholdDisplay(curEnter, curExit);
+            DEBUG("[LCD] Web threshold sync: enter=%d exit=%d\n", curEnter, curExit);
+        }
+        
+        // Forward web-originated laps and clears to LCD
+        uint32_t webLap;
+        if (ws.consumePendingLap(webLap)) {
+            g_lcdUi->addLap(webLap);
+        }
+        if (ws.consumePendingClear()) {
+            g_lcdUi->clearLaps();
+        }
+    }
+#endif
+    
     // Broadcast lap events to all transports (WiFi + USB)
     if (timer.isLapAvailable()) {
         uint32_t lapTime = timer.getLapTime();
         transportManager.broadcastLapEvent(lapTime);
+        
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+        if (g_lcdUi) {
+            g_lcdUi->addLap(lapTime);
+        }
+#endif
         
         // If in slave mode, also send lap to master
         ws.sendLapToMaster(lapTime);

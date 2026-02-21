@@ -1,0 +1,1287 @@
+#include "fpv_lcd_ui.h"
+#include "spi_mutex.h"
+
+#if ENABLE_LCD_UI
+
+// Define the global SPI mutex
+SemaphoreHandle_t g_spiMutex = nullptr;
+
+// LCD pins for Waveshare ESP32-S3 Touch LCD
+#define LCD_BL 1  // Backlight pin
+
+// Touch I2C pins (CST820 on Waveshare ESP32-S3-Touch-LCD-2)
+#if defined(BOARD_ESP32_S3_TOUCH)
+#define LCD_I2C_SDA 48
+#define LCD_I2C_SCL 47
+#define LCD_TOUCH_RST -1
+#define LCD_TOUCH_INT -1
+#endif
+
+// Static member initialization
+lv_disp_draw_buf_t FpvLcdUI::s_drawBuf;
+lv_disp_drv_t FpvLcdUI::s_dispDrv;
+lv_indev_drv_t FpvLcdUI::s_indevDrv;
+
+#if defined(BOARD_ESP32_S3_TOUCH)
+    lv_color_t* FpvLcdUI::s_buf = nullptr;
+#else
+    lv_color_t FpvLcdUI::s_buf[240 * 60];
+#endif
+
+FpvLcdUI::FpvLcdUI()
+    : 
+#if defined(BOARD_ESP32_S3_TOUCH)
+      bus(nullptr), gfx(nullptr), touch(nullptr),
+#endif
+      rssi_label(nullptr), rssi_chart(nullptr), rssi_series(nullptr),
+      lap_count_label(nullptr), status_label(nullptr),
+      battery_label(nullptr), battery_icon(nullptr),
+      start_btn(nullptr), stop_btn(nullptr), clear_btn(nullptr), mode_btn(nullptr),
+      system_label(nullptr),
+      band_label(nullptr), channel_label(nullptr), freq_label(nullptr), 
+      threshold_label(nullptr), threshold_enter_label(nullptr), threshold_exit_label(nullptr),
+      brightness_slider(nullptr), brightness_label(nullptr),
+      lap_times_box(nullptr),
+      countdown_overlay(nullptr), countdown_label(nullptr),
+      _countdownActive(false), _countdownValue(5), _countdownStartTime(0), _lastBeepValue(-1),
+      finish_overlay(nullptr), finish_label(nullptr),
+      _finishActive(false), _finishStartTime(0),
+      _lastTouchTime(0), _screenDimmed(false), _userBrightness(100),
+      _pendingRssi(0),
+      _startRequested(false), _stopRequested(false), _clearRequested(false),
+      _systemDelta(0), _bandDelta(0), _channelDelta(0),
+      _enterDelta(0), _exitDelta(0),
+      _pendingSystemIdx(0), _pendingBandIdx(0), _pendingChannelIdx(0), _pendingFreqMhz(0), _bandChannelDirty(false),
+      _pendingEnterRssi(120), _pendingExitRssi(100), _thresholdDirty(false),
+      _pendingBuzzerMs(0),
+      _lapCount(0), _lapsDirty(false),
+      _lastGraphUpdate(0) {
+    for (int i = 0; i < 5; ++i) {
+        lap_times_labels[i] = nullptr;
+        _lapBuffer[i] = 0;
+    }
+}
+
+FpvLcdUI::~FpvLcdUI() {
+#if defined(BOARD_ESP32_S3_TOUCH)
+    if (touch) delete touch;
+    if (gfx) delete gfx;
+    if (bus) delete bus;
+    if (s_buf) {
+        heap_caps_free(s_buf);
+        s_buf = nullptr;
+    }
+#endif
+}
+
+bool FpvLcdUI::begin() {
+#if !defined(ENABLE_LCD_UI) || !defined(WAVESHARE_ESP32S3_LCD2)
+    return false;
+#endif
+
+    Serial.println("\n====================================");
+    Serial.println("LCD UI: Initializing");
+    Serial.println("====================================\n");
+
+    // Initialize backlight
+    pinMode(LCD_BL, OUTPUT);
+    digitalWrite(LCD_BL, LOW);  // Turn off first
+    Serial.println("LCD: Backlight OFF (initializing)");
+
+#if defined(BOARD_ESP32_S3_TOUCH)
+    // Waveshare ESP32-S3-Touch-LCD-2: Use Arduino_GFX with SPI2
+    Serial.println("LCD: Using Arduino_GFX for ESP32-S3");
+    
+    // Create SPI data bus (DC, CS, SCK, MOSI, MISO, SPI_NUM, isSPI_Mode)
+    bus = new Arduino_ESP32SPI(42 /* DC */, 45 /* CS */, 39 /* SCK */, 38 /* MOSI */, 40 /* MISO */, FSPI /* spi_num */, true);
+    
+    // Create ST7789 display driver (bus, RST, rotation, IPS, width, height)
+    gfx = new Arduino_ST7789(bus, -1 /* RST */, 0 /* rotation */, true /* IPS */, 240 /* width */, 320 /* height */);
+    
+    // Initialize display
+    Serial.println("LCD: Calling gfx->begin()...");
+    if (!gfx->begin()) {
+        Serial.println("ERROR: gfx->begin() failed!");
+        return false;
+    }
+    Serial.println("LCD: gfx->begin() succeeded");
+    
+    gfx->fillScreen(BLACK);
+    Serial.println("LCD: Arduino_GFX initialized");
+#endif
+
+    // Turn on backlight
+    pinMode(LCD_BL, OUTPUT);
+    digitalWrite(LCD_BL, HIGH);
+    Serial.println("LCD: Backlight ON (digitalWrite HIGH)");
+    _lastTouchTime = millis();
+    _screenDimmed = false;
+    
+    // Initialize SPI mutex for shared bus with SD card
+    spiMutexInit();
+    Serial.println("LCD: SPI mutex initialized");
+
+    // Initialize LVGL
+    Serial.println("LCD: Initializing LVGL...");
+    lv_init();
+
+#if defined(BOARD_ESP32_S3_TOUCH)
+    // ESP32-S3: Allocate full screen buffer (240x320 = 76,800 pixels = 153,600 bytes)
+    uint32_t bufSize = 240 * 320;
+    uint32_t bufBytes = bufSize * sizeof(lv_color_t);
+    
+    // Try PSRAM first (preferred for ESP32-S3 with PSRAM)
+    s_buf = (lv_color_t*)heap_caps_malloc(bufBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_buf) {
+        // Fallback to internal RAM
+        s_buf = (lv_color_t*)heap_caps_malloc(bufBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    if (!s_buf) {
+        // Last resort: try default heap
+        s_buf = (lv_color_t*)heap_caps_malloc(bufBytes, MALLOC_CAP_8BIT);
+    }
+    
+    if (!s_buf) {
+        Serial.printf("ERROR: Failed to allocate LVGL display buffer (%d KB)!\n", bufBytes / 1024);
+        return false;
+    }
+    
+    Serial.printf("LCD: Allocated %d KB display buffer\n", bufBytes / 1024);
+    
+    // Initialize LVGL display buffer (full screen for smooth performance)
+    lv_disp_draw_buf_init(&s_drawBuf, s_buf, NULL, bufSize);
+#else
+    // Other boards: Use static buffer (60 lines for smooth scrolling)
+    lv_disp_draw_buf_init(&s_drawBuf, s_buf, NULL, 240 * 60);
+#endif
+
+    // Initialize display driver
+    lv_disp_drv_init(&s_dispDrv);
+    s_dispDrv.hor_res = 240;
+    s_dispDrv.ver_res = 320;
+    s_dispDrv.flush_cb = dispFlush;
+    s_dispDrv.draw_buf = &s_drawBuf;
+    s_dispDrv.user_data = this;
+#if defined(BOARD_ESP32_S3_TOUCH)
+    // Enable direct mode for full-screen buffer (LVGL renders directly, we copy once)
+    s_dispDrv.direct_mode = true;
+#endif
+    lv_disp_drv_register(&s_dispDrv);
+    
+    Serial.println("LCD: LVGL display registered");
+
+#if defined(BOARD_ESP32_S3_TOUCH)
+    // Initialize touch controller (CST820 on I2C)
+    Serial.println("LCD: Initializing CST820 touch...");
+    touch = new CST820(LCD_I2C_SDA, LCD_I2C_SCL, LCD_TOUCH_RST, LCD_TOUCH_INT);
+    touch->begin();
+    
+    lv_indev_drv_init(&s_indevDrv);
+    s_indevDrv.type = LV_INDEV_TYPE_POINTER;
+    s_indevDrv.read_cb = touchpadRead;
+    s_indevDrv.user_data = this;
+    lv_indev_drv_register(&s_indevDrv);
+    Serial.println("LCD: Touch initialized");
+#endif
+
+    // Create UI
+    Serial.println("LCD: Creating UI...");
+    createUI();
+
+#if defined(BOARD_ESP32_S3_TOUCH)
+    // Force initial screen refresh for ESP32-S3-Touch
+    lv_obj_invalidate(lv_scr_act());
+#endif
+
+    Serial.println("\n====================================");
+    Serial.println("LCD UI: Setup complete!");
+    Serial.println("====================================\n");
+
+    return true;
+}
+
+void FpvLcdUI::uiTask(void* parameter) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(parameter);
+    if (!ui) {
+        vTaskDelete(NULL);
+        return;
+    }
+    
+    // Wait a bit before starting LVGL loop to ensure everything is initialized
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    // Main LVGL event loop
+    while (true) {
+        // Process cross-core data updates (safe: we're on core 0)
+        ui->processRssiUpdate();
+        ui->processLapUpdate();
+        ui->processBandChannelUpdate();
+        ui->processThresholdUpdate();
+        
+        // Tick countdown/finish overlays
+        if (ui->_countdownActive) ui->updateCountdown();
+        if (ui->_finishActive) ui->updateFinish();
+        
+        lv_timer_handler();
+        
+#if defined(BOARD_ESP32_S3_TOUCH)
+        // ESP32-S3: Manual full screen blit since we're using direct mode
+        // Must acquire SPI mutex since SD card shares the same bus
+        if (ui->gfx && FpvLcdUI::s_buf) {
+            if (spiMutexTake(pdMS_TO_TICKS(50))) {
+                ui->gfx->draw16bitBeRGBBitmap(0, 0, (uint16_t*)FpvLcdUI::s_buf, 240, 320);
+                spiMutexGive();
+            }
+        }
+#endif
+        
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+}
+
+void FpvLcdUI::dispFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* color_p) {
+#if defined(BOARD_ESP32_S3_TOUCH)
+    // For ESP32-S3 with direct mode, we don't flush here - it's done in the task loop
+    lv_disp_flush_ready(disp);
+#else
+    // For other boards, flush normally
+    FpvLcdUI* instance = static_cast<FpvLcdUI*>(disp->user_data);
+    if (!instance) {
+        lv_disp_flush_ready(disp);
+        return;
+    }
+    
+    uint32_t w = (area->x2 - area->x1 + 1);
+    uint32_t h = (area->y2 - area->y1 + 1);
+    
+    // TFT_eSPI code would go here for non-S3 boards
+    
+    lv_disp_flush_ready(disp);
+#endif
+}
+
+void FpvLcdUI::touchpadRead(lv_indev_drv_t* indev_driver, lv_indev_data_t* data) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(indev_driver->user_data);
+    if (!ui || !ui->touch) {
+        data->state = LV_INDEV_STATE_REL;
+        return;
+    }
+    
+    // Throttle touch reads to ~100Hz
+    static unsigned long lastTouchRead = 0;
+    static lv_indev_data_t lastData = {0};
+    unsigned long now = millis();
+    
+    if (now - lastTouchRead < 10) {
+        *data = lastData;
+        return;
+    }
+    lastTouchRead = now;
+    
+    uint16_t touchX, touchY;
+    uint8_t gesture;
+    
+    bool touched = ui->touch->getTouch(&touchX, &touchY, &gesture);
+    
+    if (touched) {
+        data->state = LV_INDEV_STATE_PR;
+        data->point.x = touchX;
+        data->point.y = touchY;
+        
+        // Wake screen on touch
+        ui->_lastTouchTime = now;
+        if (ui->_screenDimmed) {
+            ui->_screenDimmed = false;
+            ui->updateScreenBrightness();
+        }
+    } else {
+        data->state = LV_INDEV_STATE_REL;
+    }
+    
+    lastData = *data;
+}
+
+void FpvLcdUI::createUI() {
+    // Create a scrollable screen with dark background
+    lv_obj_t *scr = lv_obj_create(NULL);
+    lv_scr_load(scr);
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_pad_all(scr, 0, 0);
+    lv_obj_set_scroll_dir(scr, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_size(scr, 240, 320);
+    lv_obj_set_content_height(scr, 1086);  // Extended for all elements
+    lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLL_ELASTIC);
+    
+    // === RSSI DISPLAY (Big box at top) ===
+    lv_obj_t *rssi_box = lv_obj_create(scr);
+    lv_obj_set_size(rssi_box, 220, 80);
+    lv_obj_set_pos(rssi_box, 10, 20);
+    lv_obj_set_style_bg_color(rssi_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_color(rssi_box, lv_color_hex(0x00ff00), 0);
+    lv_obj_set_style_border_width(rssi_box, 2, 0);
+    lv_obj_set_style_pad_all(rssi_box, 0, 0);
+    lv_obj_clear_flag(rssi_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *rssi_title = lv_label_create(rssi_box);
+    lv_label_set_text(rssi_title, "RSSI");
+    lv_obj_set_style_text_color(rssi_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(rssi_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_bg_opa(rssi_title, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(rssi_title, 0, 0);
+    lv_obj_set_pos(rssi_title, 10, 8);
+    
+    rssi_label = lv_label_create(rssi_box);
+    lv_label_set_text(rssi_label, "0");
+    lv_obj_set_style_text_font(rssi_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(rssi_label, lv_color_hex(0x00ff00), 0);
+    lv_obj_set_style_bg_opa(rssi_label, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(rssi_label, 0, 0);
+    lv_obj_set_pos(rssi_label, 10, 30);
+    
+    // RSSI Graph
+    rssi_chart = lv_chart_create(rssi_box);
+    lv_obj_set_size(rssi_chart, 140, 50);
+    lv_obj_set_pos(rssi_chart, 75, 15);
+    lv_chart_set_type(rssi_chart, LV_CHART_TYPE_LINE);
+    lv_chart_set_range(rssi_chart, LV_CHART_AXIS_PRIMARY_Y, 0, 255);
+    lv_chart_set_point_count(rssi_chart, 30);
+    lv_chart_set_div_line_count(rssi_chart, 0, 0);
+    lv_obj_set_style_size(rssi_chart, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(rssi_chart, lv_color_hex(0x0a0a0a), 0);
+    lv_obj_set_style_border_width(rssi_chart, 1, 0);
+    lv_obj_set_style_border_color(rssi_chart, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(rssi_chart, 2, 0);
+    
+    rssi_series = lv_chart_add_series(rssi_chart, lv_color_hex(0x00ff00), LV_CHART_AXIS_PRIMARY_Y);
+    lv_obj_set_style_line_width(rssi_chart, 2, LV_PART_ITEMS);
+    
+    // Initialize with zeros
+    for (int i = 0; i < 30; i++) {
+        rssi_series->y_points[i] = 0;
+    }
+    lv_chart_refresh(rssi_chart);
+    
+    // Battery indicator (top-right corner)
+    battery_icon = lv_obj_create(rssi_box);
+    lv_obj_set_size(battery_icon, 20, 12);
+    lv_obj_set_pos(battery_icon, 145, 1);
+    lv_obj_set_style_bg_color(battery_icon, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_border_width(battery_icon, 1, 0);
+    lv_obj_set_style_border_color(battery_icon, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_radius(battery_icon, 2, 0);
+    lv_obj_set_style_pad_all(battery_icon, 1, 0);
+    lv_obj_clear_flag(battery_icon, LV_OBJ_FLAG_SCROLLABLE);
+    
+    battery_label = lv_label_create(rssi_box);
+    lv_label_set_text(battery_label, "---");
+    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(battery_label, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_bg_opa(battery_label, LV_OPA_TRANSP, 0);
+    lv_obj_set_pos(battery_label, 182, 1);
+    
+    // === LAP COUNT ===
+    lv_obj_t *lap_box = lv_obj_create(scr);
+    lv_obj_set_size(lap_box, 220, 70);
+    lv_obj_set_pos(lap_box, 10, 110);
+    lv_obj_set_style_bg_color(lap_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(lap_box, 1, 0);
+    lv_obj_set_style_border_color(lap_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(lap_box, 0, 0);
+    lv_obj_clear_flag(lap_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *lap_title = lv_label_create(lap_box);
+    lv_label_set_text(lap_title, "Laps");
+    lv_obj_set_style_text_color(lap_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(lap_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_bg_opa(lap_title, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(lap_title, 0, 0);
+    lv_obj_set_pos(lap_title, 10, 8);
+    
+    lap_count_label = lv_label_create(lap_box);
+    lv_label_set_text(lap_count_label, "0");
+    lv_obj_set_style_text_font(lap_count_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(lap_count_label, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_bg_opa(lap_count_label, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(lap_count_label, 0, 0);
+    lv_obj_set_pos(lap_count_label, 100, 30);
+    
+    // Status label
+    status_label = lv_label_create(lap_box);
+    lv_label_set_text(status_label, "READY");
+    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(status_label, lv_color_hex(0x00ff00), 0);
+    lv_obj_set_style_bg_opa(status_label, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(status_label, 0, 0);
+    lv_obj_set_pos(status_label, 150, 8);
+    
+    // === BUTTONS ===
+    // Start button
+    start_btn = lv_btn_create(scr);
+    lv_obj_set_size(start_btn, 220, 40);
+    lv_obj_set_pos(start_btn, 10, 192);
+    lv_obj_set_style_bg_color(start_btn, lv_color_hex(0x00aa00), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(start_btn, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(start_btn, 0, 0);
+    
+    lv_obj_t *start_label = lv_label_create(start_btn);
+    lv_label_set_text(start_label, "START");
+    lv_obj_set_style_text_font(start_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_bg_opa(start_label, LV_OPA_TRANSP, 0);
+    lv_obj_center(start_label);
+    lv_obj_add_event_cb(start_btn, startBtnEvent, LV_EVENT_CLICKED, this);
+    
+    // Stop button
+    stop_btn = lv_btn_create(scr);
+    lv_obj_set_size(stop_btn, 220, 40);
+    lv_obj_set_pos(stop_btn, 10, 239);
+    lv_obj_set_style_bg_color(stop_btn, lv_color_hex(0xaa0000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(stop_btn, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(stop_btn, 0, 0);
+    
+    lv_obj_t *stop_label = lv_label_create(stop_btn);
+    lv_label_set_text(stop_label, "STOP");
+    lv_obj_set_style_text_font(stop_label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_bg_opa(stop_label, LV_OPA_TRANSP, 0);
+    lv_obj_center(stop_label);
+    lv_obj_add_event_cb(stop_btn, stopBtnEvent, LV_EVENT_CLICKED, this);
+    
+    // Clear button
+    clear_btn = lv_btn_create(scr);
+    lv_obj_set_size(clear_btn, 220, 40);
+    lv_obj_set_pos(clear_btn, 10, 286);
+    lv_obj_set_style_bg_color(clear_btn, lv_color_hex(0x555555), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(clear_btn, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(clear_btn, 0, 0);
+    
+    lv_obj_t *clear_label = lv_label_create(clear_btn);
+    lv_label_set_text(clear_label, "CLEAR");
+    lv_obj_set_style_text_font(clear_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_bg_opa(clear_label, LV_OPA_TRANSP, 0);
+    lv_obj_center(clear_label);
+    lv_obj_add_event_cb(clear_btn, clearBtnEvent, LV_EVENT_CLICKED, this);
+    
+    // === SETTINGS SECTION ===
+    lv_obj_t *settings_header = lv_label_create(scr);
+    lv_label_set_text(settings_header, "--- SETTINGS ---");
+    lv_obj_set_style_text_color(settings_header, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(settings_header, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_bg_opa(settings_header, LV_OPA_TRANSP, 0);
+    lv_obj_set_pos(settings_header, 60, 345);
+    
+    // System selector (Analog / DJI / HDZero / WalkSnail)
+    lv_obj_t *system_box = lv_obj_create(scr);
+    lv_obj_set_size(system_box, 220, 78);
+    lv_obj_set_pos(system_box, 10, 380);
+    lv_obj_set_style_bg_color(system_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(system_box, 1, 0);
+    lv_obj_set_style_border_color(system_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(system_box, 8, 0);
+    lv_obj_clear_flag(system_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *system_title = lv_label_create(system_box);
+    lv_label_set_text(system_title, "System");
+    lv_obj_set_style_text_color(system_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(system_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(system_title, 5, 5);
+    
+    lv_obj_t *system_prev = lv_btn_create(system_box);
+    lv_obj_set_size(system_prev, 40, 35);
+    lv_obj_set_pos(system_prev, 10, 28);
+    lv_obj_set_style_bg_color(system_prev, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *system_prev_lbl = lv_label_create(system_prev);
+    lv_label_set_text(system_prev_lbl, "<");
+    lv_obj_center(system_prev_lbl);
+    lv_obj_add_event_cb(system_prev, systemPrevEvent, LV_EVENT_CLICKED, this);
+    
+    system_label = lv_label_create(system_box);
+    lv_label_set_text(system_label, "Analog");
+    lv_obj_set_style_text_font(system_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(system_label, lv_color_hex(0xff8800), 0);
+    lv_obj_set_pos(system_label, 62, 28);
+    
+    lv_obj_t *system_next = lv_btn_create(system_box);
+    lv_obj_set_size(system_next, 40, 35);
+    lv_obj_set_pos(system_next, 160, 28);
+    lv_obj_set_style_bg_color(system_next, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *system_next_lbl = lv_label_create(system_next);
+    lv_label_set_text(system_next_lbl, ">");
+    lv_obj_center(system_next_lbl);
+    lv_obj_add_event_cb(system_next, systemNextEvent, LV_EVENT_CLICKED, this);
+    
+    // Band selector
+    lv_obj_t *band_box = lv_obj_create(scr);
+    lv_obj_set_size(band_box, 220, 78);
+    lv_obj_set_pos(band_box, 10, 468);
+    lv_obj_set_style_bg_color(band_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(band_box, 1, 0);
+    lv_obj_set_style_border_color(band_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(band_box, 8, 0);
+    lv_obj_clear_flag(band_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *band_title = lv_label_create(band_box);
+    lv_label_set_text(band_title, "Band");
+    lv_obj_set_style_text_color(band_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(band_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(band_title, 5, 5);
+    
+    lv_obj_t *band_prev = lv_btn_create(band_box);
+    lv_obj_set_size(band_prev, 40, 35);
+    lv_obj_set_pos(band_prev, 10, 28);
+    lv_obj_set_style_bg_color(band_prev, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *band_prev_lbl = lv_label_create(band_prev);
+    lv_label_set_text(band_prev_lbl, "<");
+    lv_obj_center(band_prev_lbl);
+    lv_obj_add_event_cb(band_prev, bandPrevEvent, LV_EVENT_CLICKED, this);
+    
+    band_label = lv_label_create(band_box);
+    lv_label_set_text(band_label, "R");
+    lv_obj_set_style_text_font(band_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(band_label, lv_color_hex(0x00aaff), 0);
+    lv_obj_set_pos(band_label, 90, 25);
+    
+    lv_obj_t *band_next = lv_btn_create(band_box);
+    lv_obj_set_size(band_next, 40, 35);
+    lv_obj_set_pos(band_next, 160, 28);
+    lv_obj_set_style_bg_color(band_next, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *band_next_lbl = lv_label_create(band_next);
+    lv_label_set_text(band_next_lbl, ">");
+    lv_obj_center(band_next_lbl);
+    lv_obj_add_event_cb(band_next, bandNextEvent, LV_EVENT_CLICKED, this);
+    
+    // Channel selector
+    lv_obj_t *channel_box = lv_obj_create(scr);
+    lv_obj_set_size(channel_box, 220, 78);
+    lv_obj_set_pos(channel_box, 10, 556);
+    lv_obj_set_style_bg_color(channel_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(channel_box, 1, 0);
+    lv_obj_set_style_border_color(channel_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(channel_box, 8, 0);
+    lv_obj_clear_flag(channel_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *channel_title = lv_label_create(channel_box);
+    lv_label_set_text(channel_title, "Channel");
+    lv_obj_set_style_text_color(channel_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(channel_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(channel_title, 5, 5);
+    
+    lv_obj_t *channel_prev = lv_btn_create(channel_box);
+    lv_obj_set_size(channel_prev, 40, 35);
+    lv_obj_set_pos(channel_prev, 10, 28);
+    lv_obj_set_style_bg_color(channel_prev, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *channel_prev_lbl = lv_label_create(channel_prev);
+    lv_label_set_text(channel_prev_lbl, "<");
+    lv_obj_center(channel_prev_lbl);
+    lv_obj_add_event_cb(channel_prev, channelPrevEvent, LV_EVENT_CLICKED, this);
+    
+    channel_label = lv_label_create(channel_box);
+    lv_label_set_text(channel_label, "1");
+    lv_obj_set_style_text_font(channel_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(channel_label, lv_color_hex(0x00aaff), 0);
+    lv_obj_set_pos(channel_label, 90, 25);
+    
+    lv_obj_t *channel_next = lv_btn_create(channel_box);
+    lv_obj_set_size(channel_next, 40, 35);
+    lv_obj_set_pos(channel_next, 160, 28);
+    lv_obj_set_style_bg_color(channel_next, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *channel_next_lbl = lv_label_create(channel_next);
+    lv_label_set_text(channel_next_lbl, ">");
+    lv_obj_center(channel_next_lbl);
+    lv_obj_add_event_cb(channel_next, channelNextEvent, LV_EVENT_CLICKED, this);
+    
+    // Frequency display
+    lv_obj_t *freq_box = lv_obj_create(scr);
+    lv_obj_set_size(freq_box, 220, 60);
+    lv_obj_set_pos(freq_box, 10, 644);
+    lv_obj_set_style_bg_color(freq_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(freq_box, 1, 0);
+    lv_obj_set_style_border_color(freq_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(freq_box, 8, 0);
+    lv_obj_clear_flag(freq_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *freq_title = lv_label_create(freq_box);
+    lv_label_set_text(freq_title, "Frequency");
+    lv_obj_set_style_text_color(freq_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(freq_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(freq_title, 5, 5);
+    
+    freq_label = lv_label_create(freq_box);
+    lv_label_set_text(freq_label, "5658 MHz");
+    lv_obj_set_style_text_font(freq_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(freq_label, lv_color_hex(0xffffff), 0);
+    lv_obj_set_pos(freq_label, 60, 20);
+    
+    // Threshold controls
+    lv_obj_t *threshold_box = lv_obj_create(scr);
+    lv_obj_set_size(threshold_box, 220, 150);
+    lv_obj_set_pos(threshold_box, 10, 714);
+    lv_obj_set_style_bg_color(threshold_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(threshold_box, 1, 0);
+    lv_obj_set_style_border_color(threshold_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(threshold_box, 8, 0);
+    lv_obj_clear_flag(threshold_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *threshold_title = lv_label_create(threshold_box);
+    lv_label_set_text(threshold_title, "Thresholds");
+    lv_obj_set_style_text_color(threshold_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(threshold_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(threshold_title, 5, 2);
+    
+    // Enter threshold row
+    lv_obj_t *enter_row_label = lv_label_create(threshold_box);
+    lv_label_set_text(enter_row_label, "Enter");
+    lv_obj_set_style_text_color(enter_row_label, lv_color_hex(0x00cc00), 0);
+    lv_obj_set_style_text_font(enter_row_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(enter_row_label, 5, 24);
+    
+    lv_obj_t *enter_prev = lv_btn_create(threshold_box);
+    lv_obj_set_size(enter_prev, 50, 40);
+    lv_obj_set_pos(enter_prev, 5, 40);
+    lv_obj_set_style_bg_color(enter_prev, lv_color_hex(0x333333), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(enter_prev, 6, 0);
+    lv_obj_t *enter_prev_lbl = lv_label_create(enter_prev);
+    lv_label_set_text(enter_prev_lbl, LV_SYMBOL_MINUS);
+    lv_obj_set_style_text_font(enter_prev_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_center(enter_prev_lbl);
+    lv_obj_add_event_cb(enter_prev, enterDecEvent, LV_EVENT_CLICKED, this);
+    
+    threshold_enter_label = lv_label_create(threshold_box);
+    lv_label_set_text(threshold_enter_label, "120");
+    lv_obj_set_style_text_font(threshold_enter_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(threshold_enter_label, lv_color_hex(0x00ff00), 0);
+    lv_obj_set_pos(threshold_enter_label, 80, 44);
+    
+    lv_obj_t *enter_next = lv_btn_create(threshold_box);
+    lv_obj_set_size(enter_next, 50, 40);
+    lv_obj_set_pos(enter_next, 148, 40);
+    lv_obj_set_style_bg_color(enter_next, lv_color_hex(0x333333), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(enter_next, 6, 0);
+    lv_obj_t *enter_next_lbl = lv_label_create(enter_next);
+    lv_label_set_text(enter_next_lbl, LV_SYMBOL_PLUS);
+    lv_obj_set_style_text_font(enter_next_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_center(enter_next_lbl);
+    lv_obj_add_event_cb(enter_next, enterIncEvent, LV_EVENT_CLICKED, this);
+    
+    // Exit threshold row
+    lv_obj_t *exit_row_label = lv_label_create(threshold_box);
+    lv_label_set_text(exit_row_label, "Exit");
+    lv_obj_set_style_text_color(exit_row_label, lv_color_hex(0xff5500), 0);
+    lv_obj_set_style_text_font(exit_row_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(exit_row_label, 5, 88);
+    
+    lv_obj_t *exit_prev = lv_btn_create(threshold_box);
+    lv_obj_set_size(exit_prev, 50, 40);
+    lv_obj_set_pos(exit_prev, 5, 102);
+    lv_obj_set_style_bg_color(exit_prev, lv_color_hex(0x333333), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(exit_prev, 6, 0);
+    lv_obj_t *exit_prev_lbl = lv_label_create(exit_prev);
+    lv_label_set_text(exit_prev_lbl, LV_SYMBOL_MINUS);
+    lv_obj_set_style_text_font(exit_prev_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_center(exit_prev_lbl);
+    lv_obj_add_event_cb(exit_prev, exitDecEvent, LV_EVENT_CLICKED, this);
+    
+    threshold_exit_label = lv_label_create(threshold_box);
+    lv_label_set_text(threshold_exit_label, "100");
+    lv_obj_set_style_text_font(threshold_exit_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(threshold_exit_label, lv_color_hex(0xff5500), 0);
+    lv_obj_set_pos(threshold_exit_label, 80, 106);
+    
+    lv_obj_t *exit_next = lv_btn_create(threshold_box);
+    lv_obj_set_size(exit_next, 50, 40);
+    lv_obj_set_pos(exit_next, 148, 102);
+    lv_obj_set_style_bg_color(exit_next, lv_color_hex(0x333333), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(exit_next, 6, 0);
+    lv_obj_t *exit_next_lbl = lv_label_create(exit_next);
+    lv_label_set_text(exit_next_lbl, LV_SYMBOL_PLUS);
+    lv_obj_set_style_text_font(exit_next_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_center(exit_next_lbl);
+    lv_obj_add_event_cb(exit_next, exitIncEvent, LV_EVENT_CLICKED, this);
+    
+    // Brightness slider
+    lv_obj_t *brightness_box = lv_obj_create(scr);
+    lv_obj_set_size(brightness_box, 220, 65);
+    lv_obj_set_pos(brightness_box, 10, 874);
+    lv_obj_set_style_bg_color(brightness_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(brightness_box, 1, 0);
+    lv_obj_set_style_border_color(brightness_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(brightness_box, 8, 0);
+    lv_obj_clear_flag(brightness_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *brightness_title = lv_label_create(brightness_box);
+    lv_label_set_text(brightness_title, "Brightness");
+    lv_obj_set_style_text_color(brightness_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(brightness_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(brightness_title, 5, 5);
+    
+    brightness_slider = lv_slider_create(brightness_box);
+    lv_obj_set_size(brightness_slider, 140, 12);
+    lv_obj_set_pos(brightness_slider, 10, 35);
+    lv_slider_set_range(brightness_slider, 10, 100);
+    lv_slider_set_value(brightness_slider, 100, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0x444444), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0xffaa00), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0xffffff), LV_PART_KNOB);
+    lv_obj_set_style_pad_all(brightness_slider, 8, LV_PART_KNOB);  // Larger touch target
+    lv_obj_add_event_cb(brightness_slider, brightnessSliderEvent, LV_EVENT_VALUE_CHANGED, this);
+    
+    brightness_label = lv_label_create(brightness_box);
+    lv_label_set_text(brightness_label, "100%");
+    lv_obj_set_style_text_font(brightness_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(brightness_label, lv_color_hex(0xffaa00), 0);
+    lv_obj_set_pos(brightness_label, 162, 32);
+    
+    // Lap times section
+    lv_obj_t *lap_times_header = lv_label_create(scr);
+    lv_label_set_text(lap_times_header, "--- LAP TIMES ---");
+    lv_obj_set_style_text_color(lap_times_header, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(lap_times_header, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_bg_opa(lap_times_header, LV_OPA_TRANSP, 0);
+    lv_obj_set_pos(lap_times_header, 60, 959);
+    
+    lap_times_box = lv_obj_create(scr);
+    lv_obj_set_size(lap_times_box, 220, 100);
+    lv_obj_set_pos(lap_times_box, 10, 984);
+    lv_obj_set_style_bg_color(lap_times_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(lap_times_box, 1, 0);
+    lv_obj_set_style_border_color(lap_times_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(lap_times_box, 10, 0);
+    lv_obj_clear_flag(lap_times_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    // Create 5 lap time labels
+    for (int i = 0; i < 5; i++) {
+        lap_times_labels[i] = lv_label_create(lap_times_box);
+        lv_label_set_text(lap_times_labels[i], "");
+        lv_obj_set_style_text_font(lap_times_labels[i], &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(lap_times_labels[i], lv_color_hex(0xaaaaaa), 0);
+        lv_obj_set_pos(lap_times_labels[i], 5, 5 + (i * 18));
+    }
+}
+
+// Button event callbacks (called from UI task on core 0)
+void FpvLcdUI::startBtnEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui && !ui->_countdownActive) {
+        // Disable start button during countdown
+        if (ui->start_btn) lv_obj_add_state(ui->start_btn, LV_STATE_DISABLED);
+        ui->startCountdown();
+    }
+}
+
+void FpvLcdUI::stopBtnEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (!ui) return;
+    // Cancel countdown if active
+    if (ui->_countdownActive) {
+        ui->stopCountdown();
+        if (ui->start_btn) lv_obj_clear_state(ui->start_btn, LV_STATE_DISABLED);
+        return;
+    }
+    // Otherwise stop the race and show finish overlay
+    ui->showFinish();
+    ui->_stopRequested = true;
+}
+
+void FpvLcdUI::clearBtnEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_clearRequested = true;
+}
+
+void FpvLcdUI::systemPrevEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_systemDelta = -1;
+}
+
+void FpvLcdUI::systemNextEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_systemDelta = 1;
+}
+
+void FpvLcdUI::bandPrevEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_bandDelta = -1;
+}
+
+void FpvLcdUI::bandNextEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_bandDelta = 1;
+}
+
+void FpvLcdUI::channelPrevEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_channelDelta = -1;
+}
+
+void FpvLcdUI::channelNextEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_channelDelta = 1;
+}
+
+void FpvLcdUI::enterDecEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_enterDelta = -5;
+}
+
+void FpvLcdUI::enterIncEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_enterDelta = 5;
+}
+
+void FpvLcdUI::exitDecEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_exitDelta = -5;
+}
+
+void FpvLcdUI::exitIncEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) ui->_exitDelta = 5;
+}
+
+void FpvLcdUI::brightnessSliderEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (!ui || !ui->brightness_slider) return;
+    
+    uint8_t val = (uint8_t)lv_slider_get_value(ui->brightness_slider);
+    ui->_userBrightness = val;
+    ui->updateScreenBrightness();
+    
+    if (ui->brightness_label) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d%%", val);
+        lv_label_set_text(ui->brightness_label, buf);
+    }
+}
+
+// Consume button requests from main loop (core 1)
+bool FpvLcdUI::consumeStartRequest() {
+    if (_startRequested) { _startRequested = false; return true; }
+    return false;
+}
+
+bool FpvLcdUI::consumeStopRequest() {
+    if (_stopRequested) { _stopRequested = false; return true; }
+    return false;
+}
+
+bool FpvLcdUI::consumeClearRequest() {
+    if (_clearRequested) { _clearRequested = false; return true; }
+    return false;
+}
+
+int8_t FpvLcdUI::consumeSystemDelta() {
+    int8_t d = _systemDelta;
+    if (d != 0) _systemDelta = 0;
+    return d;
+}
+
+int8_t FpvLcdUI::consumeBandDelta() {
+    int8_t d = _bandDelta;
+    if (d != 0) _bandDelta = 0;
+    return d;
+}
+
+int8_t FpvLcdUI::consumeChannelDelta() {
+    int8_t d = _channelDelta;
+    if (d != 0) _channelDelta = 0;
+    return d;
+}
+
+int8_t FpvLcdUI::consumeEnterDelta() {
+    int8_t d = _enterDelta;
+    if (d != 0) _enterDelta = 0;
+    return d;
+}
+
+int8_t FpvLcdUI::consumeExitDelta() {
+    int8_t d = _exitDelta;
+    if (d != 0) _exitDelta = 0;
+    return d;
+}
+
+// Thread-safe: called from loop() on core 1, sets display values for UI task
+void FpvLcdUI::setBandChannelDisplay(uint8_t systemIdx, uint8_t bandIdx, uint8_t channelIdx, uint16_t freqMhz) {
+    _pendingSystemIdx = systemIdx;
+    _pendingBandIdx = bandIdx;
+    _pendingChannelIdx = channelIdx;
+    _pendingFreqMhz = freqMhz;
+    _bandChannelDirty = true;
+}
+
+// Thread-safe: called from loop() on core 1
+void FpvLcdUI::setThresholdDisplay(uint8_t enterRssi, uint8_t exitRssi) {
+    _pendingEnterRssi = enterRssi;
+    _pendingExitRssi = exitRssi;
+    _thresholdDirty = true;
+}
+
+// Thread-safe: called from loop() on core 1, just stores the value
+void FpvLcdUI::updateRSSI(uint8_t rssi) {
+    _pendingRssi = rssi;
+}
+
+// Thread-safe: called from loop() on core 1
+void FpvLcdUI::addLap(uint32_t lapTimeMs) {
+    // Shift buffer down to make room for new lap
+    uint8_t count = _lapCount;
+    uint8_t stored = (count < MAX_DISPLAY_LAPS) ? count : MAX_DISPLAY_LAPS;
+    for (int i = stored; i > 0; i--) {
+        _lapBuffer[i < MAX_DISPLAY_LAPS ? i : MAX_DISPLAY_LAPS - 1] = _lapBuffer[i - 1];
+    }
+    _lapBuffer[0] = lapTimeMs;  // Newest lap at index 0
+    _lapCount = count + 1;
+    _lapsDirty = true;
+}
+
+// Thread-safe: called from loop() on core 1
+void FpvLcdUI::clearLaps() {
+    _lapCount = 0;
+    for (int i = 0; i < MAX_DISPLAY_LAPS; i++) _lapBuffer[i] = 0;
+    _lapsDirty = true;
+}
+
+// Called from UI task on core 0 only - safe to touch LVGL objects
+void FpvLcdUI::processRssiUpdate() {
+    uint8_t rssi = _pendingRssi;
+    
+    if (rssi_label) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", rssi);
+        lv_label_set_text(rssi_label, buf);
+    }
+    
+    if (rssi_chart && rssi_series) {
+        uint32_t now = millis();
+        if (now - _lastGraphUpdate >= 100) {  // Update chart at 10Hz
+            _lastGraphUpdate = now;
+            lv_chart_set_next_value(rssi_chart, rssi_series, rssi);
+        }
+    }
+}
+
+// Called from UI task on core 0 only
+void FpvLcdUI::processLapUpdate() {
+    if (!_lapsDirty) return;
+    _lapsDirty = false;
+    
+    uint8_t totalLaps = _lapCount;
+    uint8_t displayed = (totalLaps < MAX_DISPLAY_LAPS) ? totalLaps : MAX_DISPLAY_LAPS;
+    
+    // Update lap counter
+    if (lap_count_label) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", totalLaps);
+        lv_label_set_text(lap_count_label, buf);
+    }
+    
+    // Update lap time labels (newest first)
+    for (int i = 0; i < MAX_DISPLAY_LAPS; i++) {
+        if (!lap_times_labels[i]) continue;
+        if (i < displayed) {
+            uint32_t ms = _lapBuffer[i];
+            uint32_t secs = ms / 1000;
+            uint32_t frac = ms % 1000;
+            uint8_t lapNum = totalLaps - i;  // Most recent = highest number
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Lap %d: %lu.%03lus", lapNum, secs, frac);
+            lv_label_set_text(lap_times_labels[i], buf);
+            lv_obj_set_style_text_color(lap_times_labels[i], 
+                i == 0 ? lv_color_hex(0x00ff00) : lv_color_hex(0xaaaaaa), 0);
+        } else {
+            lv_label_set_text(lap_times_labels[i], "");
+        }
+    }
+}
+
+// Called from UI task on core 0 only
+void FpvLcdUI::processBandChannelUpdate() {
+    if (!_bandChannelDirty) return;
+    _bandChannelDirty = false;
+    
+    uint8_t systemIdx = _pendingSystemIdx;
+    uint8_t bandIdx = _pendingBandIdx;
+    uint8_t channelIdx = _pendingChannelIdx;
+    uint16_t freq = _pendingFreqMhz;
+    
+    // Update system label
+    if (system_label) {
+        static const char* systemNames[] = { "Analog", "DJI", "HDZero", "WalkSnail" };
+        if (systemIdx < 4) {
+            lv_label_set_text(system_label, systemNames[systemIdx]);
+        }
+    }
+    
+    // Update band label
+    if (band_label) {
+        static const char* bandNames[] = {
+            "A", "B", "E", "F", "R", "L",
+            "v1-25", "v1-25CE", "v1-50", "O3-20", "O3-20CE",
+            "O3-40", "O3-40CE", "O3-R", "R", "E",
+            "F", "CE", "R", "25", "25CE", "50"
+        };
+        if (bandIdx < 22) {
+            lv_label_set_text(band_label, bandNames[bandIdx]);
+        } else {
+            lv_label_set_text(band_label, "?");
+        }
+    }
+    
+    // Update channel label
+    if (channel_label) {
+        char buf[4];
+        snprintf(buf, sizeof(buf), "%d", channelIdx + 1);
+        lv_label_set_text(channel_label, buf);
+    }
+    
+    // Update frequency label
+    if (freq_label) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d MHz", freq);
+        lv_label_set_text(freq_label, buf);
+    }
+}
+
+// Called from UI task on core 0 only
+void FpvLcdUI::processThresholdUpdate() {
+    if (!_thresholdDirty) return;
+    _thresholdDirty = false;
+    
+    uint8_t enter = _pendingEnterRssi;
+    uint8_t exit_val = _pendingExitRssi;
+    
+    if (threshold_enter_label) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", enter);
+        lv_label_set_text(threshold_enter_label, buf);
+    }
+    if (threshold_exit_label) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", exit_val);
+        lv_label_set_text(threshold_exit_label, buf);
+    }
+}
+
+void FpvLcdUI::updateBandChannel(uint8_t band, uint8_t channel) {
+    if (band_label && channel_label) {
+        const char* bands[] = {"A", "B", "E", "F", "R", "L"};
+        if (band < 6) {
+            lv_label_set_text(band_label, bands[band]);
+        }
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", channel + 1);
+        lv_label_set_text(channel_label, buf);
+    }
+}
+
+void FpvLcdUI::updateFrequency(uint16_t freq) {
+    if (freq_label) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d MHz", freq);
+        lv_label_set_text(freq_label, buf);
+    }
+}
+
+void FpvLcdUI::updateThreshold(uint8_t enter_rssi, uint8_t exit_rssi) {
+    if (threshold_enter_label) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", enter_rssi);
+        lv_label_set_text(threshold_enter_label, buf);
+    }
+    if (threshold_exit_label) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", exit_rssi);
+        lv_label_set_text(threshold_exit_label, buf);
+    }
+}
+
+void FpvLcdUI::updateLapTimes(float* lapTimes, uint8_t lapCount) {
+    // Update lap time display
+    for (int i = 0; i < 5 && i < lapCount; i++) {
+        if (lap_times_labels[i]) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Lap %d: %.2fs", i + 1, lapTimes[i]);
+            lv_label_set_text(lap_times_labels[i], buf);
+        }
+    }
+}
+
+void FpvLcdUI::updateBattery(uint8_t percentage, float voltage) {
+    if (battery_label) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d%%", percentage);
+        lv_label_set_text(battery_label, buf);
+    }
+}
+
+void FpvLcdUI::updateStatus(const char* status) {
+    if (status_label) {
+        lv_label_set_text(status_label, status);
+    }
+}
+
+void FpvLcdUI::updateScreenBrightness() {
+    uint8_t pwm_value = map(_userBrightness, 10, 100, 25, 255);
+    analogWrite(LCD_BL, pwm_value);
+}
+
+// Consume buzzer beep request (called from loop() on core 1)
+uint16_t FpvLcdUI::consumeBuzzerBeep() {
+    uint16_t ms = _pendingBuzzerMs;
+    if (ms != 0) _pendingBuzzerMs = 0;
+    return ms;
+}
+
+// === Countdown overlay methods ===
+
+void FpvLcdUI::startCountdown() {
+    if (_countdownActive) return;
+    
+    Serial.println("LCD: Starting 5-second countdown");
+    _countdownActive = true;
+    _countdownValue = 5;
+    _lastBeepValue = -1;
+    _countdownStartTime = millis();
+    
+    // Create fullscreen semi-transparent overlay
+    lv_obj_t* scr = lv_scr_act();
+    countdown_overlay = lv_obj_create(scr);
+    lv_obj_set_size(countdown_overlay, 240, 320);
+    lv_obj_set_pos(countdown_overlay, 0, 0);
+    lv_obj_set_style_bg_color(countdown_overlay, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(countdown_overlay, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(countdown_overlay, 0, 0);
+    lv_obj_set_style_pad_all(countdown_overlay, 0, 0);
+    lv_obj_clear_flag(countdown_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(countdown_overlay);
+    
+    // Large centered countdown number
+    countdown_label = lv_label_create(countdown_overlay);
+    lv_label_set_text(countdown_label, "5");
+    lv_obj_set_style_text_font(countdown_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(countdown_label, lv_color_hex(0xff7b00), 0);  // Orange
+    lv_obj_set_style_text_align(countdown_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_opa(countdown_label, LV_OPA_TRANSP, 0);
+    lv_obj_align(countdown_label, LV_ALIGN_CENTER, 0, 0);
+    
+    // Request first beep (150ms short beep)
+    _pendingBuzzerMs = 150;
+}
+
+void FpvLcdUI::updateCountdown() {
+    if (!_countdownActive) return;
+    
+    uint32_t elapsed = millis() - _countdownStartTime;
+    
+    // Calculate expected value: 5, 4, 3, 2, 1, GO!
+    int expectedValue;
+    if (elapsed < 1000) expectedValue = 5;
+    else if (elapsed < 2000) expectedValue = 4;
+    else if (elapsed < 3000) expectedValue = 3;
+    else if (elapsed < 4000) expectedValue = 2;
+    else if (elapsed < 5000) expectedValue = 1;
+    else if (elapsed < 5600) expectedValue = 0;  // GO!
+    else {
+        // Countdown complete, fire start
+        stopCountdown();
+        if (start_btn) lv_obj_clear_state(start_btn, LV_STATE_DISABLED);
+        _startRequested = true;  // Core 1 picks this up and calls ws.triggerStart()
+        Serial.println("LCD: Countdown complete, starting race");
+        return;
+    }
+    
+    // Update display when value changes
+    if (expectedValue != _countdownValue) {
+        _countdownValue = expectedValue;
+        
+        if (countdown_label) {
+            if (expectedValue == 0) {
+                lv_label_set_text(countdown_label, "GO!");
+                lv_obj_set_style_text_color(countdown_label, lv_color_hex(0x00ff88), 0);  // Green
+                lv_obj_align(countdown_label, LV_ALIGN_CENTER, 0, 0);
+                if (_lastBeepValue != 0) {
+                    _pendingBuzzerMs = 400;  // Longer beep for GO!
+                    _lastBeepValue = 0;
+                }
+            } else {
+                char buf[4];
+                snprintf(buf, sizeof(buf), "%d", expectedValue);
+                lv_label_set_text(countdown_label, buf);
+                lv_obj_set_style_text_color(countdown_label, lv_color_hex(0xff7b00), 0);  // Orange
+                lv_obj_align(countdown_label, LV_ALIGN_CENTER, 0, 0);
+                if (_lastBeepValue != expectedValue) {
+                    _pendingBuzzerMs = 150;  // Short beep per count
+                    _lastBeepValue = expectedValue;
+                }
+            }
+        }
+    }
+}
+
+void FpvLcdUI::stopCountdown() {
+    if (!_countdownActive) return;
+    
+    _countdownActive = false;
+    
+    if (countdown_label) {
+        lv_obj_del(countdown_label);
+        countdown_label = nullptr;
+    }
+    if (countdown_overlay) {
+        lv_obj_del(countdown_overlay);
+        countdown_overlay = nullptr;
+    }
+}
+
+// === Finish overlay methods ===
+
+void FpvLcdUI::showFinish() {
+    if (_finishActive) return;
+    
+    Serial.println("LCD: Showing STOPPED overlay");
+    _finishActive = true;
+    _finishStartTime = millis();
+    
+    // Create fullscreen semi-transparent overlay
+    lv_obj_t* scr = lv_scr_act();
+    finish_overlay = lv_obj_create(scr);
+    lv_obj_set_size(finish_overlay, 240, 320);
+    lv_obj_set_pos(finish_overlay, 0, 0);
+    lv_obj_set_style_bg_color(finish_overlay, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(finish_overlay, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(finish_overlay, 0, 0);
+    lv_obj_set_style_pad_all(finish_overlay, 0, 0);
+    lv_obj_clear_flag(finish_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_foreground(finish_overlay);
+    
+    // Large centered "STOPPED" text
+    finish_label = lv_label_create(finish_overlay);
+    lv_label_set_text(finish_label, "STOPPED");
+    lv_obj_set_style_text_font(finish_label, &lv_font_montserrat_32, 0);
+    lv_obj_set_style_text_color(finish_label, lv_color_hex(0xff4444), 0);  // Red
+    lv_obj_set_style_text_align(finish_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_opa(finish_label, LV_OPA_TRANSP, 0);
+    lv_obj_align(finish_label, LV_ALIGN_CENTER, 0, 0);
+}
+
+void FpvLcdUI::updateFinish() {
+    if (!_finishActive) return;
+    
+    if (millis() - _finishStartTime >= FINISH_DISPLAY_DURATION) {
+        stopFinish();
+    }
+}
+
+void FpvLcdUI::stopFinish() {
+    if (!_finishActive) return;
+    
+    _finishActive = false;
+    
+    if (finish_label) {
+        lv_obj_del(finish_label);
+        finish_label = nullptr;
+    }
+    if (finish_overlay) {
+        lv_obj_del(finish_overlay);
+        finish_overlay = nullptr;
+    }
+}
+
+#endif // ENABLE_LCD_UI

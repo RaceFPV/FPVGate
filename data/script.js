@@ -120,6 +120,7 @@ var raceSyncMode = 0; // 0=disabled, 1=master, 2=slave
 var syncedTimers = []; // Array of synced timer hostnames (for master mode)
 var masterHostname = ""; // Master hostname for slave mode
 var configLoaded = false; // Flag to prevent saving before initial config load
+var _refreshingFromDevice = false; // Flag to suppress auto-save during device-initiated refresh
 
 // Unified sync devices list (new UI)
 // Each device: { address: string, role: 'disabled'|'master'|'slave', isThisDevice: boolean }
@@ -448,6 +449,16 @@ function setupWiFiEvents() {
         } catch (err) {
           console.error("[SSE] Error parsing slaveLap event:", err);
         }
+      },
+      false
+    );
+    
+    eventSource.addEventListener(
+      "configUpdated",
+      function (e) {
+        window.lastSSEEvent = Date.now();
+        console.log("[SSE] configUpdated event - refreshing config from device");
+        refreshConfigFromDevice();
       },
       false
     );
@@ -1062,21 +1073,21 @@ onload = async function (e) {
         populateBandsBySystem(currentSystem, bandSelect);
         populateBandsBySystem(currentSystem, calibBandSelect);
         
-        // Find and select the matching band by value
-        const targetBandValue = bandDef.value;
-        const bandOption = Array.from(bandSelect.options).find(opt => opt.value === targetBandValue);
-        const calibBandOption = Array.from(calibBandSelect.options).find(opt => opt.value === targetBandValue);
-        
-        if (bandOption) bandSelect.value = targetBandValue;
-        if (calibBandOption) calibBandSelect.value = targetBandValue;
-        
-        // Set channel
-        channelSelect.selectedIndex = configData.channelIndex;
-        if (calibChannelSelect) calibChannelSelect.selectedIndex = configData.channelIndex;
+        // Set band by finding the correct option index within the filtered system bands
+        const filteredBands = bandDefinitions.filter(b => b.system === currentSystem);
+        const localBandIdx = filteredBands.findIndex(b => b.index === configData.bandIndex);
+        if (localBandIdx >= 0) {
+          if (bandSelect) bandSelect.selectedIndex = localBandIdx;
+          if (calibBandSelect) calibBandSelect.selectedIndex = localBandIdx;
+        }
         
         // Update channel availability
         updateChannelAvailability(bandSelect);
         updateChannelAvailability(calibBandSelect);
+        
+        // Set channel
+        channelSelect.selectedIndex = configData.channelIndex;
+        if (calibChannelSelect) calibChannelSelect.selectedIndex = configData.channelIndex;
       }
     } else if (configData.freq !== undefined) {
       // Fallback: find by frequency
@@ -1732,6 +1743,12 @@ function openTab(evt, tabName) {
   document.getElementById(tabName).style.display = "block";
   evt.currentTarget.className += " active";
 
+  // Refresh config from device when opening config or calib tabs
+  // This ensures touchscreen-set values are always reflected in the web UI
+  if (tabName === "config" || tabName === "calib") {
+    refreshConfigFromDevice();
+  }
+
   // Start/stop RSSI streaming based on tab and debug mode
   if (tabName === "calib" || (tabName === "race" && debugMode)) {
     startRssiStreaming();
@@ -1779,6 +1796,7 @@ function updateExitRssi(obj, value) {
 // Debounced auto-save to prevent excessive API calls
 let saveTimeout = null;
 function autoSaveConfig() {
+  if (_refreshingFromDevice) return; // Suppress saves during device-initiated refresh
   clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     saveConfig();
@@ -1812,13 +1830,27 @@ async function saveConfig() {
   // Save band and channel indices along with frequency for accurate restoration
   // Get the actual band index from the dataset
   let selectedBandIndex = 0;
+  let selectedChannelIndex = channelSelect.selectedIndex;
   if (bandSelect && bandSelect.selectedIndex !== -1) {
     const selectedOption = bandSelect.options[bandSelect.selectedIndex];
     if (selectedOption && selectedOption.dataset.bandIndex) {
       selectedBandIndex = parseInt(selectedOption.dataset.bandIndex);
     }
+  } else {
+    // Band selector is in a bad state - fetch current values from device
+    // to avoid overwriting with stale data
+    console.log("[Config] Band selector blank, fetching current freq from device");
+    try {
+      const resp = await fetch("/config");
+      const devCfg = await resp.json();
+      if (devCfg.bandIndex !== undefined) selectedBandIndex = devCfg.bandIndex;
+      if (devCfg.channelIndex !== undefined) selectedChannelIndex = devCfg.channelIndex;
+      if (devCfg.freq !== undefined) frequency = devCfg.freq;
+    } catch (e) {
+      console.error("[Config] Failed to fetch device config, skipping save");
+      return;
+    }
   }
-  const selectedChannelIndex = channelSelect.selectedIndex;
   
   // Get battery settings
   const batteryTypeSelect = document.getElementById("batteryType");
@@ -2039,24 +2071,16 @@ function populateCalibFreqOutput() {
   
   // Sync to settings (without triggering another update)
   if (systemSelect && bandSelect && channelSelect) {
-    systemSelect.value = currentSystem;
-    
-    // Only repopulate if systems don't match
+    // Ensure settings system matches calib system
     if (systemSelect.value !== currentSystem) {
+      systemSelect.value = currentSystem;
       populateBandsBySystem(currentSystem, bandSelect);
     }
     
-    // Match band by value
-    const calibBandValue = calibBandSelect.options[calibBandSelect.selectedIndex]?.value;
-    if (calibBandValue) {
-      const matchingOption = Array.from(bandSelect.options).find(opt => opt.value === calibBandValue);
-      if (matchingOption) {
-        bandSelect.value = calibBandValue;
-      }
-    }
-    
-    // Sync channel
+    // Sync band and channel by index (both selects have the same options in the same order)
+    bandSelect.selectedIndex = calibBandSelect.selectedIndex;
     channelSelect.selectedIndex = calibChannelSelect.selectedIndex;
+    updateChannelAvailability(bandSelect);
     populateFreqOutput();
   }
 }
@@ -2070,14 +2094,9 @@ function syncSettingsToCalib() {
     calibSystemSelect.value = systemSelect.value;
   }
   
-  // Find matching band value and set it
-  const settingsBandValue = bandSelect.options[bandSelect.selectedIndex]?.value;
-  if (settingsBandValue) {
-    const matchingOption = Array.from(calibBandSelect.options).find(opt => opt.value === settingsBandValue);
-    if (matchingOption) {
-      calibBandSelect.value = settingsBandValue;
-    }
-  }
+  // Sync band and channel by index (both selects have the same options in the same order)
+  calibBandSelect.selectedIndex = bandSelect.selectedIndex;
+  updateChannelAvailability(calibBandSelect);
   
   // Sync channel
   if (calibChannelSelect && channelSelect) {
@@ -2121,6 +2140,100 @@ function initializeBandSelectors() {
 
 // Call initialization when script loads
 initializeBandSelectors();
+
+// Refresh band/channel/frequency from device config (called on SSE configUpdated and tab switch)
+async function refreshConfigFromDevice() {
+  _refreshingFromDevice = true;
+  // Cancel any pending save so stale values never overwrite the device
+  clearTimeout(saveTimeout);
+  try {
+    let configData;
+    if (usbConnected && transportManager) {
+      configData = await transportManager.sendCommand("config", "GET");
+    } else {
+      const response = await fetch("/config");
+      configData = await response.json();
+    }
+    
+    // Always set frequency directly from device (authoritative source)
+    if (configData.freq !== undefined) {
+      frequency = configData.freq;
+    }
+    
+    if (configData.bandIndex !== undefined && configData.channelIndex !== undefined) {
+      const bandDef = bandDefinitions[configData.bandIndex];
+      if (bandDef) {
+        currentSystem = bandDef.system;
+        const targetChannelIdx = configData.channelIndex;
+        
+        // Update system selectors
+        if (systemSelect) systemSelect.value = currentSystem;
+        if (calibSystemSelect) calibSystemSelect.value = currentSystem;
+        
+        // Repopulate band lists for the correct system
+        populateBandsBySystem(currentSystem, bandSelect);
+        populateBandsBySystem(currentSystem, calibBandSelect);
+        
+        // Set band by finding the correct option index (more reliable than value matching)
+        const filteredBands = bandDefinitions.filter(b => b.system === currentSystem);
+        const localBandIdx = filteredBands.findIndex(b => b.index === configData.bandIndex);
+        if (localBandIdx >= 0) {
+          if (bandSelect) bandSelect.selectedIndex = localBandIdx;
+          if (calibBandSelect) calibBandSelect.selectedIndex = localBandIdx;
+        }
+        
+        // Update channel availability based on selected band
+        updateChannelAvailability(bandSelect);
+        updateChannelAvailability(calibBandSelect);
+        
+        // Set channel selection
+        if (channelSelect) channelSelect.selectedIndex = targetChannelIdx;
+        if (calibChannelSelect) calibChannelSelect.selectedIndex = targetChannelIdx;
+        
+        // Update frequency display text
+        populateFreqOutput();
+        if (calibBandSelect && calibChannelSelect && calibFreqOutput) {
+          if (calibBandSelect.selectedIndex !== -1) {
+            const selOpt = calibBandSelect.options[calibBandSelect.selectedIndex];
+            if (selOpt) {
+              const bv = selOpt.value;
+              const cv = calibChannelSelect.options[calibChannelSelect.selectedIndex]?.value || "1";
+              calibFreqOutput.textContent = bv + cv + " " + frequency + "MHz";
+            }
+          }
+        }
+        
+        // Update settings freq display in case populateFreqOutput bailed
+        if (freqOutput && bandSelect && bandSelect.selectedIndex !== -1) {
+          const opt = bandSelect.options[bandSelect.selectedIndex];
+          if (opt) {
+            const chan = channelSelect.options[channelSelect.selectedIndex]?.value || "1";
+            freqOutput.textContent = opt.value + chan + " " + frequency;
+          }
+        }
+      }
+    } else if (configData.freq !== undefined) {
+      setBandChannelIndex(configData.freq);
+      populateFreqOutput();
+    }
+    
+    // Update threshold values if changed
+    if (configData.enterRssi !== undefined) {
+      enterRssiInput.value = configData.enterRssi;
+      updateEnterRssi(enterRssiInput, enterRssiInput.value);
+    }
+    if (configData.exitRssi !== undefined) {
+      exitRssiInput.value = configData.exitRssi;
+      updateExitRssi(exitRssiInput, exitRssiInput.value);
+    }
+    
+    console.log("[Config] Refreshed from device: band=" + configData.bandIndex + " ch=" + configData.channelIndex + " freq=" + configData.freq);
+  } catch (err) {
+    console.error("[Config] Failed to refresh from device:", err);
+  } finally {
+    _refreshingFromDevice = false;
+  }
+}
 
 // Add auto-save listeners for other inputs
 if (announcerSelect) {
@@ -6792,6 +6905,84 @@ function runSelfTest() {
     });
 }
 
+// SPI Mod Test
+function runSPITest() {
+  const button = document.getElementById("runSPITestButton");
+  const loadingDiv = document.getElementById("spiTestLoading");
+  const resultsDiv = document.getElementById("spiTestResults");
+  const verdictDiv = document.getElementById("spiTestVerdict");
+  const chartDiv = document.getElementById("spiTestChart");
+
+  button.disabled = true;
+  button.textContent = i18n.t("settings.diagnostics.spi_running");
+  loadingDiv.style.display = "block";
+  resultsDiv.style.display = "none";
+
+  fetch("/api/spitest")
+    .then((response) => response.json())
+    .then((data) => {
+      loadingDiv.style.display = "none";
+
+      const passed = data.passed;
+      const verdictColor = passed ? "#4ade80" : "#ff5555";
+      const verdictBg = passed ? "rgba(74, 222, 128, 0.1)" : "rgba(255, 85, 85, 0.1)";
+      const verdictIcon = passed ? "\u2713" : "\u2717";
+      const verdictText = passed
+        ? i18n.t("settings.diagnostics.spi_pass")
+        : i18n.t("settings.diagnostics.spi_fail");
+
+      verdictDiv.innerHTML = `
+        <div style="margin-bottom: 16px; padding: 16px; background-color: ${verdictBg}; border-left: 4px solid ${verdictColor}; border-radius: 4px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span style="font-size: 20px; color: ${verdictColor};">${verdictIcon}</span>
+            <span style="font-weight: bold; font-size: 16px;">${verdictText}</span>
+          </div>
+          <div style="font-size: 14px; color: var(--secondary-color);">
+            Spread: ${data.spread} | Min: ${data.min} | Max: ${data.max}
+          </div>
+        </div>
+      `;
+
+      // Render bar chart
+      const maxRssi = Math.max(...data.channels.map((c) => c.rssi), 1);
+      let barsHtml = '<div style="display: flex; align-items: flex-end; gap: 6px; height: 120px;">';
+      data.channels.forEach((ch) => {
+        const pct = (ch.rssi / maxRssi) * 100;
+        const barColor = passed ? "var(--primary-color)" : "var(--secondary-color)";
+        barsHtml += `
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%;">
+            <span style="font-size: 11px; color: var(--text-color); margin-bottom: 4px;">${ch.rssi}</span>
+            <div style="width: 100%; flex: 1; display: flex; align-items: flex-end;">
+              <div style="width: 100%; height: ${pct}%; background-color: ${barColor}; border-radius: 3px 3px 0 0; min-height: 2px;"></div>
+            </div>
+            <span style="font-size: 11px; color: var(--secondary-color); margin-top: 4px;">${ch.label}</span>
+            <span style="font-size: 10px; color: var(--secondary-color);">${ch.freq}</span>
+          </div>
+        `;
+      });
+      barsHtml += "</div>";
+      chartDiv.innerHTML = barsHtml;
+
+      resultsDiv.style.display = "block";
+      button.disabled = false;
+      button.textContent = i18n.t("settings.diagnostics.spi_run_again");
+    })
+    .catch((error) => {
+      console.error("Error running SPI test:", error);
+      loadingDiv.style.display = "none";
+      verdictDiv.innerHTML = `
+        <div style="padding: 16px; background-color: rgba(255, 85, 85, 0.1); border-left: 4px solid #ff5555; border-radius: 4px;">
+          <div style="font-weight: bold; color: #ff5555; margin-bottom: 6px;">${i18n.t("settings.diagnostics.error_running")}</div>
+          <div style="font-size: 14px; color: var(--secondary-color);">${error.message}</div>
+        </div>
+      `;
+      chartDiv.innerHTML = "";
+      resultsDiv.style.display = "block";
+      button.disabled = false;
+      button.textContent = i18n.t("settings.diagnostics.spi_run");
+    });
+}
+
 // ============================================
 // Serial Monitor Functions
 // ============================================
@@ -7434,11 +7625,43 @@ function openSettingsModal() {
     modal.classList.add("active");
 
     // Load full config to populate all settings
+    _refreshingFromDevice = true;
+    clearTimeout(saveTimeout);
     fetch("/config")
       .then((response) => response.json())
       .then((config) => {
-        // Populate all device config fields
-        if (config.freq !== undefined) setBandChannelIndex(config.freq);
+        // Populate band/channel/system using bandIndex (reliable) with freq fallback
+        if (config.bandIndex !== undefined && config.channelIndex !== undefined) {
+          const bandDef = bandDefinitions[config.bandIndex];
+          if (bandDef) {
+            currentSystem = bandDef.system;
+            if (systemSelect) systemSelect.value = currentSystem;
+            if (calibSystemSelect) calibSystemSelect.value = currentSystem;
+            populateBandsBySystem(currentSystem, bandSelect);
+            populateBandsBySystem(currentSystem, calibBandSelect);
+            const filteredBands = bandDefinitions.filter(b => b.system === currentSystem);
+            const localBandIdx = filteredBands.findIndex(b => b.index === config.bandIndex);
+            if (localBandIdx >= 0) {
+              if (bandSelect) bandSelect.selectedIndex = localBandIdx;
+              if (calibBandSelect) calibBandSelect.selectedIndex = localBandIdx;
+            }
+            updateChannelAvailability(bandSelect);
+            updateChannelAvailability(calibBandSelect);
+            if (channelSelect) channelSelect.selectedIndex = config.channelIndex;
+            if (calibChannelSelect) calibChannelSelect.selectedIndex = config.channelIndex;
+            if (config.freq !== undefined) frequency = config.freq;
+            populateFreqOutput();
+            if (calibBandSelect && calibChannelSelect && calibFreqOutput && calibBandSelect.selectedIndex !== -1) {
+              const selOpt = calibBandSelect.options[calibBandSelect.selectedIndex];
+              if (selOpt) {
+                const cv = calibChannelSelect.options[calibChannelSelect.selectedIndex]?.value || "1";
+                calibFreqOutput.textContent = selOpt.value + cv + " " + frequency + "MHz";
+              }
+            }
+          }
+        } else if (config.freq !== undefined) {
+          setBandChannelIndex(config.freq);
+        }
         if (config.minLap !== undefined) {
           minLapInput.value = (parseFloat(config.minLap) / 10).toFixed(1);
           updateMinLap(minLapInput, minLapInput.value);
@@ -7587,9 +7810,13 @@ function openSettingsModal() {
         
         // Mark config as loaded - now saves are allowed
         configLoaded = true;
+        _refreshingFromDevice = false;
         console.log("[Config] Initial config loaded from device");
       })
-      .catch((error) => console.error("Error loading config:", error));
+      .catch((error) => {
+        _refreshingFromDevice = false;
+        console.error("Error loading config:", error);
+      });
 
     // Switch to general section by default
     switchSettingsSection("general");

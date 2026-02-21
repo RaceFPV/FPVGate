@@ -113,7 +113,11 @@ void Webserver::sendRssiEvent(uint8_t rssi) {
 }
 
 void Webserver::sendRaceStateEvent(const char* state) {
-    if (!servicesStarted) return;
+    if (!servicesStarted) {
+        DEBUG("[SSE] sendRaceStateEvent SKIPPED (services not started)\n");
+        return;
+    }
+    DEBUG("[SSE] sendRaceStateEvent: '%s' to %d client(s)\n", state, events.count());
     events.send(state, "raceState");
 }
 
@@ -220,6 +224,47 @@ static void sendSyncCommand(Config* config, const char* endpoint) {
     }
 }
 
+// Public triggers - called from main loop (core 1)
+// Timer actions happen immediately; SSE broadcast is deferred to core 0
+// via pendingRaceState, which handleWebUpdate() picks up.
+void Webserver::triggerStart() {
+    sendSyncCommand(conf, "/timer/start");
+    timer->start();
+    pendingRaceState = "started";
+}
+
+void Webserver::triggerStop() {
+    sendSyncCommand(conf, "/timer/stop");
+    timer->stop();
+    pendingRaceState = "stopped";
+}
+
+void Webserver::triggerClearLaps() {
+    sendSyncCommand(conf, "/timer/clearLaps");
+    pendingRaceState = "cleared";
+}
+
+void Webserver::triggerConfigUpdated() {
+    pendingConfigUpdate = true;
+}
+
+bool Webserver::consumePendingLap(uint32_t& lapMs) {
+    if (_hasLcdLap) {
+        lapMs = _pendingLcdLap;
+        _hasLcdLap = false;
+        return true;
+    }
+    return false;
+}
+
+bool Webserver::consumePendingClear() {
+    if (_pendingLcdClear) {
+        _pendingLcdClear = false;
+        return true;
+    }
+    return false;
+}
+
 bool Webserver::isConnected() {
     // WiFi transport is always "connected" if services are started
     // Individual clients connect/disconnect via SSE but that's transparent
@@ -231,8 +276,24 @@ void Webserver::update(uint32_t currentTimeMs) {
 }
 
 void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
-    // Note: Lap events are now broadcast via TransportManager in main.cpp
-    // This method only handles WiFi-specific logic
+    // Process deferred race state events from LCD triggers (must run on core 0)
+    if (pendingRaceState) {
+        const char* state = (const char*)pendingRaceState;
+        pendingRaceState = nullptr;
+        DEBUG("[LCD->SSE] Deferred race state: '%s'\n", state);
+        if (transportMgr) {
+            transportMgr->broadcastRaceStateEvent(state);
+        }
+    }
+    
+    // Process deferred config update notification from LCD (must run on core 0)
+    if (pendingConfigUpdate) {
+        pendingConfigUpdate = false;
+        if (servicesStarted) {
+            DEBUG("[LCD->SSE] Config updated, notifying web clients\n");
+            events.send("updated", "configUpdated");
+        }
+    }
 
     if (sendRssi && ((currentTimeMs - rssiSentMs) > WEB_RSSI_SEND_TIMEOUT_MS)) {
         sendRssiEvent(timer->getRssi());
@@ -658,6 +719,9 @@ EEPROM:\n\
             if (transportMgr) {
                 transportMgr->broadcastLapEvent(lapTimeMs);
             }
+            // Forward to LCD
+            _pendingLcdLap = lapTimeMs;
+            _hasLcdLap = true;
 #ifdef HAS_RGB_LED
             if (g_rgbLed) {
                 g_rgbLed->flashLap();
@@ -738,6 +802,8 @@ EEPROM:\n\
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("cleared");
         }
+        // Forward to LCD
+        _pendingLcdClear = true;
         sendCorsResponse(request, "{\"status\": \"OK\"}");
     });
 
@@ -1769,6 +1835,63 @@ EEPROM:\n\
         
         json += "]}";
         
+        request->send(200, "application/json", json);
+        led->on(200);
+    });
+
+    // SPI mod test endpoint
+    server.on("/api/spitest", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        if (!rx) {
+            request->send(500, "application/json", "{\"error\":\"RX5808 not initialized\"}");
+            return;
+        }
+
+        static const uint16_t testFreqs[] = {5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917};
+        static const char* chanLabels[] = {"R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"};
+        static const uint8_t numFreqs = 8;
+        static const uint8_t samplesPerFreq = 10;
+        static const uint8_t settleMs = 50;
+
+        uint8_t rssiValues[numFreqs];
+        uint8_t maxRssi = 0;
+        uint8_t minRssi = 255;
+
+        for (uint8_t i = 0; i < numFreqs; i++) {
+            rx->setFrequency(testFreqs[i]);
+            delay(settleMs);
+            rx->handleFrequencyChange(millis(), testFreqs[i]);
+
+            uint16_t sum = 0;
+            for (uint8_t s = 0; s < samplesPerFreq; s++) {
+                sum += rx->readRssi();
+                delay(2);
+            }
+            rssiValues[i] = sum / samplesPerFreq;
+            if (rssiValues[i] > maxRssi) maxRssi = rssiValues[i];
+            if (rssiValues[i] < minRssi) minRssi = rssiValues[i];
+        }
+
+        // Restore configured frequency
+        rx->setFrequency(conf->getFrequency());
+        delay(settleMs);
+        rx->handleFrequencyChange(millis(), conf->getFrequency());
+
+        uint8_t spread = maxRssi - minRssi;
+        bool passed = (spread >= 10);
+
+        String json = "{\"passed\":" + String(passed ? "true" : "false") +
+                     ",\"spread\":" + String(spread) +
+                     ",\"min\":" + String(minRssi) +
+                     ",\"max\":" + String(maxRssi) +
+                     ",\"channels\":[";
+        for (uint8_t i = 0; i < numFreqs; i++) {
+            if (i > 0) json += ",";
+            json += "{\"label\":\"" + String(chanLabels[i]) +
+                   "\",\"freq\":" + String(testFreqs[i]) +
+                   ",\"rssi\":" + String(rssiValues[i]) + "}";
+        }
+        json += "]}";
+
         request->send(200, "application/json", json);
         led->on(200);
     });
