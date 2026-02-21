@@ -121,6 +121,7 @@ Detailed wiring diagrams are available for each supported board:
 - **[ESP32-S3 DevKitC-1 (8MB Flash)](docs/wiring/ESP32-S3-DevKitC-1.md)** - Alternative
 - **[ESP32-S3 Super Mini (4MB Flash)](docs/wiring/ESP32-S3-SuperMini.md)** - Not recommended (see note below)
 - **[LilyGO T-Energy S3](docs/wiring/LilyGO-T-Energy-S3.md)** - Expert mode, integrated battery
+- **[Waveshare ESP32-S3-LCD-2](docs/wiring/Waveshare-ESP32-S3-LCD-2.md)** - Built-in 2" touchscreen LCD, battery, SD card
 
 > **Note on ESP32-S3 Super Mini:** Through testing, this board has proven unreliable due to inconsistent quality from various suppliers. Some revisions experience frequent brownouts under load. This board is still supported but is not recommended for new builds.
 
