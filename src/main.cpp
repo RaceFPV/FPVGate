@@ -154,6 +154,8 @@ void setup() {
     
 #ifdef LILYGO_TENERGY_S3
         DEBUG("LilyGO T-Energy S3 build detected - WiFi Mode (Battery monitoring enabled)\n");
+#elif defined(WAVESHARE_ESP32S3_LCD2)
+        DEBUG("Waveshare ESP32-S3-LCD-2 build detected - WiFi Mode (Battery monitoring enabled)\n");
 #elif defined(ESP32S3) && defined(ENABLE_BATTERY_TEST)
         DEBUG("ESP32S3 DevKitC build - WiFi Mode (Battery TEST MODE enabled on GPIO%d)\n", PIN_VBAT);
 #elif defined(ESP32S3)
@@ -225,14 +227,14 @@ void setup() {
         }
     }
     
-#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+#ifdef HAS_BATTERY_MONITOR
     ws.init(&config, &timer, &monitor, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager, &webhookManager);
 #else
     ws.init(&config, &timer, nullptr, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager, &webhookManager);
 #endif
     
     // Initialize USB transport
-#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+#ifdef HAS_BATTERY_MONITOR
     usbTransport.init(&config, &timer, &monitor, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager);
 #else
     usbTransport.init(&config, &timer, nullptr, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager);

@@ -83,6 +83,27 @@
 #define PIN_SD_MOSI 35         // SAME AS DEVKITC
 #define PIN_SD_MISO 37         // SAME AS DEVKITC
 
+// Waveshare ESP32-S3-LCD-2 (16MB Flash, 8MB PSRAM, built-in TF card)
+#elif defined(WAVESHARE_ESP32S3_LCD2)
+
+#define PIN_LED 2              // External status LED (on header)
+#define PIN_RGB_LED 15         // WS2812 RGB LED (on header, optional external)
+#define PIN_VBAT 5             // Battery voltage sense (built-in 200K/100K divider on GPIO5)
+#define VBAT_SCALE 3           // 3:1 voltage divider (200K/100K)
+#define VBAT_ADD 0             // Calibration offset
+#define PIN_RX5808_RSSI 4      // RSSI on GPIO4
+#define PIN_RX5808_DATA 17     // CH1 on GPIO17
+#define PIN_RX5808_SELECT 21   // CH2 on GPIO21
+#define PIN_RX5808_CLOCK 18    // CH3 on GPIO18
+#define PIN_BUZZER 6           // Buzzer on GPIO6 (on header)
+#define BUZZER_INVERTED false
+#define PIN_MODE_SWITCH 9      // Mode selection (on header)
+// SD Card SPI pins (built-in TF card slot, shared SPI bus with LCD)
+#define PIN_SD_CS 41
+#define PIN_SD_SCK 39
+#define PIN_SD_MOSI 38
+#define PIN_SD_MISO 40
+
 // Seeed Studio XIAO ESP32S3
 #elif defined(SEEED_XIAO_ESP32S3)
 
@@ -149,18 +170,18 @@
 // ====================================================================
 
 // ESP32-S3 family boards (SD card support, SPI, USB CDC)
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2)
     #define HAS_SD_CARD_SUPPORT 1
     #define HAS_SPI_CLASS 1
 #endif
 
 // Boards with RGB LED support
-#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(PIN_RGB_LED)
+#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(PIN_RGB_LED)
     #define HAS_RGB_LED 1
 #endif
 
 // Boards with built-in battery monitoring
-#if defined(LILYGO_TENERGY_S3) || defined(ENABLE_BATTERY_TEST)
+#if defined(LILYGO_TENERGY_S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(ENABLE_BATTERY_TEST)
     #define HAS_BATTERY_MONITOR 1
 #endif
 
