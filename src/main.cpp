@@ -16,6 +16,9 @@
 #if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
 #include "../lib/LCD_UI/fpv_lcd_ui.h"
 #endif
+#ifdef ENABLE_POWER_SWITCH
+#include "power.h"
+#endif
 
 // ====================================================================
 // ROTORHAZARD MODE - CURRENTLY DISABLED
@@ -113,6 +116,9 @@ static uint8_t nextAvailableChannel(uint8_t bandIdx, uint8_t currentCh, int8_t d
 #ifdef HAS_BATTERY_MONITOR
 static BatteryMonitor monitor;  // Enabled for T-Energy S3 or testing
 #endif
+#ifdef ENABLE_POWER_SWITCH
+static PowerManager powerManager;  // Optional deep sleep toggle switch
+#endif
 
 static TaskHandle_t xTimerTask = NULL;
 static bool sdInitAttempted = false;
@@ -143,6 +149,22 @@ static void initParallelTask() {
 }
 
 void setup() {
+    // ====================================================================
+    // POWER MANAGEMENT - CHECK SWITCH STATE FIRST (if enabled)
+    // If power switch is OFF at boot, enter deep sleep immediately
+    // ====================================================================
+#ifdef ENABLE_POWER_SWITCH
+#if defined(WAVESHARE_ESP32S3_LCD2) && defined(LCD_BACKLIGHT)
+    // Initialize power manager BEFORE anything else
+    // If switch is OFF, this will enter deep sleep immediately
+    if (!powerManager.init(PIN_POWER_SWITCH, LCD_BACKLIGHT)) {
+        // Switch is OFF - enter deep sleep (does not return)
+        powerManager.enterDeepSleep();
+    }
+    // If we get here, switch is ON - continue with normal boot
+#endif
+#endif
+    
     // ====================================================================
     // ROTORHAZARD MODE DETECTION - CURRENTLY DISABLED
     // Mode switching has been disabled - system now runs in WiFi mode only
@@ -369,6 +391,35 @@ void setup() {
 
 void loop() {
     uint32_t currentTimeMs = millis();
+    
+    // Debug: Periodic "alive" message every 5 seconds
+    static uint32_t lastAliveMs = 0;
+    if (currentTimeMs - lastAliveMs > 5000) {
+        lastAliveMs = currentTimeMs;
+        DEBUG("[LOOP] Alive at %lu ms (free heap: %d bytes)\n", currentTimeMs, ESP.getFreeHeap());
+    }
+
+    // ====================================================================
+    // POWER MANAGEMENT - Monitor switch for OFF transition (if enabled)
+    // ====================================================================
+#ifdef ENABLE_POWER_SWITCH
+#if defined(WAVESHARE_ESP32S3_LCD2) && defined(LCD_BACKLIGHT)
+    if (!powerManager.monitorSwitch()) {
+        // Switch flipped to OFF - graceful shutdown
+        DEBUG("\n=== Power switch turned OFF - shutting down ===\n");
+        
+        // Stop any active timing/recording
+        timer.handleLapTimerUpdate(currentTimeMs);
+        
+        // Save config if modified
+        config.handleEeprom(currentTimeMs);
+        delay(100);
+        
+        // Enter deep sleep (does not return)
+        powerManager.enterDeepSleep();
+    }
+#endif
+#endif
 
     // LED Flashing removed - LED_BUILTIN (GPIO48) conflicts with FastLED RMT channels
     // External LEDs on GPIO5 are handled by rgbLed instead

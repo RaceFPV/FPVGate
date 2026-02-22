@@ -18,7 +18,16 @@ inline void spiMutexInit() {
 
 inline bool spiMutexTake(TickType_t timeout = portMAX_DELAY) {
     if (g_spiMutex) {
-        return xSemaphoreTake(g_spiMutex, timeout) == pdTRUE;
+        uint32_t startTime = millis();
+        bool acquired = xSemaphoreTake(g_spiMutex, timeout) == pdTRUE;
+        uint32_t waitTime = millis() - startTime;
+        
+        if (!acquired) {
+            Serial.printf("[SPI MUTEX] TIMEOUT after %lums!\n", waitTime);
+        } else if (waitTime > 100) {
+            Serial.printf("[SPI MUTEX] Long wait: %lums\n", waitTime);
+        }
+        return acquired;
     }
     return true;  // No mutex = no contention
 }

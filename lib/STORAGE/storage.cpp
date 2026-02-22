@@ -132,15 +132,20 @@ bool Storage::writeFile(const String& path, const String& data) {
     
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
+        DEBUG("[SPI] writeFile: Taking mutex...\n");
         spiMutexTake();
+        DEBUG("[SPI] writeFile: Mutex acquired, opening file...\n");
         File file = SD.open(path, FILE_WRITE);
         if (!file) {
+            DEBUG("[SPI] writeFile: Failed to open, releasing mutex\n");
             spiMutexGive();
             DEBUG("Failed to open file on SD: %s\n", path.c_str());
             return false;
         }
+        DEBUG("[SPI] writeFile: File opened, writing data...\n");
         size_t written = file.print(data);
         file.close();
+        DEBUG("[SPI] writeFile: Done, releasing mutex\n");
         spiMutexGive();
         return written > 0;
     }
@@ -160,19 +165,26 @@ bool Storage::writeFile(const String& path, const String& data) {
 bool Storage::readFile(const String& path, String& data) {
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
+        DEBUG("[SPI] readFile: %s - Taking mutex...\n", path.c_str());
         spiMutexTake();
+        DEBUG("[SPI] readFile: Mutex acquired, checking exists...\n");
         if (!SD.exists(path)) {
+            DEBUG("[SPI] readFile: File not found, releasing mutex\n");
             spiMutexGive();
             return false;
         }
+        DEBUG("[SPI] readFile: Opening file...\n");
         File file = SD.open(path, FILE_READ);
         if (!file) {
+            DEBUG("[SPI] readFile: Failed to open, releasing mutex\n");
             spiMutexGive();
             DEBUG("Failed to open file on SD: %s\n", path.c_str());
             return false;
         }
+        DEBUG("[SPI] readFile: Reading data...\n");
         data = file.readString();
         file.close();
+        DEBUG("[SPI] readFile: Done (%d bytes), releasing mutex\n", data.length());
         spiMutexGive();
         return true;
     }
@@ -233,8 +245,10 @@ bool Storage::listDir(const String& path, std::vector<String>& files) {
     
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
+        spiMutexTake();
         File root = SD.open(path);
         if (!root || !root.isDirectory()) {
+            spiMutexGive();
             return false;
         }
         
@@ -245,6 +259,7 @@ bool Storage::listDir(const String& path, std::vector<String>& files) {
             }
             file = root.openNextFile();
         }
+        spiMutexGive();
         return true;
     }
 #endif
@@ -268,7 +283,10 @@ bool Storage::listDir(const String& path, std::vector<String>& files) {
 uint64_t Storage::getTotalBytes() {
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
-        return SD.cardSize();
+        spiMutexTake();
+        uint64_t size = SD.cardSize();
+        spiMutexGive();
+        return size;
     }
 #endif
     return LittleFS.totalBytes();
@@ -277,7 +295,10 @@ uint64_t Storage::getTotalBytes() {
 uint64_t Storage::getUsedBytes() {
 #ifdef HAS_SD_CARD_SUPPORT
     if (sdAvailable) {
-        return SD.usedBytes();
+        spiMutexTake();
+        uint64_t used = SD.usedBytes();
+        spiMutexGive();
+        return used;
     }
 #endif
     return LittleFS.usedBytes();
@@ -295,7 +316,11 @@ bool Storage::migrateSoundsToSD() {
     }
     
     // Check if sounds already exist on SD
-    if (SD.exists("/sounds")) {
+    spiMutexTake();
+    bool soundsExist = SD.exists("/sounds");
+    spiMutexGive();
+    
+    if (soundsExist) {
         DEBUG("Sounds directory already exists on SD card\n");
         return true;
     }
@@ -309,7 +334,11 @@ bool Storage::migrateSoundsToSD() {
     DEBUG("\n=== Migrating sounds to SD card ===\n");
     
     // Create sounds directory on SD
-    if (!SD.mkdir("/sounds")) {
+    spiMutexTake();
+    bool mkdirOk = SD.mkdir("/sounds");
+    spiMutexGive();
+    
+    if (!mkdirOk) {
         DEBUG("Failed to create /sounds directory on SD\n");
         return false;
     }
@@ -353,8 +382,10 @@ bool Storage::copyDirectory(const String& srcPath, const String& dstPath, bool d
             
             // Open destination file on SD
 #ifdef HAS_SD_CARD_SUPPORT
+            spiMutexTake();
             File dstFile = SD.open(dstFilePath, FILE_WRITE);
             if (!dstFile) {
+                spiMutexGive();
                 DEBUG(" [FAIL - can't open dest]\n");
                 errorCount++;
                 file = srcDir.openNextFile();
@@ -371,6 +402,8 @@ bool Storage::copyDirectory(const String& srcPath, const String& dstPath, bool d
             }
             
             dstFile.close();
+            spiMutexGive();
+            
             totalBytes += fileSize;
             fileCount++;
             

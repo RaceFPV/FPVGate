@@ -98,6 +98,7 @@
 #define PIN_BUZZER 6           // Buzzer on GPIO6 (on header)
 #define BUZZER_INVERTED false
 #define PIN_MODE_SWITCH 9      // Mode selection (on header)
+#define PIN_POWER_SWITCH 7     // Power toggle switch (optional: GPIO7 to GND = deep sleep)
 // SD Card SPI pins (built-in TF card slot, shared SPI bus with LCD)
 #define PIN_SD_CS 41
 #define PIN_SD_SCK 39
@@ -108,6 +109,8 @@
 #define LCD_I2C_SCL 47
 #define LCD_TOUCH_RST -1
 #define LCD_TOUCH_INT -1
+// LCD backlight (for power management)
+#define LCD_BACKLIGHT 1
 
 // Seeed Studio XIAO ESP32S3
 #elif defined(SEEED_XIAO_ESP32S3)

@@ -227,15 +227,18 @@ void FpvLcdUI::uiTask(void* parameter) {
 #if defined(BOARD_ESP32_S3_TOUCH)
         // ESP32-S3: Manual full screen blit since we're using direct mode
         // Must acquire SPI mutex since SD card shares the same bus
+        // Full screen transfer takes ~100-150ms, so use generous timeout
         if (ui->gfx && FpvLcdUI::s_buf) {
-            if (spiMutexTake(pdMS_TO_TICKS(50))) {
+            if (spiMutexTake(pdMS_TO_TICKS(500))) {  // Increased from 50ms to 500ms
                 ui->gfx->draw16bitBeRGBBitmap(0, 0, (uint16_t*)FpvLcdUI::s_buf, 240, 320);
                 spiMutexGive();
+            } else {
+                Serial.println("[LCD] Failed to acquire SPI mutex for screen update");
             }
         }
 #endif
         
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(16));  // ~60fps max (was 5ms = 200fps, too aggressive)
     }
 }
 
