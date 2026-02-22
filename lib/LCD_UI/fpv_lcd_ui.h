@@ -66,6 +66,12 @@ private:
     static lv_disp_drv_t s_dispDrv;
     static lv_indev_drv_t s_indevDrv;
 
+    // Tabview and tabs
+    lv_obj_t* tabview;
+    lv_obj_t* tab_racing;
+    lv_obj_t* tab_pilot;
+    lv_obj_t* tab_calib;
+    
     // UI objects - main elements
     lv_obj_t* rssi_label;
     lv_obj_t* rssi_chart;
@@ -74,6 +80,15 @@ private:
     lv_obj_t* status_label;
     lv_obj_t* battery_label;
     lv_obj_t* battery_icon;
+    
+    // Calibration tab elements
+    lv_obj_t* calib_rssi_label;
+    lv_obj_t* calib_chart;
+    lv_chart_series_t* calib_series;
+    lv_obj_t* calib_enter_line;
+    lv_obj_t* calib_exit_line;
+    lv_obj_t* calib_enter_value;
+    lv_obj_t* calib_exit_value;
     
     // Control buttons
     lv_obj_t* start_btn;
@@ -160,7 +175,10 @@ private:
 
     // Internal helpers
     void createUI();
-    void processRssiUpdate();          // Called from UI task only
+    void createRacingTab();
+    void createPilotTab();
+    void createCalibTab();
+    void processRssiUpdate();
     void processLapUpdate();           // Called from UI task only
     void processBandChannelUpdate();   // Called from UI task only
     void processThresholdUpdate();     // Called from UI task only

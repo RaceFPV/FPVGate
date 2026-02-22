@@ -392,11 +392,23 @@ void setup() {
 void loop() {
     uint32_t currentTimeMs = millis();
     
-    // Debug: Periodic "alive" message every 5 seconds
+    // Debug: Periodic "alive" message every 5 seconds with detailed memory stats
     static uint32_t lastAliveMs = 0;
     if (currentTimeMs - lastAliveMs > 5000) {
         lastAliveMs = currentTimeMs;
-        DEBUG("[LOOP] Alive at %lu ms (free heap: %d bytes)\n", currentTimeMs, ESP.getFreeHeap());
+        uint32_t freeHeap = ESP.getFreeHeap();
+        uint32_t minFreeHeap = ESP.getMinFreeHeap();
+        uint32_t heapSize = ESP.getHeapSize();
+        uint32_t usedHeap = heapSize - freeHeap;
+        float usedPercent = (usedHeap * 100.0f) / heapSize;
+        
+        DEBUG("[HEAP] Free: %u KB / %u KB (%.1f%% used) | Min Free Ever: %u KB\n", 
+              freeHeap / 1024, heapSize / 1024, usedPercent, minFreeHeap / 1024);
+        
+        // Check for low memory condition
+        if (freeHeap < 50000) {  // Less than 50KB free
+            DEBUG("[HEAP] WARNING: Low memory! Consider reducing LVGL buffer or chart points\n");
+        }
     }
 
     // ====================================================================
