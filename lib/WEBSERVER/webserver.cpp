@@ -1112,6 +1112,7 @@ EEPROM:\n\
 
     // Race history endpoints
     server.on("/races", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        // Note: toJsonString() internally calls ensureRacesLoaded() for lazy loading
         String json = history->toJsonString();
         request->send(200, "application/json", json);
         led->on(200);
@@ -1248,7 +1249,7 @@ EEPROM:\n\
         if (request->hasParam("timestamp")) {
             uint32_t timestamp = request->getParam("timestamp")->value().toInt();
             
-            // Find the race
+            // Find the race (getRaces() internally calls ensureRacesLoaded())
             const auto& races = history->getRaces();
             for (const auto& race : races) {
                 if (race.timestamp == timestamp) {

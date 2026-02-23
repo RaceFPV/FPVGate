@@ -48,18 +48,20 @@ class RaceHistory {
     bool init(Storage* storage);
     bool saveRace(const RaceSession& race);
     bool loadRaces();
+    bool ensureRacesLoaded();  // Lazy loading - loads races on first access
     bool deleteRace(uint32_t timestamp);
     bool updateRace(uint32_t timestamp, const String& name, const String& tag, float totalDistance = -1.0f);
     bool updateLaps(uint32_t timestamp, const std::vector<uint32_t>& newLapTimes);
     bool clearAll();
     String toJsonString();
     bool fromJsonString(const String& json);
-    const std::vector<RaceSession>& getRaces() const { return races; }
+    const std::vector<RaceSession>& getRaces();
     size_t getRaceCount() const { return races.size(); }
 
    private:
     std::vector<RaceSession> races;
     Storage* storage;
+    bool racesLoaded;  // Tracks whether races have been loaded from storage
 };
 
 #endif

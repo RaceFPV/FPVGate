@@ -297,9 +297,9 @@ void setup() {
     selfTest.init(&storage);
     
     // Initialize race history with storage backend
-    // Note: This uses LittleFS initially; SD card will be mounted later in loop()
+    // Note: Races are loaded on-demand (lazy loading) to avoid blocking boot with SD card I/O
     if (raceHistory.init(&storage)) {
-        DEBUG("Race history initialized, %d races loaded\n", raceHistory.getRaceCount());
+        DEBUG("Race history initialized (lazy loading enabled)\n");
     } else {
         DEBUG("Race history initialization failed\n");
     }
@@ -608,8 +608,9 @@ void loop() {
     ElegantOTA.loop();
     
     // Initialize SD card after boot (deferred to prevent watchdog timeout)
-    // Try once after 5 seconds of uptime
-    if (!sdInitAttempted && currentTimeMs > 5000) {
+    // Try once after 10 seconds to allow LCD UI to fully stabilize
+    // (4-tab UI with half-screen buffer needs more SPI bandwidth initially)
+    if (!sdInitAttempted && currentTimeMs > 10000) {
         sdInitAttempted = true;
         DEBUG("\n=== Deferred SD card initialization ===\n");
         
@@ -631,12 +632,8 @@ void loop() {
                 DEBUG("Recommend: delete /sounds from LittleFS to reclaim space\n");
             }
             
-            // Reload race history from SD card
-            if (raceHistory.loadRaces()) {
-                DEBUG("Race history reloaded from SD card, %d races available\n", raceHistory.getRaceCount());
-            } else {
-                DEBUG("Race history reload from SD card failed\n");
-            }
+            // Note: Race history now uses lazy loading - races will be loaded on first web UI access
+            // This eliminates 30+ seconds of SPI contention during boot
             
             // Reload tracks from SD card
             if (trackManager.loadTracks()) {
