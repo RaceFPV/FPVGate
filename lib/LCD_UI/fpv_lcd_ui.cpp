@@ -127,11 +127,7 @@ bool FpvLcdUI::begin() {
 
 #if defined(BOARD_ESP32_S3_TOUCH)
     // ESP32-S3: Allocate full screen buffer (240x320 = 76,800 pixels = 153,600 bytes)
-    // MEMORY OPTIMIZATION OPTIONS:
-    // 1. Reduce buffer size: Use partial buffer (e.g., 240x160 = 76,800 bytes)
-    // 2. Reduce chart points: Change 30/50 points to 20 (saves ~80 bytes per chart)
-    // 3. Remove duplicate chart: Remove either Racing or Calib chart (saves ~60 bytes)
-    // Current config: Full screen buffer for smooth 60fps UI updates
+    // Full buffer with direct mode = simplest, fastest, no tearing
     uint32_t bufSize = 240 * 320;
     uint32_t bufBytes = bufSize * sizeof(lv_color_t);
     
@@ -151,7 +147,7 @@ bool FpvLcdUI::begin() {
         return false;
     }
     
-    Serial.printf("LCD: Allocated %d KB display buffer\n", bufBytes / 1024);
+    Serial.printf("LCD: Allocated %d KB display buffer (full-screen)\n", bufBytes / 1024);
     
     // Report memory usage after buffer allocation
     uint32_t freeHeap = ESP.getFreeHeap();
@@ -199,6 +195,15 @@ bool FpvLcdUI::begin() {
     // Create UI
     Serial.println("LCD: Creating UI...");
     createUI();
+    
+    // Report memory usage after UI creation
+    uint32_t freeHeapAfterUI = ESP.getFreeHeap();
+    uint32_t minFreeHeap = ESP.getMinFreeHeap();
+    Serial.printf("LCD: Free heap after UI: %u KB (min ever: %u KB)\n",
+                  freeHeapAfterUI / 1024, minFreeHeap / 1024);
+    if (freeHeapAfterUI < 50000) {
+        Serial.println("LCD: WARNING - Low free heap! System may be unstable.");
+    }
 
 #if defined(BOARD_ESP32_S3_TOUCH)
     // Force initial screen refresh for ESP32-S3-Touch
@@ -241,7 +246,7 @@ void FpvLcdUI::uiTask(void* parameter) {
         // Must acquire SPI mutex since SD card shares the same bus
         // Full screen transfer takes ~100-150ms, so use generous timeout
         if (ui->gfx && FpvLcdUI::s_buf) {
-            if (spiMutexTake(pdMS_TO_TICKS(500))) {  // Increased from 50ms to 500ms
+            if (spiMutexTake(pdMS_TO_TICKS(500))) {
                 ui->gfx->draw16bitBeRGBBitmap(0, 0, (uint16_t*)FpvLcdUI::s_buf, 240, 320);
                 spiMutexGive();
             } else {
@@ -250,7 +255,7 @@ void FpvLcdUI::uiTask(void* parameter) {
         }
 #endif
         
-        vTaskDelay(pdMS_TO_TICKS(8));  // ~120fps for smoother animations (was 16ms)
+        vTaskDelay(pdMS_TO_TICKS(8));  // ~120fps for smoother animations
     }
 }
 
@@ -324,34 +329,40 @@ void FpvLcdUI::createUI() {
     // Optimize tabview animation for smoother/faster swiping
     lv_obj_set_style_anim_time(tabview, 200, 0);  // 200ms transition (default is 300ms)
     
-    // Create three pages
+    // Create four pages
     tab_racing = lv_tabview_add_tab(tabview, "");
     tab_pilot = lv_tabview_add_tab(tabview, "");
     tab_calib = lv_tabview_add_tab(tabview, "");
+    tab_system = lv_tabview_add_tab(tabview, "");
     
     // Style pages and disable horizontal scrolling
     lv_obj_set_style_bg_color(tab_racing, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_color(tab_pilot, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_color(tab_calib, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_color(tab_system, lv_color_hex(0x000000), 0);
     
     // Ensure tabs fit screen width and only scroll vertically
     lv_obj_set_size(tab_racing, 240, LV_SIZE_CONTENT);
     lv_obj_set_size(tab_pilot, 240, LV_SIZE_CONTENT);
     lv_obj_set_size(tab_calib, 240, LV_SIZE_CONTENT);
+    lv_obj_set_size(tab_system, 240, LV_SIZE_CONTENT);
     
     lv_obj_set_scroll_dir(tab_racing, LV_DIR_VER);
     lv_obj_set_scroll_dir(tab_pilot, LV_DIR_VER);
     lv_obj_set_scroll_dir(tab_calib, LV_DIR_VER);
+    lv_obj_set_scroll_dir(tab_system, LV_DIR_VER);
     
     // Remove ALL padding to use full screen height
     lv_obj_set_style_pad_all(tab_racing, 0, 0);
     lv_obj_set_style_pad_all(tab_pilot, 0, 0);
     lv_obj_set_style_pad_all(tab_calib, 0, 0);
+    lv_obj_set_style_pad_all(tab_system, 0, 0);
     
     // Create content
     createRacingTab();
     createPilotTab();
     createCalibTab();
+    createSystemTab();
 }
 
 void FpvLcdUI::createRacingTab() {
@@ -676,39 +687,6 @@ void FpvLcdUI::createPilotTab() {
     lv_obj_set_style_text_font(freq_label, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(freq_label, lv_color_hex(0xffffff), 0);
     lv_obj_set_pos(freq_label, 60, 25);
-    
-    // Brightness slider (moved up since threshold controls removed)
-    lv_obj_t *brightness_box = lv_obj_create(scr);
-    lv_obj_set_size(brightness_box, 220, 65);
-    lv_obj_set_pos(brightness_box, 10, 341);
-    lv_obj_set_style_bg_color(brightness_box, lv_color_hex(0x1a1a1a), 0);
-    lv_obj_set_style_border_width(brightness_box, 1, 0);
-    lv_obj_set_style_border_color(brightness_box, lv_color_hex(0x333333), 0);
-    lv_obj_set_style_pad_all(brightness_box, 8, 0);
-    lv_obj_clear_flag(brightness_box, LV_OBJ_FLAG_SCROLLABLE);
-    
-    lv_obj_t *brightness_title = lv_label_create(brightness_box);
-    lv_label_set_text(brightness_title, "Brightness");
-    lv_obj_set_style_text_color(brightness_title, lv_color_hex(0x888888), 0);
-    lv_obj_set_style_text_font(brightness_title, &lv_font_montserrat_14, 0);
-    lv_obj_set_pos(brightness_title, 5, 5);
-    
-    brightness_slider = lv_slider_create(brightness_box);
-    lv_obj_set_size(brightness_slider, 140, 12);
-    lv_obj_set_pos(brightness_slider, 10, 35);
-    lv_slider_set_range(brightness_slider, 10, 100);
-    lv_slider_set_value(brightness_slider, 100, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0x444444), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0xffaa00), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0xffffff), LV_PART_KNOB);
-    lv_obj_set_style_pad_all(brightness_slider, 8, LV_PART_KNOB);  // Larger touch target
-    lv_obj_add_event_cb(brightness_slider, brightnessSliderEvent, LV_EVENT_VALUE_CHANGED, this);
-    
-    brightness_label = lv_label_create(brightness_box);
-    lv_label_set_text(brightness_label, "100%");
-    lv_obj_set_style_text_font(brightness_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(brightness_label, lv_color_hex(0xffaa00), 0);
-    lv_obj_set_pos(brightness_label, 162, 32);
 }
 
 void FpvLcdUI::createCalibTab() {
@@ -852,6 +830,72 @@ void FpvLcdUI::createCalibTab() {
     lv_obj_set_style_text_font(exit_next_lbl, &lv_font_montserrat_16, 0);
     lv_obj_center(exit_next_lbl);
     lv_obj_add_event_cb(exit_next, exitIncEvent, LV_EVENT_CLICKED, this);
+}
+
+void FpvLcdUI::createSystemTab() {
+    lv_obj_t *scr = tab_system;
+    
+    // Title
+    lv_obj_t *title = lv_label_create(scr);
+    lv_label_set_text(title, "System Settings");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0xffffff), 0);
+    lv_obj_set_pos(title, 55, 5);
+    
+    // Brightness slider
+    lv_obj_t *brightness_box = lv_obj_create(scr);
+    lv_obj_set_size(brightness_box, 220, 65);
+    lv_obj_set_pos(brightness_box, 10, 40);
+    lv_obj_set_style_bg_color(brightness_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(brightness_box, 1, 0);
+    lv_obj_set_style_border_color(brightness_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(brightness_box, 8, 0);
+    lv_obj_clear_flag(brightness_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *brightness_title = lv_label_create(brightness_box);
+    lv_label_set_text(brightness_title, "Brightness");
+    lv_obj_set_style_text_color(brightness_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(brightness_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(brightness_title, 5, 5);
+    
+    brightness_slider = lv_slider_create(brightness_box);
+    lv_obj_set_size(brightness_slider, 140, 12);
+    lv_obj_set_pos(brightness_slider, 10, 35);
+    lv_slider_set_range(brightness_slider, 10, 100);
+    lv_slider_set_value(brightness_slider, 100, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0x444444), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0xffaa00), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(brightness_slider, lv_color_hex(0xffffff), LV_PART_KNOB);
+    lv_obj_set_style_pad_all(brightness_slider, 8, LV_PART_KNOB);  // Larger touch target
+    lv_obj_add_event_cb(brightness_slider, brightnessSliderEvent, LV_EVENT_VALUE_CHANGED, this);
+    
+    brightness_label = lv_label_create(brightness_box);
+    lv_label_set_text(brightness_label, "100%");
+    lv_obj_set_style_text_font(brightness_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(brightness_label, lv_color_hex(0xffaa00), 0);
+    lv_obj_set_pos(brightness_label, 162, 32);
+    
+    // Battery voltage display
+    lv_obj_t *battery_box = lv_obj_create(scr);
+    lv_obj_set_size(battery_box, 220, 65);
+    lv_obj_set_pos(battery_box, 10, 115);
+    lv_obj_set_style_bg_color(battery_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(battery_box, 1, 0);
+    lv_obj_set_style_border_color(battery_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(battery_box, 8, 0);
+    lv_obj_clear_flag(battery_box, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_t *battery_title = lv_label_create(battery_box);
+    lv_label_set_text(battery_title, "Battery Voltage");
+    lv_obj_set_style_text_color(battery_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(battery_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(battery_title, 5, 5);
+    
+    battery_voltage_label = lv_label_create(battery_box);
+    lv_label_set_text(battery_voltage_label, "---V");
+    lv_obj_set_style_text_font(battery_voltage_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(battery_voltage_label, lv_color_hex(0x00ff00), 0);
+    lv_obj_set_pos(battery_voltage_label, 70, 28);
 }
 
 // Button event callbacks (called from UI task on core 0)
@@ -1008,6 +1052,50 @@ void FpvLcdUI::setThresholdDisplay(uint8_t enterRssi, uint8_t exitRssi) {
     _pendingEnterRssi = enterRssi;
     _pendingExitRssi = exitRssi;
     _thresholdDirty = true;
+}
+
+// Thread-safe: called from loop() on core 1
+void FpvLcdUI::setBatteryDisplay(uint16_t voltage) {
+    if (!battery_label || !battery_icon) return;
+    
+    // Calculate percentage from voltage (3.0V = 0%, 4.2V = 100%)
+    // voltage is in tenths of volts (e.g. 42 = 4.2V, 30 = 3.0V)
+    int16_t percentage = map(voltage, 30, 42, 0, 100);
+    if (percentage < 0) percentage = 0;
+    if (percentage > 100) percentage = 100;
+    
+    // Update Racing tab battery indicator
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", percentage);
+    lv_label_set_text(battery_label, buf);
+    
+    // Color coding based on battery level
+    uint32_t color;
+    if (percentage > 60) {
+        color = 0x00ff00;  // Green (good)
+    } else if (percentage > 20) {
+        color = 0xffaa00;  // Orange (warning)
+    } else {
+        color = 0xff0000;  // Red (critical)
+    }
+    lv_obj_set_style_text_color(battery_label, lv_color_hex(color), 0);
+    
+    // Update icon width based on percentage (scale 3-20px)
+    uint16_t width = map(percentage, 0, 100, 3, 20);
+    if (width < 3) width = 3;  // Minimum visible width
+    lv_obj_set_width(battery_icon, width);
+    
+    // Update icon color (same as text)
+    lv_obj_set_style_bg_color(battery_icon, lv_color_hex(color), 0);
+    
+    // Update System tab voltage display
+    if (battery_voltage_label) {
+        char voltageBuf[16];
+        float volts = voltage / 10.0f;
+        snprintf(voltageBuf, sizeof(voltageBuf), "%.2fV", volts);
+        lv_label_set_text(battery_voltage_label, voltageBuf);
+        lv_obj_set_style_text_color(battery_voltage_label, lv_color_hex(color), 0);
+    }
 }
 
 // Thread-safe: called from loop() on core 1, just stores the value

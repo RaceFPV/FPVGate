@@ -444,6 +444,16 @@ void loop() {
     if (g_lcdUi) {
         g_lcdUi->updateRSSI(timer.getRssi());
         
+#ifdef HAS_BATTERY_MONITOR
+        // Update battery display every 5 seconds
+        static uint32_t lastBatteryUpdate = 0;
+        if (currentTimeMs - lastBatteryUpdate > 5000) {
+            lastBatteryUpdate = currentTimeMs;
+            uint16_t voltage = monitor.getBatteryVoltage();
+            g_lcdUi->setBatteryDisplay(voltage);
+        }
+#endif
+        
         // Handle LCD button presses (reuses webserver handler logic)
         if (g_lcdUi->consumeStartRequest()) {
             ws.triggerStart();

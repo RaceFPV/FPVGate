@@ -40,6 +40,7 @@ public:
     // Thread-safe display update (called from main loop on core 1)
     void setBandChannelDisplay(uint8_t systemIdx, uint8_t bandIdx, uint8_t channelIdx, uint16_t freqMhz);
     void setThresholdDisplay(uint8_t enterRssi, uint8_t exitRssi);
+    void setBatteryDisplay(uint16_t voltage);  // Voltage in tenths of volts (e.g. 42 = 4.2V)
     
     void updateBandChannel(uint8_t band, uint8_t channel);
     void updateFrequency(uint16_t freq);
@@ -71,6 +72,7 @@ private:
     lv_obj_t* tab_racing;
     lv_obj_t* tab_pilot;
     lv_obj_t* tab_calib;
+    lv_obj_t* tab_system;
     
     // UI objects - main elements
     lv_obj_t* rssi_label;
@@ -106,6 +108,7 @@ private:
     lv_obj_t* threshold_exit_label;
     lv_obj_t* brightness_slider;
     lv_obj_t* brightness_label;
+    lv_obj_t* battery_voltage_label;  // System tab voltage display
     
     // Lap times display
     lv_obj_t* lap_times_box;
@@ -178,6 +181,7 @@ private:
     void createRacingTab();
     void createPilotTab();
     void createCalibTab();
+    void createSystemTab();
     void processRssiUpdate();
     void processLapUpdate();           // Called from UI task only
     void processBandChannelUpdate();   // Called from UI task only
