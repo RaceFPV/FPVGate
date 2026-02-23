@@ -82,6 +82,10 @@ private:
     lv_obj_t* rssi_label;
     lv_obj_t* rssi_chart;
     lv_chart_series_t* rssi_series;
+    lv_obj_t* rssi_enter_line;         // Racing tab enter threshold line
+    lv_obj_t* rssi_exit_line;          // Racing tab exit threshold line
+    lv_point_t rssi_enter_points[2];   // Line endpoints for racing enter threshold
+    lv_point_t rssi_exit_points[2];    // Line endpoints for racing exit threshold
     lv_obj_t* lap_count_label;
     lv_obj_t* status_label;
     lv_obj_t* battery_label;

@@ -413,11 +413,44 @@ void FpvLcdUI::createRacingTab() {
     rssi_series = lv_chart_add_series(rssi_chart, lv_color_hex(0x00ff00), LV_CHART_AXIS_PRIMARY_Y);
     lv_obj_set_style_line_width(rssi_chart, 2, LV_PART_ITEMS);
     
+    // Add area fill under the line
+    lv_obj_set_style_bg_opa(rssi_chart, LV_OPA_50, LV_PART_ITEMS);  // 50% opacity fill
+    lv_obj_set_style_bg_color(rssi_chart, lv_color_hex(0x00ff00), LV_PART_ITEMS);
+    
     // Initialize with zeros
     for (int i = 0; i < 30; i++) {
         rssi_series->y_points[i] = 0;
     }
     lv_chart_refresh(rssi_chart);
+    
+    // Threshold lines overlaid on racing RSSI chart
+    // Enter threshold line (blue)
+    rssi_enter_line = lv_line_create(rssi_box);
+    lv_obj_set_style_line_width(rssi_enter_line, 1, 0);
+    lv_obj_set_style_line_color(rssi_enter_line, lv_color_hex(0x0099ff), 0);
+    lv_obj_set_style_line_dash_width(rssi_enter_line, 3, 0);
+    lv_obj_set_style_line_dash_gap(rssi_enter_line, 2, 0);
+    
+    // Initialize with default points (chart is at 75,10 with size 140x45)
+    rssi_enter_points[0].x = 77;
+    rssi_enter_points[0].y = 32;  // Middle of chart (10 + 22)
+    rssi_enter_points[1].x = 213;
+    rssi_enter_points[1].y = 32;
+    lv_line_set_points(rssi_enter_line, rssi_enter_points, 2);
+    
+    // Exit threshold line (red)
+    rssi_exit_line = lv_line_create(rssi_box);
+    lv_obj_set_style_line_width(rssi_exit_line, 1, 0);
+    lv_obj_set_style_line_color(rssi_exit_line, lv_color_hex(0xff0000), 0);
+    lv_obj_set_style_line_dash_width(rssi_exit_line, 3, 0);
+    lv_obj_set_style_line_dash_gap(rssi_exit_line, 2, 0);
+    
+    // Initialize with default points
+    rssi_exit_points[0].x = 77;
+    rssi_exit_points[0].y = 37;  // Slightly below enter line
+    rssi_exit_points[1].x = 213;
+    rssi_exit_points[1].y = 37;
+    lv_line_set_points(rssi_exit_line, rssi_exit_points, 2);
     
     // Battery indicator (top-right corner)
     battery_icon = lv_obj_create(rssi_box);
@@ -1270,18 +1303,39 @@ void FpvLcdUI::clearLaps() {
 void FpvLcdUI::processRssiUpdate() {
     uint8_t rssi = _pendingRssi;
     
-    // Update racing tab RSSI
+    // Update racing tab RSSI with threshold highlighting
     if (rssi_label) {
         char buf[8];
         snprintf(buf, sizeof(buf), "%d", rssi);
         lv_label_set_text(rssi_label, buf);
+        
+        // Highlight when above enter threshold
+        uint8_t enterThreshold = _pendingEnterRssi;
+        if (rssi >= enterThreshold) {
+            // Above enter threshold - highlight in orange
+            lv_obj_set_style_text_color(rssi_label, lv_color_hex(0xff8800), 0);
+        } else {
+            // Below threshold - normal green
+            lv_obj_set_style_text_color(rssi_label, lv_color_hex(0x00ff00), 0);
+        }
     }
     
-    // Update racing tab chart
+    // Update racing tab chart with threshold-aware coloring
     if (rssi_chart && rssi_series) {
         uint32_t now = millis();
         if (now - _lastGraphUpdate >= 100) {  // Update chart at 10Hz
             _lastGraphUpdate = now;
+            
+            // Change series color based on threshold crossing
+            uint8_t enterThreshold = _pendingEnterRssi;
+            if (rssi >= enterThreshold) {
+                // Above enter threshold - change to orange
+                lv_chart_set_series_color(rssi_chart, rssi_series, lv_color_hex(0xff8800));
+            } else {
+                // Below threshold - normal green
+                lv_chart_set_series_color(rssi_chart, rssi_series, lv_color_hex(0x00ff00));
+            }
+            
             lv_chart_set_next_value(rssi_chart, rssi_series, rssi);
         }
     }
@@ -1439,6 +1493,37 @@ void FpvLcdUI::processThresholdUpdate() {
         char buf[8];
         snprintf(buf, sizeof(buf), "%d", exit_val);
         lv_label_set_text(calib_exit_value, buf);
+    }
+    
+    // Update racing tab threshold lines
+    // Chart is at (75, 10) with size (140, 45), with 2px padding
+    const int16_t racing_chart_x = 75;
+    const int16_t racing_chart_y = 10;
+    const int16_t racing_chart_w = 140;
+    const int16_t racing_chart_h = 45;
+    const int16_t racing_pad = 2;
+    const int16_t racing_inner_h = racing_chart_h - (2 * racing_pad);
+    
+    if (rssi_enter_line) {
+        // Map enter threshold (0-255) to chart Y position (inverted: high RSSI = top)
+        int16_t y_pos = racing_chart_y + racing_pad + racing_inner_h - (enter * racing_inner_h / 255);
+        
+        rssi_enter_points[0].x = racing_chart_x + racing_pad;
+        rssi_enter_points[0].y = y_pos;
+        rssi_enter_points[1].x = racing_chart_x + racing_chart_w - racing_pad;
+        rssi_enter_points[1].y = y_pos;
+        lv_line_set_points(rssi_enter_line, rssi_enter_points, 2);
+    }
+    
+    if (rssi_exit_line) {
+        // Map exit threshold (0-255) to chart Y position (inverted: high RSSI = top)
+        int16_t y_pos = racing_chart_y + racing_pad + racing_inner_h - (exit_val * racing_inner_h / 255);
+        
+        rssi_exit_points[0].x = racing_chart_x + racing_pad;
+        rssi_exit_points[0].y = y_pos;
+        rssi_exit_points[1].x = racing_chart_x + racing_chart_w - racing_pad;
+        rssi_exit_points[1].y = y_pos;
+        lv_line_set_points(rssi_exit_line, rssi_exit_points, 2);
     }
     
     // Update calibration chart threshold lines
