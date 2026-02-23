@@ -101,6 +101,8 @@ private:
     lv_obj_t* calib_exit_line;
     lv_obj_t* calib_enter_value;
     lv_obj_t* calib_exit_value;
+    lv_point_t calib_enter_points[2];  // Line endpoints for enter threshold
+    lv_point_t calib_exit_points[2];   // Line endpoints for exit threshold
     
     // Control buttons
     lv_obj_t* start_btn;
