@@ -31,6 +31,15 @@ class LapTimer {
     uint8_t getRssi();
     uint32_t getLapTime();
     bool isLapAvailable();
+    void addManualLap(uint32_t lapTimeMs);  // For web/test lap injection
+    
+    // Timing methods for LCD display
+    bool isRaceRunning();
+    uint32_t getRaceTimeMs();
+    uint32_t getCurrentLapTimeMs();
+    uint32_t getFastestLapMs();
+    uint32_t getFastest3ConsecutiveMs();
+    uint8_t getLapCount();
     
     // Effective thresholds (returns configured values)
     uint8_t getEffectiveEnterRssi();

@@ -440,9 +440,28 @@ void loop() {
     timer.handleLapTimerUpdate(currentTimeMs);
     
 #if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
-    // Feed live RSSI to LCD UI
+    // Feed live RSSI and timing data to LCD UI
     if (g_lcdUi) {
         g_lcdUi->updateRSSI(timer.getRssi());
+        
+        // Update timers based on race state
+        static bool wasRunning = false;
+        bool isRunning = timer.isRaceRunning();
+        
+        if (isRunning) {
+            // Race active - update all timers continuously
+            g_lcdUi->updateRaceTime(timer.getRaceTimeMs());
+            g_lcdUi->updateCurrentLapTime(timer.getCurrentLapTimeMs());
+            g_lcdUi->updateFastestLap(timer.getFastestLapMs());
+            g_lcdUi->updateFastest3Laps(timer.getFastest3ConsecutiveMs());
+        } else if (wasRunning && !isRunning) {
+            // Just stopped - reset all timer displays
+            g_lcdUi->updateRaceTime(0);
+            g_lcdUi->updateCurrentLapTime(0);
+            g_lcdUi->updateFastestLap(0);
+            g_lcdUi->updateFastest3Laps(0);
+        }
+        wasRunning = isRunning;
         
 #ifdef HAS_BATTERY_MONITOR
         // Update battery display every 5 seconds
@@ -588,7 +607,8 @@ void loop() {
         // Forward web-originated laps and clears to LCD
         uint32_t webLap;
         if (ws.consumePendingLap(webLap)) {
-            g_lcdUi->addLap(webLap);
+            timer.addManualLap(webLap);  // Update LapTimer state
+            g_lcdUi->addLap(webLap);     // Update LCD display
         }
         if (ws.consumePendingClear()) {
             g_lcdUi->clearLaps();

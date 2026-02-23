@@ -48,6 +48,10 @@ public:
     void updateLapTimes(float* lapTimes, uint8_t lapCount);
     void updateBattery(uint8_t percentage, float voltage);
     void updateStatus(const char* status);
+    void updateRaceTime(uint32_t raceTimeMs);     // Update total race time
+    void updateCurrentLapTime(uint32_t lapTimeMs); // Update current lap time
+    void updateFastestLap(uint32_t lapTimeMs);     // Update fastest lap display
+    void updateFastest3Laps(uint32_t totalTimeMs); // Update best 3 consecutive
 
 private:
     // Display hardware
@@ -82,6 +86,12 @@ private:
     lv_obj_t* status_label;
     lv_obj_t* battery_label;
     lv_obj_t* battery_icon;
+    
+    // Race timing displays
+    lv_obj_t* race_time_label;      // Total race time
+    lv_obj_t* current_lap_label;    // Current lap time
+    lv_obj_t* fastest_lap_label;    // Fastest single lap
+    lv_obj_t* fastest_3_label;      // Fastest 3 consecutive laps
     
     // Calibration tab elements
     lv_obj_t* calib_rssi_label;

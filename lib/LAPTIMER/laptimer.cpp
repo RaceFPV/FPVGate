@@ -357,9 +357,10 @@ void LapTimer::handleLapTimerUpdate(uint32_t currentTimeMs) {
 
             if (isGate1 || minLapElapsed) {
                 lapPeakCapture();
-                if (lapPeakCaptured()) {
-                    DEBUG("Lap triggered! Time: %u ms (Gate 1: %s)\n",
-                          currentTimeMs - startTimeMs, isGate1 ? "YES" : "NO");
+                bool captured = lapPeakCaptured();
+                if (captured) {
+                    DEBUG("Lap triggered! Time: %u ms (Gate 1: %s), lapCount=%u\n",
+                          currentTimeMs - startTimeMs, isGate1 ? "YES" : "NO", lapCount);
                     finishLap();
                     startLap();
                 }
@@ -502,6 +503,8 @@ void LapTimer::startLap() {
 }
 
 void LapTimer::finishLap() {
+    DEBUG(">>> finishLap() CALLED - lapCount BEFORE=%u, wraparound=%d\n", lapCount, lapCountWraparound);
+    
     lapTimes[lapCount] = rssiPeakTimeMs - startTimeMs;
     if (lapCount == 0 && lapCountWraparound == false) {
         lapTimes[0] = rssiPeakTimeMs - raceStartTimeMs;
@@ -534,6 +537,8 @@ void LapTimer::finishLap() {
     }
     lapCount = (lapCount + 1) % LAPTIMER_LAP_HISTORY;
     lapAvailable = true;
+    
+    DEBUG(">>> finishLap() DONE - lapCount AFTER=%u, lapTime stored=%u\n", lapCount, lapTimes[lapCount == 0 ? LAPTIMER_LAP_HISTORY - 1 : lapCount - 1]);
 
 #ifdef ESP32S3
     if (g_rgbLed) g_rgbLed->flashLap();
@@ -561,6 +566,103 @@ uint32_t LapTimer::getLapTime() {
 
 bool LapTimer::isLapAvailable() {
     return lapAvailable;
+}
+
+void LapTimer::addManualLap(uint32_t lapTimeMs) {
+    DEBUG("addManualLap: Adding manual lap %u ms (lapCount=%u, wraparound=%d)\n", lapTimeMs, lapCount, lapCountWraparound);
+    
+    // Store the lap time in the circular buffer
+    lapTimes[lapCount] = lapTimeMs;
+    
+    // Update distance tracking if track is set
+    if (selectedTrack && selectedTrack->distance > 0) {
+        totalDistanceTravelled += selectedTrack->distance;
+        
+        uint8_t maxLaps = conf->getMaxLaps();
+        if (maxLaps > 0) {
+            int lapsCompleted = lapCount + 1;
+            if (lapCountWraparound) {
+                lapsCompleted = LAPTIMER_LAP_HISTORY + (lapCount + 1);
+            }
+            int lapsRemaining = maxLaps - lapsCompleted;
+            distanceRemaining = (lapsRemaining > 0) ? (lapsRemaining * selectedTrack->distance) : 0.0f;
+        } else {
+            distanceRemaining = 0.0f;
+        }
+        
+        DEBUG("Distance: Travelled = %.2f m, Remaining = %.2f m\n",
+              totalDistanceTravelled, distanceRemaining);
+    }
+    
+    // Handle lap count wraparound
+    if ((lapCount + 1) % LAPTIMER_LAP_HISTORY == 0) {
+        lapCountWraparound = true;
+    }
+    lapCount = (lapCount + 1) % LAPTIMER_LAP_HISTORY;
+    
+    // Update current lap start time if race is running
+    if (state == RUNNING) {
+        startTimeMs = millis();  // Reset current lap timer
+    }
+    
+    DEBUG("addManualLap: lapCount now=%u, wraparound=%d\n", lapCount, lapCountWraparound);
+}
+
+bool LapTimer::isRaceRunning() {
+    return (state == RUNNING || state == WAITING);
+}
+
+uint32_t LapTimer::getRaceTimeMs() {
+    if (state == STOPPED) return 0;
+    return millis() - raceStartTimeMs;
+}
+
+uint32_t LapTimer::getCurrentLapTimeMs() {
+    if (state != RUNNING) return 0;
+    return millis() - startTimeMs;
+}
+
+uint32_t LapTimer::getFastestLapMs() {
+    uint32_t fastest = UINT32_MAX;
+    for (uint8_t i = 0; i < LAPTIMER_LAP_HISTORY; i++) {
+        if (lapTimes[i] > 0 && lapTimes[i] < fastest) {
+            fastest = lapTimes[i];
+        }
+    }
+    uint32_t result = (fastest == UINT32_MAX) ? 0 : fastest;
+    DEBUG("getFastestLapMs: lapCount=%u, fastest=%u, returning=%u\n", lapCount, fastest, result);
+    return result;
+}
+
+uint32_t LapTimer::getFastest3ConsecutiveMs() {
+    DEBUG("getFastest3ConsecutiveMs: lapCount=%u, wraparound=%d\n", lapCount, lapCountWraparound);
+    
+    if (lapCount < 3 && !lapCountWraparound) {
+        DEBUG("  Not enough laps yet (need 3)\n");
+        return 0;
+    }
+    
+    uint32_t fastestSum = UINT32_MAX;
+    // Check all possible 3-lap windows
+    for (uint8_t i = 0; i < LAPTIMER_LAP_HISTORY - 2; i++) {
+        if (lapTimes[i] > 0 && lapTimes[i+1] > 0 && lapTimes[i+2] > 0) {
+            uint32_t sum = lapTimes[i] + lapTimes[i+1] + lapTimes[i+2];
+            DEBUG("  Window[%u]: %u + %u + %u = %u\n", i, lapTimes[i], lapTimes[i+1], lapTimes[i+2], sum);
+            if (sum < fastestSum) {
+                fastestSum = sum;
+            }
+        }
+    }
+    uint32_t result = (fastestSum == UINT32_MAX) ? 0 : fastestSum;
+    DEBUG("  Returning: %u\n", result);
+    return result;
+}
+
+uint8_t LapTimer::getLapCount() {
+    if (lapCountWraparound) {
+        return LAPTIMER_LAP_HISTORY + lapCount;
+    }
+    return lapCount;
 }
 
 void LapTimer::startCalibrationWizard() {
