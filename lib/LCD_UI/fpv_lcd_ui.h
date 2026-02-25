@@ -179,6 +179,10 @@ private:
     volatile uint8_t _pendingEnterRssi;
     volatile uint8_t _pendingExitRssi;
     volatile bool _thresholdDirty;
+
+    // Cross-core battery display update (written from loop core 1, read by UI task core 0)
+    volatile uint16_t _pendingBatteryVoltage;
+    volatile bool _batteryDirty;
     
     // Cross-core buzzer request (written from UI task core 0, read by loop core 1)
     volatile uint16_t _pendingBuzzerMs;
@@ -202,6 +206,7 @@ private:
     void processLapUpdate();           // Called from UI task only
     void processBandChannelUpdate();   // Called from UI task only
     void processThresholdUpdate();     // Called from UI task only
+    void processBatteryUpdate();       // Called from UI task only
     void updateScreenBrightness();
     
     // Countdown/finish overlay methods (called from UI task core 0 only)
@@ -229,4 +234,5 @@ private:
     static void exitDecEvent(lv_event_t* e);
     static void exitIncEvent(lv_event_t* e);
     static void brightnessSliderEvent(lv_event_t* e);
+    static void racingScrollBeginEvent(lv_event_t* e);
 };

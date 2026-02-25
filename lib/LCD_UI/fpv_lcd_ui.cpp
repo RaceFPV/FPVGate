@@ -55,6 +55,7 @@ FpvLcdUI::FpvLcdUI()
       _enterDelta(0), _exitDelta(0),
       _pendingSystemIdx(0), _pendingBandIdx(0), _pendingChannelIdx(0), _pendingFreqMhz(0), _bandChannelDirty(false),
       _pendingEnterRssi(120), _pendingExitRssi(100), _thresholdDirty(false),
+      _pendingBatteryVoltage(0), _batteryDirty(false),
       _pendingBuzzerMs(0),
       _lapCount(0), _lapsDirty(false),
       _lastGraphUpdate(0) {
@@ -236,28 +237,35 @@ void FpvLcdUI::uiTask(void* parameter) {
         ui->processLapUpdate();
         ui->processBandChannelUpdate();
         ui->processThresholdUpdate();
+        ui->processBatteryUpdate();
         
         // Tick countdown/finish overlays
         if (ui->_countdownActive) ui->updateCountdown();
         if (ui->_finishActive) ui->updateFinish();
         
         lv_timer_handler();
-        
+
 #if defined(BOARD_ESP32_S3_TOUCH)
-        // ESP32-S3: Manual full screen blit since we're using direct mode
-        // Must acquire SPI mutex since SD card shares the same bus
-        // Full screen transfer takes ~100-150ms, so use generous timeout
-        if (ui->gfx && FpvLcdUI::s_buf) {
-            if (spiMutexTake(pdMS_TO_TICKS(2000))) {  // Increased timeout for SD card operations
+        // ESP32-S3: Manual full screen blit (direct mode). LCD and SD share SPI; use adaptive timeout:
+        // - During countdown/finish: 50ms so we never block (countdown must keep ticking).
+        // - Otherwise: 1200ms so we get blits when SD releases; avoids malformed screen during long SD ops.
+        static uint32_t lastBlitMs = 0;
+        uint32_t now = millis();
+        bool recentlyTouched = (now - ui->_lastTouchTime) < 350;
+        bool shouldBlit = recentlyTouched || (now - lastBlitMs) >= 50;
+        bool criticalOverlay = ui->_countdownActive || ui->_finishActive;
+        TickType_t blitTimeout = criticalOverlay ? pdMS_TO_TICKS(50) : pdMS_TO_TICKS(1200);
+
+        if (shouldBlit && ui->gfx && FpvLcdUI::s_buf) {
+            if (spiMutexTake(blitTimeout)) {
                 ui->gfx->draw16bitBeRGBBitmap(0, 0, (uint16_t*)FpvLcdUI::s_buf, 240, 320);
                 spiMutexGive();
-            } else {
-                Serial.println("[LCD] WARNING: SPI mutex timeout - SD card may be stuck");
+                lastBlitMs = now;
             }
         }
 #endif
-        
-        vTaskDelay(pdMS_TO_TICKS(8));  // ~120fps for smoother animations
+
+        vTaskDelay(pdMS_TO_TICKS(4));  // 250 Hz loop: more responsive scroll/touch; actual FPS limited by blit
     }
 }
 
@@ -343,13 +351,14 @@ void FpvLcdUI::createUI() {
     lv_obj_set_style_bg_color(tab_calib, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_color(tab_system, lv_color_hex(0x000000), 0);
     
-    // Ensure tabs fit screen width and only scroll vertically
-    lv_obj_set_size(tab_racing, 240, LV_SIZE_CONTENT);
+    // Racing tab: full screen so header/content % heights resolve (6% / 94%)
+    lv_obj_set_size(tab_racing, 240, 320);
+    // Other tabs: content-based height, scroll vertically
     lv_obj_set_size(tab_pilot, 240, LV_SIZE_CONTENT);
     lv_obj_set_size(tab_calib, 240, LV_SIZE_CONTENT);
     lv_obj_set_size(tab_system, 240, LV_SIZE_CONTENT);
     
-    lv_obj_set_scroll_dir(tab_racing, LV_DIR_VER);
+    lv_obj_set_scroll_dir(tab_racing, LV_DIR_NONE);  // Racing has its own scroll (fixed header + content)
     lv_obj_set_scroll_dir(tab_pilot, LV_DIR_VER);
     lv_obj_set_scroll_dir(tab_calib, LV_DIR_VER);
     lv_obj_set_scroll_dir(tab_system, LV_DIR_VER);
@@ -365,21 +374,96 @@ void FpvLcdUI::createUI() {
     createPilotTab();
     createCalibTab();
     createSystemTab();
+
+    // Force layout so scroll extent and hit-testing are correct (fixes scroll + touch in racing tab)
+    lv_obj_update_layout(lv_scr_act());
 }
 
 void FpvLcdUI::createRacingTab() {
     lv_obj_t *scr = tab_racing;
-    
-    // === RSSI DISPLAY (Smaller box at top) ===
-    lv_obj_t *rssi_box = lv_obj_create(scr);
-    lv_obj_set_size(rssi_box, 220, 65);
-    lv_obj_set_pos(rssi_box, 10, 5);
+
+    // Tab: flex column so header + content stack; full size
+    lv_obj_set_layout(scr, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(scr, 0, 0);
+    lv_obj_set_style_pad_column(scr, 0, 0);
+
+    // === FIXED HEADER: fixed height so flex gives content a definite viewport (scroll works) ===
+    lv_obj_t *header_bar = lv_obj_create(scr);
+    lv_obj_set_width(header_bar, lv_pct(100));
+    lv_obj_set_height(header_bar, 20);
+    lv_obj_set_style_bg_color(header_bar, lv_color_hex(0x0d0d0d), 0);
+    lv_obj_set_style_border_width(header_bar, 0, 0);
+    lv_obj_set_style_pad_all(header_bar, 4, 0);
+    lv_obj_clear_flag(header_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_layout(header_bar, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(header_bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header_bar, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *title_label = lv_label_create(header_bar);
+    lv_label_set_text(title_label, "FPVGate");
+    lv_obj_set_style_text_font(title_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(title_label, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_bg_opa(title_label, LV_OPA_TRANSP, 0);
+
+    // Battery group (icon + label) on the right
+    lv_obj_t *battery_wrap = lv_obj_create(header_bar);
+    lv_obj_set_size(battery_wrap, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(battery_wrap, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(battery_wrap, 0, 0);
+    lv_obj_set_style_pad_all(battery_wrap, 0, 0);
+    lv_obj_set_layout(battery_wrap, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(battery_wrap, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(battery_wrap, 4, 0);
+
+    battery_icon = lv_obj_create(battery_wrap);
+    lv_obj_set_size(battery_icon, 20, 12);
+    lv_obj_set_style_bg_color(battery_icon, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_border_width(battery_icon, 1, 0);
+    lv_obj_set_style_border_color(battery_icon, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_radius(battery_icon, 2, 0);
+    lv_obj_set_style_pad_all(battery_icon, 1, 0);
+    lv_obj_clear_flag(battery_icon, LV_OBJ_FLAG_SCROLLABLE);
+
+    battery_label = lv_label_create(battery_wrap);
+    lv_label_set_text(battery_label, "---");
+    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(battery_label, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_bg_opa(battery_label, LV_OPA_TRANSP, 0);
+
+    // === SCROLLABLE CONTENT: flex_grow(1) = take remaining space (300px); gives stable viewport for scroll ===
+    lv_obj_t *content = lv_obj_create(scr);
+    lv_obj_set_width(content, lv_pct(100));
+    lv_obj_set_flex_grow(content, 1);
+    lv_obj_set_style_bg_color(content, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_border_width(content, 0, 0);
+    lv_obj_set_style_pad_all(content, 0, 0);
+    lv_obj_set_scroll_dir(content, LV_DIR_VER);
+    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLL_CHAIN);
+    lv_obj_add_event_cb(content, racingScrollBeginEvent, LV_EVENT_SCROLL_BEGIN, NULL);
+
+    // Inner: flex column, full width. Explicit height so scroll extent > viewport (scroll works, buttons reachable).
+    lv_obj_t *inner = lv_obj_create(content);
+    lv_obj_set_width(inner, lv_pct(100));
+    lv_obj_set_height(inner, 720);
+    lv_obj_set_style_bg_color(inner, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_border_width(inner, 0, 0);
+    lv_obj_set_style_pad_all(inner, 8, 0);
+    lv_obj_set_style_pad_row(inner, 8, 0);
+    lv_obj_clear_flag(inner, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_layout(inner, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(inner, LV_FLEX_FLOW_COLUMN);
+
+    // === RSSI BOX: full width, fixed height (chart needs stable size) ===
+    lv_obj_t *rssi_box = lv_obj_create(inner);
+    lv_obj_set_width(rssi_box, lv_pct(100));
+    lv_obj_set_height(rssi_box, 65);
     lv_obj_set_style_bg_color(rssi_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_color(rssi_box, lv_color_hex(0x00ff00), 0);
     lv_obj_set_style_border_width(rssi_box, 2, 0);
     lv_obj_set_style_pad_all(rssi_box, 0, 0);
     lv_obj_clear_flag(rssi_box, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     lv_obj_t *rssi_title = lv_label_create(rssi_box);
     lv_label_set_text(rssi_title, "RSSI");
     lv_obj_set_style_text_color(rssi_title, lv_color_hex(0x888888), 0);
@@ -387,7 +471,7 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_set_style_bg_opa(rssi_title, LV_OPA_TRANSP, 0);
     lv_obj_set_style_pad_all(rssi_title, 0, 0);
     lv_obj_set_pos(rssi_title, 10, 5);
-    
+
     rssi_label = lv_label_create(rssi_box);
     lv_label_set_text(rssi_label, "0");
     lv_obj_set_style_text_font(rssi_label, &lv_font_montserrat_32, 0);
@@ -395,8 +479,8 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_set_style_bg_opa(rssi_label, LV_OPA_TRANSP, 0);
     lv_obj_set_style_pad_all(rssi_label, 0, 0);
     lv_obj_set_pos(rssi_label, 10, 25);
-    
-    // RSSI Graph
+
+    // RSSI Graph (more width now that battery is in header: 75 to 215)
     rssi_chart = lv_chart_create(rssi_box);
     lv_obj_set_size(rssi_chart, 140, 45);
     lv_obj_set_pos(rssi_chart, 75, 10);
@@ -409,20 +493,20 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_set_style_border_width(rssi_chart, 1, 0);
     lv_obj_set_style_border_color(rssi_chart, lv_color_hex(0x333333), 0);
     lv_obj_set_style_pad_all(rssi_chart, 2, 0);
-    
+
     rssi_series = lv_chart_add_series(rssi_chart, lv_color_hex(0x00ff00), LV_CHART_AXIS_PRIMARY_Y);
     lv_obj_set_style_line_width(rssi_chart, 2, LV_PART_ITEMS);
-    
+
     // Add area fill under the line
     lv_obj_set_style_bg_opa(rssi_chart, LV_OPA_50, LV_PART_ITEMS);  // 50% opacity fill
     lv_obj_set_style_bg_color(rssi_chart, lv_color_hex(0x00ff00), LV_PART_ITEMS);
-    
+
     // Initialize with zeros
     for (int i = 0; i < 30; i++) {
         rssi_series->y_points[i] = 0;
     }
     lv_chart_refresh(rssi_chart);
-    
+
     // Threshold lines overlaid on racing RSSI chart
     // Enter threshold line (blue)
     rssi_enter_line = lv_line_create(rssi_box);
@@ -430,123 +514,122 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_set_style_line_color(rssi_enter_line, lv_color_hex(0x0099ff), 0);
     lv_obj_set_style_line_dash_width(rssi_enter_line, 3, 0);
     lv_obj_set_style_line_dash_gap(rssi_enter_line, 2, 0);
-    
+
     // Initialize with default points (chart is at 75,10 with size 140x45)
     rssi_enter_points[0].x = 77;
     rssi_enter_points[0].y = 32;  // Middle of chart (10 + 22)
     rssi_enter_points[1].x = 213;
     rssi_enter_points[1].y = 32;
     lv_line_set_points(rssi_enter_line, rssi_enter_points, 2);
-    
+
     // Exit threshold line (red)
     rssi_exit_line = lv_line_create(rssi_box);
     lv_obj_set_style_line_width(rssi_exit_line, 1, 0);
     lv_obj_set_style_line_color(rssi_exit_line, lv_color_hex(0xff0000), 0);
     lv_obj_set_style_line_dash_width(rssi_exit_line, 3, 0);
     lv_obj_set_style_line_dash_gap(rssi_exit_line, 2, 0);
-    
+
     // Initialize with default points
     rssi_exit_points[0].x = 77;
     rssi_exit_points[0].y = 37;  // Slightly below enter line
     rssi_exit_points[1].x = 213;
     rssi_exit_points[1].y = 37;
     lv_line_set_points(rssi_exit_line, rssi_exit_points, 2);
-    
-    // Battery indicator (top-right corner)
-    battery_icon = lv_obj_create(rssi_box);
-    lv_obj_set_size(battery_icon, 20, 12);
-    lv_obj_set_pos(battery_icon, 145, 1);
-    lv_obj_set_style_bg_color(battery_icon, lv_color_hex(0x888888), 0);
-    lv_obj_set_style_border_width(battery_icon, 1, 0);
-    lv_obj_set_style_border_color(battery_icon, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_radius(battery_icon, 2, 0);
-    lv_obj_set_style_pad_all(battery_icon, 1, 0);
-    lv_obj_clear_flag(battery_icon, LV_OBJ_FLAG_SCROLLABLE);
-    
-    battery_label = lv_label_create(rssi_box);
-    lv_label_set_text(battery_label, "---");
-    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(battery_label, lv_color_hex(0x888888), 0);
-    lv_obj_set_style_bg_opa(battery_label, LV_OPA_TRANSP, 0);
-    lv_obj_set_pos(battery_label, 182, 1);
-    
-    // === TIMING DISPLAYS (Two boxes side by side) ===
-    // Race Time box (left)
-    lv_obj_t *race_time_box = lv_obj_create(scr);
-    lv_obj_set_size(race_time_box, 105, 55);
-    lv_obj_set_pos(race_time_box, 10, 75);
+
+    // === TIMING ROW: Race Time + Lap Time (full width, 50% each) ===
+    lv_obj_t *timing_row = lv_obj_create(inner);
+    lv_obj_set_width(timing_row, lv_pct(100));
+    lv_obj_set_height(timing_row, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(timing_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(timing_row, 0, 0);
+    lv_obj_set_style_pad_all(timing_row, 0, 0);
+    lv_obj_set_style_pad_column(timing_row, 10, 0);
+    lv_obj_set_layout(timing_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(timing_row, LV_FLEX_FLOW_ROW);
+
+    lv_obj_t *race_time_box = lv_obj_create(timing_row);
+    lv_obj_set_height(race_time_box, 55);
+    lv_obj_set_flex_grow(race_time_box, 1);
     lv_obj_set_style_bg_color(race_time_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(race_time_box, 1, 0);
     lv_obj_set_style_border_color(race_time_box, lv_color_hex(0x333333), 0);
     lv_obj_set_style_pad_all(race_time_box, 0, 0);
     lv_obj_clear_flag(race_time_box, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     lv_obj_t *race_time_title = lv_label_create(race_time_box);
     lv_label_set_text(race_time_title, "Race Time");
     lv_obj_set_style_text_color(race_time_title, lv_color_hex(0x888888), 0);
     lv_obj_set_style_text_font(race_time_title, &lv_font_montserrat_12, 0);
     lv_obj_set_style_bg_opa(race_time_title, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(race_time_title, 5, 3);
-    
+
     race_time_label = lv_label_create(race_time_box);
     lv_label_set_text(race_time_label, "0:00.0");
     lv_obj_set_style_text_font(race_time_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(race_time_label, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(race_time_label, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(race_time_label, 10, 25);
-    
-    // Current Lap Time box (right)
-    lv_obj_t *current_lap_box = lv_obj_create(scr);
-    lv_obj_set_size(current_lap_box, 105, 55);
-    lv_obj_set_pos(current_lap_box, 125, 75);
+
+    lv_obj_t *current_lap_box = lv_obj_create(timing_row);
+    lv_obj_set_height(current_lap_box, 55);
+    lv_obj_set_flex_grow(current_lap_box, 1);
     lv_obj_set_style_bg_color(current_lap_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(current_lap_box, 1, 0);
     lv_obj_set_style_border_color(current_lap_box, lv_color_hex(0x333333), 0);
     lv_obj_set_style_pad_all(current_lap_box, 0, 0);
     lv_obj_clear_flag(current_lap_box, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     lv_obj_t *current_lap_title = lv_label_create(current_lap_box);
     lv_label_set_text(current_lap_title, "Lap Time");
     lv_obj_set_style_text_color(current_lap_title, lv_color_hex(0x888888), 0);
     lv_obj_set_style_text_font(current_lap_title, &lv_font_montserrat_12, 0);
     lv_obj_set_style_bg_opa(current_lap_title, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(current_lap_title, 5, 3);
-    
+
     current_lap_label = lv_label_create(current_lap_box);
     lv_label_set_text(current_lap_label, "0:00.0");
     lv_obj_set_style_text_font(current_lap_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(current_lap_label, lv_color_hex(0x00aaff), 0);
     lv_obj_set_style_bg_opa(current_lap_label, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(current_lap_label, 10, 25);
-    
-    // === LAP COUNT & STATUS ===
-    lv_obj_t *lap_box = lv_obj_create(scr);
-    lv_obj_set_size(lap_box, 105, 55);
-    lv_obj_set_pos(lap_box, 10, 135);
+
+    // === LAP COUNT & STATUS ROW ===
+    lv_obj_t *lap_status_row = lv_obj_create(inner);
+    lv_obj_set_width(lap_status_row, lv_pct(100));
+    lv_obj_set_height(lap_status_row, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(lap_status_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(lap_status_row, 0, 0);
+    lv_obj_set_style_pad_all(lap_status_row, 0, 0);
+    lv_obj_set_style_pad_column(lap_status_row, 10, 0);
+    lv_obj_set_layout(lap_status_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(lap_status_row, LV_FLEX_FLOW_ROW);
+
+    lv_obj_t *lap_box = lv_obj_create(lap_status_row);
+    lv_obj_set_height(lap_box, 55);
+    lv_obj_set_flex_grow(lap_box, 1);
     lv_obj_set_style_bg_color(lap_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(lap_box, 1, 0);
     lv_obj_set_style_border_color(lap_box, lv_color_hex(0x333333), 0);
     lv_obj_set_style_pad_all(lap_box, 0, 0);
     lv_obj_clear_flag(lap_box, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     lv_obj_t *lap_title = lv_label_create(lap_box);
     lv_label_set_text(lap_title, "Laps");
     lv_obj_set_style_text_color(lap_title, lv_color_hex(0x888888), 0);
     lv_obj_set_style_text_font(lap_title, &lv_font_montserrat_12, 0);
     lv_obj_set_style_bg_opa(lap_title, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(lap_title, 5, 3);
-    
+
     lap_count_label = lv_label_create(lap_box);
     lv_label_set_text(lap_count_label, "0");
     lv_obj_set_style_text_font(lap_count_label, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(lap_count_label, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_bg_opa(lap_count_label, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(lap_count_label, 35, 20);
-    
-    // Status box (right of laps)
-    lv_obj_t *status_box = lv_obj_create(scr);
-    lv_obj_set_size(status_box, 105, 55);
-    lv_obj_set_pos(status_box, 125, 135);
+
+    lv_obj_t *status_box = lv_obj_create(lap_status_row);
+    lv_obj_set_height(status_box, 55);
+    lv_obj_set_flex_grow(status_box, 1);
     lv_obj_set_style_bg_color(status_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(status_box, 1, 0);
     lv_obj_set_style_border_color(status_box, lv_color_hex(0x333333), 0);
@@ -560,60 +643,67 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_set_style_bg_opa(status_label, LV_OPA_TRANSP, 0);
     lv_obj_center(status_label);
     
-    // === FASTEST LAP DISPLAYS ===
-    // Fastest Lap box (left)
-    lv_obj_t *fastest_lap_box = lv_obj_create(scr);
-    lv_obj_set_size(fastest_lap_box, 105, 48);
-    lv_obj_set_pos(fastest_lap_box, 10, 195);
+    // === FASTEST LAP ROW ===
+    lv_obj_t *fastest_row = lv_obj_create(inner);
+    lv_obj_set_width(fastest_row, lv_pct(100));
+    lv_obj_set_height(fastest_row, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(fastest_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(fastest_row, 0, 0);
+    lv_obj_set_style_pad_all(fastest_row, 0, 0);
+    lv_obj_set_style_pad_column(fastest_row, 10, 0);
+    lv_obj_set_layout(fastest_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(fastest_row, LV_FLEX_FLOW_ROW);
+
+    lv_obj_t *fastest_lap_box = lv_obj_create(fastest_row);
+    lv_obj_set_height(fastest_lap_box, 48);
+    lv_obj_set_flex_grow(fastest_lap_box, 1);
     lv_obj_set_style_bg_color(fastest_lap_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(fastest_lap_box, 1, 0);
     lv_obj_set_style_border_color(fastest_lap_box, lv_color_hex(0xffaa00), 0);
     lv_obj_set_style_pad_all(fastest_lap_box, 0, 0);
     lv_obj_clear_flag(fastest_lap_box, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     lv_obj_t *fastest_lap_title = lv_label_create(fastest_lap_box);
     lv_label_set_text(fastest_lap_title, "Fastest");
     lv_obj_set_style_text_color(fastest_lap_title, lv_color_hex(0x888888), 0);
     lv_obj_set_style_text_font(fastest_lap_title, &lv_font_montserrat_12, 0);
     lv_obj_set_style_bg_opa(fastest_lap_title, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(fastest_lap_title, 5, 2);
-    
+
     fastest_lap_label = lv_label_create(fastest_lap_box);
     lv_label_set_text(fastest_lap_label, "--:--");
     lv_obj_set_style_text_font(fastest_lap_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(fastest_lap_label, lv_color_hex(0xffaa00), 0);
     lv_obj_set_style_bg_opa(fastest_lap_label, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(fastest_lap_label, 8, 20);
-    
-    // Fastest 3 Consecutive box (right)
-    lv_obj_t *fastest_3_box = lv_obj_create(scr);
-    lv_obj_set_size(fastest_3_box, 105, 48);
-    lv_obj_set_pos(fastest_3_box, 125, 195);
+
+    lv_obj_t *fastest_3_box = lv_obj_create(fastest_row);
+    lv_obj_set_height(fastest_3_box, 48);
+    lv_obj_set_flex_grow(fastest_3_box, 1);
     lv_obj_set_style_bg_color(fastest_3_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(fastest_3_box, 1, 0);
     lv_obj_set_style_border_color(fastest_3_box, lv_color_hex(0xff6600), 0);
     lv_obj_set_style_pad_all(fastest_3_box, 0, 0);
     lv_obj_clear_flag(fastest_3_box, LV_OBJ_FLAG_SCROLLABLE);
-    
+
     lv_obj_t *fastest_3_title = lv_label_create(fastest_3_box);
     lv_label_set_text(fastest_3_title, "Best 3");
     lv_obj_set_style_text_color(fastest_3_title, lv_color_hex(0x888888), 0);
     lv_obj_set_style_text_font(fastest_3_title, &lv_font_montserrat_12, 0);
     lv_obj_set_style_bg_opa(fastest_3_title, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(fastest_3_title, 5, 2);
-    
+
     fastest_3_label = lv_label_create(fastest_3_box);
     lv_label_set_text(fastest_3_label, "--:--");
     lv_obj_set_style_text_font(fastest_3_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(fastest_3_label, lv_color_hex(0xff6600), 0);
     lv_obj_set_style_bg_opa(fastest_3_label, LV_OPA_TRANSP, 0);
     lv_obj_set_pos(fastest_3_label, 8, 20);
-    
-    // === BUTTONS ===
-    // Start button
-    start_btn = lv_btn_create(scr);
-    lv_obj_set_size(start_btn, 220, 40);
-    lv_obj_set_pos(start_btn, 10, 250);
+
+    // === BUTTONS (full width) ===
+    start_btn = lv_btn_create(inner);
+    lv_obj_set_width(start_btn, lv_pct(100));
+    lv_obj_set_height(start_btn, 40);
     lv_obj_set_style_bg_color(start_btn, lv_color_hex(0x00aa00), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(start_btn, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(start_btn, 0, 0);
@@ -626,9 +716,9 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_add_event_cb(start_btn, startBtnEvent, LV_EVENT_CLICKED, this);
     
     // Stop button (initially hidden, full width)
-    stop_btn = lv_btn_create(scr);
-    lv_obj_set_size(stop_btn, 220, 40);
-    lv_obj_set_pos(stop_btn, 10, 250);
+    stop_btn = lv_btn_create(inner);
+    lv_obj_set_width(stop_btn, lv_pct(100));
+    lv_obj_set_height(stop_btn, 40);
     lv_obj_set_style_bg_color(stop_btn, lv_color_hex(0xaa0000), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(stop_btn, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(stop_btn, 0, 0);
@@ -642,9 +732,9 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_add_event_cb(stop_btn, stopBtnEvent, LV_EVENT_CLICKED, this);
     
     // Clear button (below start button, may require scroll)
-    clear_btn = lv_btn_create(scr);
-    lv_obj_set_size(clear_btn, 220, 36);
-    lv_obj_set_pos(clear_btn, 10, 295);
+    clear_btn = lv_btn_create(inner);
+    lv_obj_set_width(clear_btn, lv_pct(100));
+    lv_obj_set_height(clear_btn, 36);
     lv_obj_set_style_bg_color(clear_btn, lv_color_hex(0x555555), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(clear_btn, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(clear_btn, 0, 0);
@@ -656,17 +746,23 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_center(clear_label);
     lv_obj_add_event_cb(clear_btn, clearBtnEvent, LV_EVENT_CLICKED, this);
     
-    // Lap times section
-    lv_obj_t *lap_times_header = lv_label_create(scr);
+    // Lap times section (full width; header label centered)
+    lv_obj_t *lap_times_header_wrap = lv_obj_create(inner);
+    lv_obj_set_width(lap_times_header_wrap, lv_pct(100));
+    lv_obj_set_height(lap_times_header_wrap, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(lap_times_header_wrap, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(lap_times_header_wrap, 0, 0);
+    lv_obj_set_style_pad_all(lap_times_header_wrap, 0, 0);
+    lv_obj_t *lap_times_header = lv_label_create(lap_times_header_wrap);
     lv_label_set_text(lap_times_header, "--- LAP TIMES ---");
     lv_obj_set_style_text_color(lap_times_header, lv_color_hex(0x888888), 0);
     lv_obj_set_style_text_font(lap_times_header, &lv_font_montserrat_14, 0);
     lv_obj_set_style_bg_opa(lap_times_header, LV_OPA_TRANSP, 0);
-    lv_obj_set_pos(lap_times_header, 60, 959);
-    
-    lap_times_box = lv_obj_create(scr);
-    lv_obj_set_size(lap_times_box, 220, 100);
-    lv_obj_set_pos(lap_times_box, 10, 984);
+    lv_obj_center(lap_times_header);
+
+    lap_times_box = lv_obj_create(inner);
+    lv_obj_set_width(lap_times_box, lv_pct(100));
+    lv_obj_set_height(lap_times_box, 100);
     lv_obj_set_style_bg_color(lap_times_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(lap_times_box, 1, 0);
     lv_obj_set_style_border_color(lap_times_box, lv_color_hex(0x333333), 0);
@@ -1071,6 +1167,12 @@ void FpvLcdUI::createSystemTab() {
     lv_obj_set_pos(battery_voltage_label, 70, 28);
 }
 
+// Shorten scroll throw animation so it finishes in fewer frames (feels snappier with slow blit)
+void FpvLcdUI::racingScrollBeginEvent(lv_event_t* e) {
+    lv_anim_t* a = (lv_anim_t*)lv_event_get_param(e);
+    if (a) lv_anim_set_time(a, 100);
+}
+
 // Button event callbacks (called from UI task on core 0)
 void FpvLcdUI::startBtnEvent(lv_event_t* e) {
     FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
@@ -1230,41 +1332,44 @@ void FpvLcdUI::setThresholdDisplay(uint8_t enterRssi, uint8_t exitRssi) {
     _thresholdDirty = true;
 }
 
-// Thread-safe: called from loop() on core 1
+// Thread-safe: called from loop() on core 1. Only stores value; LVGL update is done in UI task.
 void FpvLcdUI::setBatteryDisplay(uint16_t voltage) {
+    _pendingBatteryVoltage = voltage;
+    _batteryDirty = true;
+}
+
+// Called from UI task on core 0 only - applies pending battery voltage to LVGL
+void FpvLcdUI::processBatteryUpdate() {
+    if (!_batteryDirty) return;
+    _batteryDirty = false;
+
+    uint16_t voltage = _pendingBatteryVoltage;
     if (!battery_label || !battery_icon) return;
-    
+
     // Calculate percentage from voltage (3.0V = 0%, 4.2V = 100%)
-    // voltage is in tenths of volts (e.g. 42 = 4.2V, 30 = 3.0V)
     int16_t percentage = map(voltage, 30, 42, 0, 100);
     if (percentage < 0) percentage = 0;
     if (percentage > 100) percentage = 100;
-    
-    // Update Racing tab battery indicator
+
     char buf[8];
     snprintf(buf, sizeof(buf), "%d%%", percentage);
     lv_label_set_text(battery_label, buf);
-    
-    // Color coding based on battery level
+
     uint32_t color;
     if (percentage > 60) {
-        color = 0x00ff00;  // Green (good)
+        color = 0x00ff00;
     } else if (percentage > 20) {
-        color = 0xffaa00;  // Orange (warning)
+        color = 0xffaa00;
     } else {
-        color = 0xff0000;  // Red (critical)
+        color = 0xff0000;
     }
     lv_obj_set_style_text_color(battery_label, lv_color_hex(color), 0);
-    
-    // Update icon width based on percentage (scale 3-20px)
+
     uint16_t width = map(percentage, 0, 100, 3, 20);
-    if (width < 3) width = 3;  // Minimum visible width
+    if (width < 3) width = 3;
     lv_obj_set_width(battery_icon, width);
-    
-    // Update icon color (same as text)
     lv_obj_set_style_bg_color(battery_icon, lv_color_hex(color), 0);
-    
-    // Update System tab voltage display
+
     if (battery_voltage_label) {
         char voltageBuf[16];
         float volts = voltage / 10.0f;
@@ -1702,14 +1807,14 @@ void FpvLcdUI::startCountdown() {
     _lastBeepValue = -1;
     _countdownStartTime = millis();
     
-    // Create fullscreen semi-transparent overlay on the main screen (not the tab)
-    lv_obj_t* scr = lv_scr_act();
-    if (!scr) {
-        Serial.println("[LCD] ERROR: No screen available for countdown overlay!");
+    // Create fullscreen overlay on the top layer so it's always above tabview/scroll and stays visible
+    lv_obj_t* top = lv_layer_top();
+    if (!top) {
+        Serial.println("[LCD] ERROR: No top layer for countdown overlay!");
         _countdownActive = false;
         return;
     }
-    countdown_overlay = lv_obj_create(scr);
+    countdown_overlay = lv_obj_create(top);
     lv_obj_set_size(countdown_overlay, 240, 320);
     lv_obj_set_pos(countdown_overlay, 0, 0);
     lv_obj_set_style_bg_color(countdown_overlay, lv_color_hex(0x000000), 0);
@@ -1782,6 +1887,7 @@ void FpvLcdUI::updateCountdown() {
                     _lastBeepValue = expectedValue;
                 }
             }
+            lv_obj_invalidate(countdown_label);
         }
     }
 }
