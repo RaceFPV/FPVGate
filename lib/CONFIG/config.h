@@ -145,6 +145,10 @@
 #define PIN_SD_SCK 36
 #define PIN_SD_MOSI 35
 #define PIN_SD_MISO 37
+// I2S audio output (MAX98357A DAC)
+#define PIN_I2S_BCLK 16
+#define PIN_I2S_LRC  17
+#define PIN_I2S_DOUT 18
 
 //ESP32 (DevKit C1 and similar)
 #else
@@ -185,6 +189,11 @@
     #define HAS_BATTERY_MONITOR 1
 #endif
 
+// Boards with I2S audio output (MAX98357A speaker DAC)
+#if defined(ESP32S3) && defined(PIN_I2S_BCLK)
+    #define HAS_I2S_AUDIO 1
+#endif
+
 // Mode selection constants
 #define WIFI_MODE LOW          // GND on switch pin = WiFi/Standalone mode
 #define ROTORHAZARD_MODE HIGH  // HIGH (floating/pullup) = RotorHazard node mode
@@ -192,7 +201,7 @@
 #define EEPROM_RESERVED_SIZE 768
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 14U
+#define CONFIG_VERSION 15U
 
 // Race sync mode constants
 #define RACE_SYNC_DISABLED 0
@@ -268,6 +277,7 @@ typedef struct {
     uint16_t novaKalmanQ;           // Kalman Q * 100 (100-1500, higher = more smoothing)
     uint8_t novaEmaAlpha;           // EMA alpha * 100 (5-80, lower = more smoothing)
     uint8_t novaStepMax;            // Step limiter max per sample (5-50)
+    uint8_t speakerEnabled;         // I2S speaker output enabled (0=disabled, 1=enabled)
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
@@ -294,6 +304,7 @@ class Config {
     uint8_t getAlarmThreshold();
     uint8_t getEnterRssi();
     uint8_t getExitRssi();
+    uint8_t getAnnouncerType();
     uint8_t getAutoThresholdEnabled();
     uint8_t getAutoThresholdOffset();
     uint8_t getMaxLaps();
@@ -386,6 +397,10 @@ class Config {
     // Receiver radio
     uint8_t getReceiverRadio();
     void setReceiverRadio(uint8_t radio);
+    
+    // Speaker output
+    uint8_t getSpeakerEnabled();
+    void setSpeakerEnabled(uint8_t enabled);
     
     // Novacore filter config
     uint8_t getNovaFilterKalman();

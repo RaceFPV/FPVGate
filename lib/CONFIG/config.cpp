@@ -86,9 +86,18 @@ void Config::load(void) {
     if (version != CONFIG_VERSION) {
         DEBUG("EEPROM config version mismatch (found=%u, expected=%u)\n", version, CONFIG_VERSION);
         
-        // Migration from version 13 to 14: add Novacore filter config
-        if (version == 13) {
-            DEBUG("Migrating config from v13 to v14 (adding Novacore filter config)\n");
+        // Migration from version 14 to 15: add speakerEnabled
+        if (version == 14) {
+            DEBUG("Migrating config from v14 to v15 (adding speakerEnabled)\n");
+            conf.speakerEnabled = 1;  // Enabled by default
+            conf.version = CONFIG_VERSION | CONFIG_MAGIC;
+            modified = true;
+            write();
+            DEBUG("Migration complete, config preserved\n");
+        }
+        // Migration from version 13 to 15: add Novacore filter config + speakerEnabled
+        else if (version == 13) {
+            DEBUG("Migrating config from v13 to v15 (adding Novacore filter config + speaker)\n");
             conf.novaFilterKalman = 1;
             conf.novaFilterMedian = 0;
             conf.novaFilterMA = 0;
@@ -97,14 +106,15 @@ void Config::load(void) {
             conf.novaKalmanQ = 200;
             conf.novaEmaAlpha = 15;
             conf.novaStepMax = 20;
+            conf.speakerEnabled = 1;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
             DEBUG("Migration complete, config preserved\n");
         }
-        // Migration from version 12 to 14
+        // Migration from version 12 to 15
         else if (version == 12) {
-            DEBUG("Migrating config from v12 to v14 (adding receiverRadio + filter config)\n");
+            DEBUG("Migrating config from v12 to v15 (adding receiverRadio + filter config + speaker)\n");
             conf.receiverRadio = 0;
             conf.novaFilterKalman = 1;
             conf.novaFilterMedian = 0;
@@ -114,14 +124,15 @@ void Config::load(void) {
             conf.novaKalmanQ = 200;
             conf.novaEmaAlpha = 15;
             conf.novaStepMax = 20;
+            conf.speakerEnabled = 1;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
             DEBUG("Migration complete, config preserved\n");
         }
-        // Migration from version 11 to 14
+        // Migration from version 11 to 15
         else if (version == 11) {
-            DEBUG("Migrating config from v11 to v14\n");
+            DEBUG("Migrating config from v11 to v15\n");
             conf.autoThresholdEnabled = 0;
             conf.autoThresholdOffset = 15;
             conf.receiverRadio = 0;
@@ -133,14 +144,15 @@ void Config::load(void) {
             conf.novaKalmanQ = 200;
             conf.novaEmaAlpha = 15;
             conf.novaStepMax = 20;
+            conf.speakerEnabled = 1;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
             DEBUG("Migration complete, config preserved\n");
         }
-        // Migration from version 10 to 14
+        // Migration from version 10 to 15
         else if (version == 10) {
-            DEBUG("Migrating config from v10 to v14\n");
+            DEBUG("Migrating config from v10 to v15\n");
             memset(conf.masterHostname, 0, sizeof(conf.masterHostname));
             conf.autoThresholdEnabled = 0;
             conf.autoThresholdOffset = 15;
@@ -153,6 +165,7 @@ void Config::load(void) {
             conf.novaKalmanQ = 200;
             conf.novaEmaAlpha = 15;
             conf.novaStepMax = 20;
+            conf.speakerEnabled = 1;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
@@ -292,6 +305,14 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
     config["novaKalmanQ"] = conf.novaKalmanQ;
     config["novaEmaAlpha"] = conf.novaEmaAlpha;
     config["novaStepMax"] = conf.novaStepMax;
+    
+    // Speaker output
+    config["speakerEnabled"] = conf.speakerEnabled;
+#ifdef HAS_I2S_AUDIO
+    config["hasI2SAudio"] = 1;  // Tell WebUI this build supports speaker
+#else
+    config["hasI2SAudio"] = 0;
+#endif
     
     // Add battery voltage if monitor exists
     if (batteryMonitor) {
@@ -684,6 +705,14 @@ void Config::fromJson(JsonObject source) {
         uint8_t val = source["novaStepMax"].as<uint8_t>();
         if (val >= 5 && val <= 50) {
             conf.novaStepMax = val;
+            modified = true;
+        }
+    }
+    // Speaker output
+    if (source.containsKey("speakerEnabled") && source["speakerEnabled"] != conf.speakerEnabled) {
+        uint8_t val = source["speakerEnabled"].as<uint8_t>();
+        if (val <= 1) {
+            conf.speakerEnabled = val;
             modified = true;
         }
     }
@@ -1189,6 +1218,16 @@ uint16_t Config::getNovaKalmanQ() { return conf.novaKalmanQ; }
 uint8_t Config::getNovaEmaAlpha() { return conf.novaEmaAlpha; }
 uint8_t Config::getNovaStepMax() { return conf.novaStepMax; }
 
+uint8_t Config::getAnnouncerType() { return conf.announcerType; }
+
+uint8_t Config::getSpeakerEnabled() { return conf.speakerEnabled; }
+void Config::setSpeakerEnabled(uint8_t enabled) {
+    if (enabled <= 1 && conf.speakerEnabled != enabled) {
+        conf.speakerEnabled = enabled;
+        modified = true;
+    }
+}
+
 void Config::setDefaults(void) {
     DEBUG("Setting EEPROM defaults\n");
     // Reset everything to 0/false and then just set anything that zero is not appropriate
@@ -1254,6 +1293,7 @@ void Config::setDefaults(void) {
     conf.novaKalmanQ = 200;          // Q=2.0 (light smoothing)
     conf.novaEmaAlpha = 15;          // alpha=0.15
     conf.novaStepMax = 20;           // max step per sample
+    conf.speakerEnabled = 1;         // Speaker enabled by default
     modified = true;
     write();
 }
