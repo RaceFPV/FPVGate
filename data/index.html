@@ -559,6 +559,17 @@
                   <button id="GenerateAudioButton" onclick="generateAudio()" style="flex: 1; padding: 8px" data-i18n="settings.tts.test">Test Voice</button>
                 </div>
               </div>
+
+              <div id="speakerSection" class="config-item" style="display: none;">
+                <label for="speakerEnabled">Speaker Output (I2S):</label>
+                <div style="flex: 1">
+                  <label class="switch">
+                    <input type="checkbox" id="speakerEnabled" onchange="toggleSpeaker(this.checked)" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div id="speakerNote" style="display: none; font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px">Plays announcements through the attached MAX98357A speaker</div>
             </div>
 
             <!-- Pilot Section -->

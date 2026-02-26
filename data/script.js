@@ -1171,6 +1171,23 @@ onload = async function (e) {
     if (lapFormatSelect) lapFormatSelect.value = lapFormat;
     if (voiceSelect) voiceSelect.value = selectedVoice;
 
+    // Load speaker setting from device config
+    const speakerSection = document.getElementById("speakerSection");
+    const speakerNote = document.getElementById("speakerNote");
+    const speakerToggle = document.getElementById("speakerEnabled");
+    if (configData.hasI2SAudio === 1) {
+      // Device supports I2S speaker - show the toggle
+      if (speakerSection) speakerSection.style.display = "";
+      if (speakerNote) speakerNote.style.display = "";
+      if (speakerToggle && configData.speakerEnabled !== undefined) {
+        speakerToggle.checked = configData.speakerEnabled === 1;
+      }
+    } else {
+      // No I2S support - hide the toggle
+      if (speakerSection) speakerSection.style.display = "none";
+      if (speakerNote) speakerNote.style.display = "none";
+    }
+
     // Load and apply theme from device config
     if (configData.theme) {
       const savedTheme = configData.theme;
@@ -1909,6 +1926,7 @@ async function saveConfig() {
     raceSyncMode: raceSyncMode,
     syncedTimers: syncedTimers,
     masterHostname: masterHostname,
+    speakerEnabled: document.getElementById("speakerEnabled") ? (document.getElementById("speakerEnabled").checked ? 1 : 0) : 1,
   };
 
   if (usbConnected && transportManager) {
@@ -2525,6 +2543,11 @@ function queueSpeak(obj) {
   audioAnnouncer.queueSpeak(obj);
 }
 
+function toggleSpeaker(enabled) {
+  console.log("Speaker output:", enabled ? "enabled" : "disabled");
+  autoSaveConfig();
+}
+
 function saveLapFormat() {
   const lapFormatSelect = document.getElementById("lapFormatSelect");
   if (lapFormatSelect) {
@@ -2987,6 +3010,12 @@ async function startRace() {
     console.log("[Race] Unlocking audio announcer during race start gesture");
     await audioAnnouncer.unlockAudioContextMobile();
   }
+
+  // Trigger I2S speaker countdown (runs in parallel with browser audio)
+  fetch("/timer/countdown", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  }).catch((err) => console.log("[Race] Countdown endpoint not available:", err));
 
   // Queue both announcements
   queueSpeak(`<p>${i18n.t("settings.tts.arm_quad")}</p>`);

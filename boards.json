@@ -23,7 +23,7 @@
     {
       "value": "wavesharelcd2",
       "label": "Waveshare ESP32-S3-LCD-2 (16MB Flash)",
-      "expert_mode": 0
+      "expert_mode": 1
     }
   ]
 }

@@ -19,6 +19,9 @@
 #ifdef ENABLE_POWER_SWITCH
 #include "power.h"
 #endif
+#ifdef HAS_I2S_AUDIO
+#include "audio.h"
+#endif
 
 // ====================================================================
 // ROTORHAZARD MODE - CURRENTLY DISABLED
@@ -67,6 +70,12 @@ static RgbLed rgbLed;
 RgbLed* g_rgbLed = &rgbLed;
 #else
 void* g_rgbLed = nullptr;
+#endif
+#ifdef HAS_I2S_AUDIO
+static AudioAnnouncer audioAnnouncer;
+AudioAnnouncer* g_audioAnnouncer = &audioAnnouncer;
+#else
+void* g_audioAnnouncer = nullptr;
 #endif
 static LapTimer timer;
 #if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
@@ -626,10 +635,20 @@ void loop() {
             g_lcdUi->addLap(lapTime);
         }
 #endif
+
+#ifdef HAS_I2S_AUDIO
+        // Announce lap on speaker
+        audioAnnouncer.announceLap(lapTime);
+#endif
         
         // If in slave mode, also send lap to master
         ws.sendLapToMaster(lapTime);
     }
+    
+#ifdef HAS_I2S_AUDIO
+    // Drive non-blocking audio playback
+    audioAnnouncer.handleAudio();
+#endif
     
     // Process queued webhooks (non-blocking)
     webhookManager.process();
@@ -653,6 +672,11 @@ void loop() {
             storage.mkdir("/tracks");
             storage.mkdir("/tracks/images");
             DEBUG("SD folders ready\n");
+
+#ifdef HAS_I2S_AUDIO
+            // Initialize speaker audio (requires SD card)
+            audioAnnouncer.init(&config, &storage);
+#endif
             
             // Try to restore config from SD backup if EEPROM was invalid
             // (This handles the case where config was reset to defaults during boot)

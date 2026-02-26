@@ -14,6 +14,10 @@
 #include "rgbled.h"
 extern RgbLed* g_rgbLed;
 #endif
+#ifdef HAS_I2S_AUDIO
+#include "audio.h"
+extern AudioAnnouncer* g_audioAnnouncer;
+#endif
 
 #ifdef HAS_SD_CARD_SUPPORT
 #include <SD.h>
@@ -672,6 +676,24 @@ EEPROM:\n\
         request->send(response);
     });
     
+    // Countdown endpoint - triggers I2S speaker pre-race audio
+    server.on("/timer/countdown", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        AsyncWebServerResponse *response = request->beginResponse(204);
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        request->send(response);
+    });
+    
+    server.on("/timer/countdown", HTTP_POST, [this, sendCorsResponse](AsyncWebServerRequest *request) {
+#ifdef HAS_I2S_AUDIO
+        if (g_audioAnnouncer) {
+            g_audioAnnouncer->announceCountdown();
+        }
+#endif
+        sendCorsResponse(request, "{\"status\": \"OK\"}");
+    });
+    
     server.on("/timer/start", HTTP_POST, [this, sendCorsResponse](AsyncWebServerRequest *request) {
         // Send sync to slaves first (if master)
         sendSyncCommand(conf, "/timer/start");
@@ -680,6 +702,11 @@ EEPROM:\n\
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("started");
         }
+#ifdef HAS_I2S_AUDIO
+        if (g_audioAnnouncer) {
+            g_audioAnnouncer->announceRaceStart();
+        }
+#endif
         sendCorsResponse(request, "{\"status\": \"OK\"}");
     });
     
@@ -699,6 +726,11 @@ EEPROM:\n\
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("stopped");
         }
+#ifdef HAS_I2S_AUDIO
+        if (g_audioAnnouncer) {
+            g_audioAnnouncer->announceRaceStop();
+        }
+#endif
         sendCorsResponse(request, "{\"status\": \"OK\"}");
     });
 
@@ -725,6 +757,11 @@ EEPROM:\n\
 #ifdef HAS_RGB_LED
             if (g_rgbLed) {
                 g_rgbLed->flashLap();
+            }
+#endif
+#ifdef HAS_I2S_AUDIO
+            if (g_audioAnnouncer) {
+                g_audioAnnouncer->announceLap(lapTimeMs);
             }
 #endif
             // Trigger lap webhook if Gate LEDs enabled and Lap enabled
