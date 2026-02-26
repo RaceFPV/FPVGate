@@ -358,7 +358,8 @@ void FpvLcdUI::createUI() {
     lv_obj_set_size(tab_calib, 240, LV_SIZE_CONTENT);
     lv_obj_set_size(tab_system, 240, LV_SIZE_CONTENT);
     
-    lv_obj_set_scroll_dir(tab_racing, LV_DIR_NONE);  // Racing has its own scroll (fixed header + content)
+    // Racing tab: allow all directions so gestures can be properly delegated
+    lv_obj_set_scroll_dir(tab_racing, LV_DIR_ALL);
     lv_obj_set_scroll_dir(tab_pilot, LV_DIR_VER);
     lv_obj_set_scroll_dir(tab_calib, LV_DIR_VER);
     lv_obj_set_scroll_dir(tab_system, LV_DIR_VER);
@@ -439,7 +440,8 @@ void FpvLcdUI::createRacingTab() {
     lv_obj_set_style_border_width(content, 0, 0);
     lv_obj_set_style_pad_all(content, 0, 0);
     lv_obj_set_scroll_dir(content, LV_DIR_VER);
-    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLL_CHAIN);
+    // Allow horizontal gestures to chain to parent for tab swiping
+    lv_obj_add_flag(content, LV_OBJ_FLAG_SCROLL_ONE);
     lv_obj_add_event_cb(content, racingScrollBeginEvent, LV_EVENT_SCROLL_BEGIN, NULL);
 
     // Inner: flex column, full width. Explicit height so scroll extent > viewport (scroll works, buttons reachable).
