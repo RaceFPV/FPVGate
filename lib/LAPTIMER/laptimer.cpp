@@ -630,31 +630,38 @@ uint32_t LapTimer::getFastestLapMs() {
         }
     }
     uint32_t result = (fastest == UINT32_MAX) ? 0 : fastest;
-    DEBUG("getFastestLapMs: lapCount=%u, fastest=%u, returning=%u\n", lapCount, fastest, result);
+    static uint32_t s_lastLogMs = 0;
+    if (millis() - s_lastLogMs >= 1000) {
+        DEBUG("getFastestLapMs: lapCount=%u, fastest=%u, returning=%u\n", lapCount, fastest, result);
+        s_lastLogMs = millis();
+    }
     return result;
 }
 
 uint32_t LapTimer::getFastest3ConsecutiveMs() {
-    DEBUG("getFastest3ConsecutiveMs: lapCount=%u, wraparound=%d\n", lapCount, lapCountWraparound);
-    
+    static uint32_t s_lastLog3Ms = 0;
+    bool doLog = (millis() - s_lastLog3Ms >= 1000);
+    if (doLog) s_lastLog3Ms = millis();
+
+    if (doLog) DEBUG("getFastest3ConsecutiveMs: lapCount=%u, wraparound=%d\n", lapCount, lapCountWraparound);
+
     if (lapCount < 3 && !lapCountWraparound) {
-        DEBUG("  Not enough laps yet (need 3)\n");
+        if (doLog) DEBUG("  Not enough laps yet (need 3)\n");
         return 0;
     }
-    
+
     uint32_t fastestSum = UINT32_MAX;
-    // Check all possible 3-lap windows
     for (uint8_t i = 0; i < LAPTIMER_LAP_HISTORY - 2; i++) {
         if (lapTimes[i] > 0 && lapTimes[i+1] > 0 && lapTimes[i+2] > 0) {
             uint32_t sum = lapTimes[i] + lapTimes[i+1] + lapTimes[i+2];
-            DEBUG("  Window[%u]: %u + %u + %u = %u\n", i, lapTimes[i], lapTimes[i+1], lapTimes[i+2], sum);
+            if (doLog) DEBUG("  Window[%u]: %u + %u + %u = %u\n", i, lapTimes[i], lapTimes[i+1], lapTimes[i+2], sum);
             if (sum < fastestSum) {
                 fastestSum = sum;
             }
         }
     }
     uint32_t result = (fastestSum == UINT32_MAX) ? 0 : fastestSum;
-    DEBUG("  Returning: %u\n", result);
+    if (doLog) DEBUG("  Returning: %u\n", result);
     return result;
 }
 

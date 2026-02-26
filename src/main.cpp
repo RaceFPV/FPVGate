@@ -647,6 +647,13 @@ void loop() {
         if (storage.initSDDeferred()) {
             DEBUG("SD card ready!\n");
             
+            // Ensure SD has required directories (they were created on LittleFS at boot, before SD mounted)
+            DEBUG("Creating SD folders: /races, /tracks, /tracks/images\n");
+            storage.mkdir("/races");
+            storage.mkdir("/tracks");
+            storage.mkdir("/tracks/images");
+            DEBUG("SD folders ready\n");
+            
             // Try to restore config from SD backup if EEPROM was invalid
             // (This handles the case where config was reset to defaults during boot)
             DEBUG("Checking for config backup on SD card...\n");

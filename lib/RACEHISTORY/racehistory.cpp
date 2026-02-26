@@ -80,6 +80,7 @@ bool RaceHistory::saveRace(const RaceSession& race) {
     bool success = storage->writeFile(filepath, json);
     if (success) {
         DEBUG("Saved race to %s (%d bytes)\n", filepath.c_str(), json.length());
+        Serial.printf("[Race] Saved to SD: %s (%u laps)\n", filepath.c_str(), (unsigned)race.lapTimes.size());
         
         // Add to in-memory list
         races.insert(races.begin(), race);
@@ -88,6 +89,7 @@ bool RaceHistory::saveRace(const RaceSession& race) {
         }
     } else {
         DEBUG("Failed to save race to %s\n", filepath.c_str());
+        Serial.printf("[Race] Failed to save to %s\n", filepath.c_str());
     }
     
     return success;
