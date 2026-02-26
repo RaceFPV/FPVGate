@@ -31,6 +31,22 @@ Project creator and lead developer
 **GitHub:** https://github.com/L1cardo  
 **Integrated:** January 2026
 
+### racefpv (@racefpv)
+**Contributions:**
+- LCD touchscreen UI system originally developed for StarForgeOS
+- LVGL-based display framework for Waveshare ESP32-S3-LCD-2
+- Fullscreen countdown overlay and race stop overlay
+- Cross-core architecture pattern (LVGL on core 0, timing on core 1)
+- Touch-friendly settings controls with bidirectional web sync
+- Responsive percentage-based layout system for racing tab
+- Fixed header with scrollable content for improved navigation
+- Adaptive SPI mutex timeouts to prevent SD card lockups
+- Debug message throttling for cleaner serial output
+- Auto-creation of SD card directory structure on startup
+
+**GitHub:** https://github.com/racefpv  
+**Integrated:** February 2026
+
 ---
 
 ## How to Contribute
@@ -57,6 +73,7 @@ We welcome contributions from the FPV community! Here's how you can help:
 
 - **phobos-** for the original PhobosLT project that inspired FPVGate
 - **RotorHazard** project for timing logic inspiration
+- **racefpv** for the StarForgeOS LCD UI that was ported to FPVGate
 - The FPV community for testing and feedback
 
 ---
