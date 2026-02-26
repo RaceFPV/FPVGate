@@ -38,6 +38,11 @@ Project creator and lead developer
 - Fullscreen countdown overlay and race stop overlay
 - Cross-core architecture pattern (LVGL on core 0, timing on core 1)
 - Touch-friendly settings controls with bidirectional web sync
+- Responsive percentage-based layout system for racing tab
+- Fixed header with scrollable content for improved navigation
+- Adaptive SPI mutex timeouts to prevent SD card lockups
+- Debug message throttling for cleaner serial output
+- Auto-creation of SD card directory structure on startup
 
 **GitHub:** https://github.com/racefpv  
 **Integrated:** February 2026
