@@ -56,10 +56,11 @@ FpvLcdUI::FpvLcdUI()
       _pendingSystemIdx(0), _pendingBandIdx(0), _pendingChannelIdx(0), _pendingFreqMhz(0), _bandChannelDirty(false),
       _pendingEnterRssi(120), _pendingExitRssi(100), _thresholdDirty(false),
       _pendingBatteryVoltage(0), _batteryDirty(false),
+      _pendingRaceTimeMs(0), _pendingCurrentLapTimeMs(0), _pendingFastestLapMs(0), _pendingFastest3LapsMs(0), _raceTimingDirty(false),
       _pendingBuzzerMs(0),
       _lapCount(0), _lapsDirty(false),
       _lastGraphUpdate(0) {
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < LAP_TIMES_LABELS; ++i) {
         lap_times_labels[i] = nullptr;
         _lapBuffer[i] = 0;
     }
@@ -238,6 +239,7 @@ void FpvLcdUI::uiTask(void* parameter) {
         ui->processBandChannelUpdate();
         ui->processThresholdUpdate();
         ui->processBatteryUpdate();
+        ui->processRaceTimingUpdate();
         
         // Tick countdown/finish overlays
         if (ui->_countdownActive) ui->updateCountdown();
@@ -764,20 +766,22 @@ void FpvLcdUI::createRacingTab() {
 
     lap_times_box = lv_obj_create(inner);
     lv_obj_set_width(lap_times_box, lv_pct(100));
-    lv_obj_set_height(lap_times_box, 100);
+    lv_obj_set_height(lap_times_box, 120);  // Visible area; content taller for scroll
     lv_obj_set_style_bg_color(lap_times_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(lap_times_box, 1, 0);
     lv_obj_set_style_border_color(lap_times_box, lv_color_hex(0x333333), 0);
-    lv_obj_set_style_pad_all(lap_times_box, 10, 0);
-    lv_obj_clear_flag(lap_times_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(lap_times_box, 8, 0);
+    lv_obj_add_flag(lap_times_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(lap_times_box, LV_DIR_VER);
+    lv_obj_set_flex_flow(lap_times_box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(lap_times_box, 2, 0);
     
-    // Create 5 lap time labels
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < LAP_TIMES_LABELS; i++) {
         lap_times_labels[i] = lv_label_create(lap_times_box);
         lv_label_set_text(lap_times_labels[i], "");
         lv_obj_set_style_text_font(lap_times_labels[i], &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(lap_times_labels[i], lv_color_hex(0xaaaaaa), 0);
-        lv_obj_set_pos(lap_times_labels[i], 5, 5 + (i * 18));
+        lv_obj_set_width(lap_times_labels[i], lv_pct(100));
     }
 }
 
@@ -1402,7 +1406,9 @@ void FpvLcdUI::addLap(uint32_t lapTimeMs) {
 // Thread-safe: called from loop() on core 1
 void FpvLcdUI::clearLaps() {
     _lapCount = 0;
-    for (int i = 0; i < MAX_DISPLAY_LAPS; i++) _lapBuffer[i] = 0;
+    for (int i = 0; i < MAX_DISPLAY_LAPS; i++) {
+        _lapBuffer[i] = 0;
+    }
     _lapsDirty = true;
 }
 
@@ -1501,7 +1507,7 @@ void FpvLcdUI::processLapUpdate() {
         lv_label_set_text(lap_count_label, buf);
     }
     
-    // Update lap time labels (newest first)
+    // Update lap time labels: full list, newest first (Lap N, Lap N-1, ...)
     for (int i = 0; i < MAX_DISPLAY_LAPS; i++) {
         if (!lap_times_labels[i]) continue;
         if (i < displayed) {
@@ -1510,12 +1516,14 @@ void FpvLcdUI::processLapUpdate() {
             uint32_t frac = ms % 1000;
             uint8_t lapNum = totalLaps - i;  // Most recent = highest number
             char buf[32];
-            snprintf(buf, sizeof(buf), "Lap %d: %lu.%03lus", lapNum, secs, frac);
+            snprintf(buf, sizeof(buf), "Lap %d: %lu.%03lus", lapNum, (unsigned long)secs, frac);
             lv_label_set_text(lap_times_labels[i], buf);
-            lv_obj_set_style_text_color(lap_times_labels[i], 
+            lv_obj_set_style_text_color(lap_times_labels[i],
                 i == 0 ? lv_color_hex(0x00ff00) : lv_color_hex(0xaaaaaa), 0);
+            lv_obj_clear_flag(lap_times_labels[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_label_set_text(lap_times_labels[i], "");
+            lv_obj_add_flag(lap_times_labels[i], LV_OBJ_FLAG_HIDDEN);
         }
     }
 }
@@ -1700,12 +1708,18 @@ void FpvLcdUI::updateThreshold(uint8_t enter_rssi, uint8_t exit_rssi) {
 }
 
 void FpvLcdUI::updateLapTimes(float* lapTimes, uint8_t lapCount) {
-    // Update lap time display
-    for (int i = 0; i < 5 && i < lapCount; i++) {
+    for (int i = 0; i < LAP_TIMES_LABELS && i < lapCount; i++) {
         if (lap_times_labels[i]) {
             char buf[32];
             snprintf(buf, sizeof(buf), "Lap %d: %.2fs", i + 1, lapTimes[i]);
             lv_label_set_text(lap_times_labels[i], buf);
+            lv_obj_clear_flag(lap_times_labels[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    for (int i = lapCount; i < LAP_TIMES_LABELS; i++) {
+        if (lap_times_labels[i]) {
+            lv_label_set_text(lap_times_labels[i], "");
+            lv_obj_add_flag(lap_times_labels[i], LV_OBJ_FLAG_HIDDEN);
         }
     }
 }
@@ -1724,61 +1738,77 @@ void FpvLcdUI::updateStatus(const char* status) {
     }
 }
 
+// Thread-safe: called from main (core 1). Only store values; LVGL update is done in UI task (core 0).
 void FpvLcdUI::updateRaceTime(uint32_t raceTimeMs) {
+    _pendingRaceTimeMs = raceTimeMs;
+    _raceTimingDirty = true;
+}
+
+void FpvLcdUI::updateCurrentLapTime(uint32_t lapTimeMs) {
+    _pendingCurrentLapTimeMs = lapTimeMs;
+    _raceTimingDirty = true;
+}
+
+void FpvLcdUI::updateFastestLap(uint32_t lapTimeMs) {
+    _pendingFastestLapMs = lapTimeMs;
+    _raceTimingDirty = true;
+}
+
+void FpvLcdUI::updateFastest3Laps(uint32_t totalTimeMs) {
+    _pendingFastest3LapsMs = totalTimeMs;
+    _raceTimingDirty = true;
+}
+
+// Called from UI task on core 0 only - applies pending race timing to LVGL (avoids core 1 touching LVGL).
+void FpvLcdUI::processRaceTimingUpdate() {
+    if (!_raceTimingDirty) return;
+    _raceTimingDirty = false;
+
+    uint32_t raceTimeMs = _pendingRaceTimeMs;
+    uint32_t currentLapMs = _pendingCurrentLapTimeMs;
+    uint32_t fastestMs = _pendingFastestLapMs;
+    uint32_t fastest3Ms = _pendingFastest3LapsMs;
+
     if (race_time_label) {
         uint32_t totalSeconds = raceTimeMs / 1000;
         uint32_t minutes = totalSeconds / 60;
         uint32_t seconds = totalSeconds % 60;
         uint32_t tenths = (raceTimeMs % 1000) / 100;
-        
         char buf[16];
         snprintf(buf, sizeof(buf), "%u:%02u.%u", minutes, seconds, tenths);
         lv_label_set_text(race_time_label, buf);
     }
-}
-
-void FpvLcdUI::updateCurrentLapTime(uint32_t lapTimeMs) {
     if (current_lap_label) {
-        uint32_t totalSeconds = lapTimeMs / 1000;
+        uint32_t totalSeconds = currentLapMs / 1000;
         uint32_t minutes = totalSeconds / 60;
         uint32_t seconds = totalSeconds % 60;
-        uint32_t tenths = (lapTimeMs % 1000) / 100;
-        
+        uint32_t tenths = (currentLapMs % 1000) / 100;
         char buf[16];
         snprintf(buf, sizeof(buf), "%u:%02u.%u", minutes, seconds, tenths);
         lv_label_set_text(current_lap_label, buf);
     }
-}
-
-void FpvLcdUI::updateFastestLap(uint32_t lapTimeMs) {
     if (fastest_lap_label) {
-        if (lapTimeMs == 0 || lapTimeMs == UINT32_MAX) {
+        if (fastestMs == 0 || fastestMs == UINT32_MAX) {
             lv_label_set_text(fastest_lap_label, "--:--");
         } else {
-            uint32_t totalSeconds = lapTimeMs / 1000;
+            uint32_t totalSeconds = fastestMs / 1000;
             uint32_t minutes = totalSeconds / 60;
             uint32_t seconds = totalSeconds % 60;
-            uint32_t tenths = (lapTimeMs % 1000) / 100;
-            
+            uint32_t tenths = (fastestMs % 1000) / 100;
             char buf[16];
             snprintf(buf, sizeof(buf), "%u:%02u.%u", minutes, seconds, tenths);
             lv_label_set_text(fastest_lap_label, buf);
         }
     }
-}
-
-void FpvLcdUI::updateFastest3Laps(uint32_t totalTimeMs) {
     if (fastest_3_label) {
-        if (totalTimeMs == 0 || totalTimeMs == UINT32_MAX) {
+        if (fastest3Ms == 0 || fastest3Ms == UINT32_MAX) {
             lv_label_set_text(fastest_3_label, "--:--");
         } else {
-            // Display as average time
-            uint32_t avgTimeMs = totalTimeMs / 3;
+            uint32_t avgTimeMs = fastest3Ms / 3;
             uint32_t totalSeconds = avgTimeMs / 1000;
             uint32_t minutes = totalSeconds / 60;
             uint32_t seconds = totalSeconds % 60;
             uint32_t tenths = (avgTimeMs % 1000) / 100;
-            
             char buf[16];
             snprintf(buf, sizeof(buf), "%u:%02u.%u", minutes, seconds, tenths);
             lv_label_set_text(fastest_3_label, buf);

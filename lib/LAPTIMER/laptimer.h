@@ -1,6 +1,7 @@
 #ifndef LAPTIMER_H
 #define LAPTIMER_H
 
+#include <vector>
 #include "RX5808.h"
 #include "buzzer.h"
 #include "config.h"
@@ -59,6 +60,9 @@ class LapTimer {
     float getTotalDistance();
     float getDistanceRemaining();
     Track* getSelectedTrack();
+
+    /** Copy lap times (ms) in order for saving; only laps > 0. Call before stop(). */
+    void getLapTimesForSave(std::vector<uint32_t>& out) const;
 
    private:
     laptimer_state_e state = STOPPED;

@@ -126,9 +126,10 @@ private:
     lv_obj_t* brightness_label;
     lv_obj_t* battery_voltage_label;  // System tab voltage display
     
-    // Lap times display
+    // Lap times display (full list for current race, up to 10 laps)
     lv_obj_t* lap_times_box;
-    lv_obj_t* lap_times_labels[5];
+    static const uint8_t LAP_TIMES_LABELS = 10;
+    lv_obj_t* lap_times_labels[10];
     
     // Countdown overlay
     lv_obj_t* countdown_overlay;
@@ -183,13 +184,20 @@ private:
     // Cross-core battery display update (written from loop core 1, read by UI task core 0)
     volatile uint16_t _pendingBatteryVoltage;
     volatile bool _batteryDirty;
+
+    // Cross-core race timing display (written from loop core 1, read by UI task core 0; LVGL only on core 0)
+    volatile uint32_t _pendingRaceTimeMs;
+    volatile uint32_t _pendingCurrentLapTimeMs;
+    volatile uint32_t _pendingFastestLapMs;
+    volatile uint32_t _pendingFastest3LapsMs;
+    volatile bool _raceTimingDirty;
     
     // Cross-core buzzer request (written from UI task core 0, read by loop core 1)
     volatile uint16_t _pendingBuzzerMs;
     
     // Cross-core lap feed (written from loop() on core 1, read by UI task on core 0)
-    static const uint8_t MAX_DISPLAY_LAPS = 5;
-    volatile uint32_t _lapBuffer[5];   // Last 5 lap times in ms
+    static const uint8_t MAX_DISPLAY_LAPS = 10;  // Full list for current race (matches timer max)
+    volatile uint32_t _lapBuffer[10];  // Last 10 lap times in ms (newest at 0)
     volatile uint8_t _lapCount;        // Total laps recorded
     volatile bool _lapsDirty;          // New lap data available
     
@@ -207,6 +215,7 @@ private:
     void processBandChannelUpdate();   // Called from UI task only
     void processThresholdUpdate();     // Called from UI task only
     void processBatteryUpdate();       // Called from UI task only
+    void processRaceTimingUpdate();    // Called from UI task only
     void updateScreenBrightness();
     
     // Countdown/finish overlay methods (called from UI task core 0 only)

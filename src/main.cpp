@@ -3,6 +3,9 @@
 #include "webserver.h"
 #include "racehistory.h"
 #include "storage.h"
+#include <time.h>
+#include <algorithm>
+#include <vector>
 #include "selftest.h"
 #include "transport.h"
 #include "trackmanager.h"
@@ -85,6 +88,10 @@ static uint16_t g_lastKnownFreq = 0;  // Track config frequency for web->LCD syn
 static uint8_t g_lastKnownEnter = 0;  // Track enter RSSI for web->LCD sync
 static uint8_t g_lastKnownExit = 0;   // Track exit RSSI for web->LCD sync
 static uint8_t g_currentSystem = 0;   // 0=Analog, 1=DJI, 2=HDZero, 3=WalkSnail
+
+// Deferred race save: avoid holding SPI mutex during stop transition (SD + LCD share bus)
+static RaceSession s_pendingLcdRaceSave;
+static bool s_pendingLcdRaceSaveFlag = false;
 
 // System definitions: { firstBandIdx, bandCount }
 static const struct { uint8_t first; uint8_t count; } g_systemBands[] = {
@@ -451,6 +458,11 @@ void loop() {
 #if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
     // Feed live RSSI and timing data to LCD UI
     if (g_lcdUi) {
+        // Deferred race save from previous LCD Stop (runs one loop later to avoid holding SPI during stop)
+        if (s_pendingLcdRaceSaveFlag) {
+            s_pendingLcdRaceSaveFlag = false;
+            raceHistory.saveRace(s_pendingLcdRaceSave);
+        }
         g_lcdUi->updateRSSI(timer.getRssi());
         
         // Update timers based on race state
@@ -487,6 +499,38 @@ void loop() {
             ws.triggerStart();
         }
         if (g_lcdUi->consumeStopRequest()) {
+            // Build race from timer (before stop() clears lap data); save deferred to next loop
+            // so we don't hold shared SPI mutex during stop transition (avoids crash/use-after-free)
+            std::vector<uint32_t> laps;
+            timer.getLapTimesForSave(laps);
+            if (!laps.empty()) {
+                s_pendingLcdRaceSave = {};
+                s_pendingLcdRaceSave.timestamp = (uint32_t)time(nullptr);
+                s_pendingLcdRaceSave.lapTimes = laps;
+                s_pendingLcdRaceSave.fastestLap = timer.getFastestLapMs();
+                s_pendingLcdRaceSave.best3LapsTotal = timer.getFastest3ConsecutiveMs();
+                if (laps.size() > 1) {
+                    std::vector<uint32_t> valid(laps.begin() + 1, laps.end());
+                    std::sort(valid.begin(), valid.end());
+                    size_t mid = valid.size() / 2;
+                    s_pendingLcdRaceSave.medianLap = (valid.size() % 2 == 0) ? (uint32_t)((valid[mid - 1] + valid[mid]) / 2) : valid[mid];
+                } else {
+                    s_pendingLcdRaceSave.medianLap = 0;
+                }
+                s_pendingLcdRaceSave.name = "";
+                s_pendingLcdRaceSave.tag = "";
+                s_pendingLcdRaceSave.pilotName = config.getPilotName() ? config.getPilotName() : "";
+                s_pendingLcdRaceSave.pilotCallsign = config.getPilotCallsign() ? config.getPilotCallsign() : "";
+                s_pendingLcdRaceSave.frequency = config.getFrequency();
+                s_pendingLcdRaceSave.band = "";
+                s_pendingLcdRaceSave.channel = config.getChannelIndex();
+                Track* tr = timer.getSelectedTrack();
+                s_pendingLcdRaceSave.trackId = tr ? tr->trackId : 0;
+                s_pendingLcdRaceSave.trackName = tr ? tr->name : "";
+                s_pendingLcdRaceSave.totalDistance = timer.getTotalDistance();
+                s_pendingLcdRaceSave.syncMode = 0;
+                s_pendingLcdRaceSaveFlag = true;
+            }
             ws.triggerStop();
         }
         if (g_lcdUi->consumeClearRequest()) {
@@ -657,9 +701,8 @@ void loop() {
     ElegantOTA.loop();
     
     // Initialize SD card after boot (deferred to prevent watchdog timeout)
-    // Try once after 10 seconds to allow LCD UI to fully stabilize
-    // (4-tab UI with half-screen buffer needs more SPI bandwidth initially)
-    if (!sdInitAttempted && currentTimeMs > 10000) {
+    // Try once after 3 seconds; LCD has SPI mutex so no collision risk
+    if (!sdInitAttempted && currentTimeMs > 3000) {
         sdInitAttempted = true;
         DEBUG("\n=== Deferred SD card initialization ===\n");
         

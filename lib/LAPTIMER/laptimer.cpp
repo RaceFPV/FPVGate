@@ -672,6 +672,16 @@ uint8_t LapTimer::getLapCount() {
     return lapCount;
 }
 
+void LapTimer::getLapTimesForSave(std::vector<uint32_t>& out) const {
+    out.clear();
+    uint8_t n = lapCountWraparound ? LAPTIMER_LAP_HISTORY : lapCount;
+    for (uint8_t i = 0; i < n; i++) {
+        if (lapTimes[i] > 0) {
+            out.push_back(lapTimes[i]);
+        }
+    }
+}
+
 void LapTimer::startCalibrationWizard() {
     DEBUG("Calibration wizard started\n");
     state = CALIBRATION_WIZARD;
