@@ -3,7 +3,7 @@
 #include <time.h>
 #include "debug.h"
 
-RaceHistory::RaceHistory() : storage(nullptr), racesLoaded(false) {
+RaceHistory::RaceHistory() : storage(nullptr) {
 }
 
 bool RaceHistory::init(Storage* storageBackend) {
@@ -15,8 +15,6 @@ bool RaceHistory::init(Storage* storageBackend) {
     
     // Create races directory if it doesn't exist
     storage->mkdir("/races");
-    
-    // Note: Races are loaded on-demand (lazy loading) to avoid blocking boot
     return true;
 }
 
@@ -95,12 +93,6 @@ bool RaceHistory::saveRace(const RaceSession& race) {
     return success;
 }
 
-bool RaceHistory::ensureRacesLoaded() {
-    if (racesLoaded) {
-        return true;  // Already loaded
-    }
-    return loadRaces();
-}
 
 bool RaceHistory::loadRaces() {
     if (!storage) {
@@ -109,7 +101,6 @@ bool RaceHistory::loadRaces() {
     }
     
     races.clear();
-    racesLoaded = false;  // Reset flag during reload
     
     // List all JSON files in races directory
     std::vector<String> files;
@@ -181,16 +172,6 @@ bool RaceHistory::loadRaces() {
         races.push_back(race);
     }
     
-    // Sort by timestamp (newest first)
-    std::sort(races.begin(), races.end(), 
-        [](const RaceSession& a, const RaceSession& b) { return a.timestamp > b.timestamp; });
-    
-    // Keep only MAX_RACES
-    if (races.size() > MAX_RACES) {
-        races.resize(MAX_RACES);
-    }
-    
-    racesLoaded = true;  // Mark as loaded
     DEBUG("Loaded %d races from individual files\n", races.size());
     return true;
 }
@@ -383,16 +364,17 @@ bool RaceHistory::clearAll() {
 }
 
 const std::vector<RaceSession>& RaceHistory::getRaces() {
-    ensureRacesLoaded();  // Lazy load on first access
     return races;
 }
 
 String RaceHistory::toJsonString() {
-    ensureRacesLoaded();  // Lazy load on first access
-    DynamicJsonDocument doc(65536);  // Increased for multi-pilot data
+    DynamicJsonDocument doc(131072);  // 128KB - enough for ~50 races with multi-pilot data
     JsonArray racesArray = doc.createNestedArray("races");
     
-    for (const auto& race : races) {
+    // Limit output to MAX_RACES to avoid memory issues
+    size_t racesToOutput = std::min(races.size(), (size_t)MAX_RACES);
+    for (size_t i = 0; i < racesToOutput; i++) {
+        const auto& race = races[i];
         JsonObject raceObj = racesArray.createNestedObject();
         raceObj["timestamp"] = race.timestamp;
         raceObj["fastestLap"] = race.fastestLap;

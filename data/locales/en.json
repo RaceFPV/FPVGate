@@ -62,6 +62,7 @@
         "download": "Download Races",
         "import": "Import Races",
         "clear_all": "Clear All",
+        "reload": "Reload Races",
         "no_data": "No races saved yet",
         "details_title": "Race Details",
         "timeline": "Race Timeline",

@@ -313,9 +313,8 @@ void setup() {
     selfTest.init(&storage);
     
     // Initialize race history with storage backend
-    // Note: Races are loaded on-demand (lazy loading) to avoid blocking boot with SD card I/O
     if (raceHistory.init(&storage)) {
-        DEBUG("Race history initialized (lazy loading enabled)\n");
+        DEBUG("Race history initialized\n");
     } else {
         DEBUG("Race history initialization failed\n");
     }
@@ -743,8 +742,12 @@ void loop() {
                 DEBUG("Recommend: delete /sounds from LittleFS to reclaim space\n");
             }
             
-            // Note: Race history now uses lazy loading - races will be loaded on first web UI access
-            // This eliminates 30+ seconds of SPI contention during boot
+            // Reload race history from SD card
+            if (raceHistory.loadRaces()) {
+                DEBUG("Race history reloaded from SD card, %d races available\n", raceHistory.getRaceCount());
+            } else {
+                DEBUG("Race history reload from SD card failed\n");
+            }
             
             // Reload tracks from SD card
             if (trackManager.loadTracks()) {

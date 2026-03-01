@@ -612,11 +612,11 @@ void Webserver::startServices() {
 
     startLittleFS();
     
-    // Initialize storage (SD card or LittleFS fallback)
-    storage->init();
+    // Note: storage is already initialized in main.cpp before webserver starts
+    // Do NOT call storage->init() here as it would reset the sdAvailable flag!
     
-    // Initialize race history after storage is ready
-    history->init(storage);
+    // Note: race history is already initialized in main.cpp
+    // Do NOT re-initialize it here
 
     server.on("/", handleRoot);
     server.on("/generate_204", handleRoot);  // handle Andriod phones doing shit to detect if there is 'real' internet and possibly dropping conn.
@@ -1162,7 +1162,6 @@ EEPROM:\n\
 
     // Race history endpoints
     server.on("/races", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        // Note: toJsonString() internally calls ensureRacesLoaded() for lazy loading
         String json = history->toJsonString();
         request->send(200, "application/json", json);
         led->on(200);
@@ -1299,7 +1298,7 @@ EEPROM:\n\
         if (request->hasParam("timestamp")) {
             uint32_t timestamp = request->getParam("timestamp")->value().toInt();
             
-            // Find the race (getRaces() internally calls ensureRacesLoaded())
+            // Find the race
             const auto& races = history->getRaces();
             for (const auto& race : races) {
                 if (race.timestamp == timestamp) {
