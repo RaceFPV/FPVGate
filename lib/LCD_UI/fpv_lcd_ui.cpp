@@ -1,5 +1,9 @@
 #include "fpv_lcd_ui.h"
 #include "spi_mutex.h"
+#ifdef HAS_I2S_AUDIO
+#include "audio.h"
+extern AudioAnnouncer* g_audioAnnouncer;
+#endif
 
 #if ENABLE_LCD_UI
 
@@ -45,21 +49,24 @@ FpvLcdUI::FpvLcdUI()
       brightness_slider(nullptr), brightness_label(nullptr),
       lap_times_box(nullptr),
       countdown_overlay(nullptr), countdown_label(nullptr),
-      _countdownActive(false), _countdownValue(5), _countdownStartTime(0), _lastBeepValue(-1),
+      _countdownActive(false), _countdownValue(10), _countdownStartTime(0), _lastBeepValue(-1), _countdownTriggersStart(true), _startingInFivePlayed(false),
       finish_overlay(nullptr), finish_label(nullptr),
       _finishActive(false), _finishStartTime(0),
+      boot_overlay(nullptr), boot_title_label(nullptr), boot_label(nullptr), _bootComplete(false), _bootOverlayActive(false),
       _lastTouchTime(0), _screenDimmed(false), _userBrightness(100),
       _pendingRssi(0),
       _startRequested(false), _stopRequested(false), _clearRequested(false),
+      _requestCountdown(false), _requestCountdownTriggerStart(false), _requestShowFinish(false),
       _systemDelta(0), _bandDelta(0), _channelDelta(0),
       _enterDelta(0), _exitDelta(0),
       _pendingSystemIdx(0), _pendingBandIdx(0), _pendingChannelIdx(0), _pendingFreqMhz(0), _bandChannelDirty(false),
       _pendingEnterRssi(120), _pendingExitRssi(100), _thresholdDirty(false),
       _pendingBatteryVoltage(0), _batteryDirty(false),
+      _pendingRaceTimeMs(0), _pendingCurrentLapTimeMs(0), _pendingFastestLapMs(0), _pendingFastest3LapsMs(0), _raceTimingDirty(false),
       _pendingBuzzerMs(0),
       _lapCount(0), _lapsDirty(false),
       _lastGraphUpdate(0) {
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < LAP_TIMES_LABELS; ++i) {
         lap_times_labels[i] = nullptr;
         _lapBuffer[i] = 0;
     }
@@ -238,23 +245,34 @@ void FpvLcdUI::uiTask(void* parameter) {
         ui->processBandChannelUpdate();
         ui->processThresholdUpdate();
         ui->processBatteryUpdate();
+        ui->processRaceTimingUpdate();
         
         // Tick countdown/finish overlays
         if (ui->_countdownActive) ui->updateCountdown();
         if (ui->_finishActive) ui->updateFinish();
+        ui->processBootOverlay();
+        // Process display requests from web (countdown, STOPPED overlay)
+        if (ui->_requestCountdown) {
+            bool trigger = ui->_requestCountdownTriggerStart;
+            ui->_requestCountdown = false;
+            ui->startCountdown(trigger);
+        }
+        if (ui->_requestShowFinish) {
+            ui->_requestShowFinish = false;
+            ui->showFinish();
+        }
         
         lv_timer_handler();
 
 #if defined(BOARD_ESP32_S3_TOUCH)
-        // ESP32-S3: Manual full screen blit (direct mode). LCD and SD share SPI; use adaptive timeout:
-        // - During countdown/finish: 50ms so we never block (countdown must keep ticking).
-        // - Otherwise: 1200ms so we get blits when SD releases; avoids malformed screen during long SD ops.
+        // ESP32-S3: Manual full screen blit (direct mode). LCD and SD share SPI.
+        // Use short timeout (80ms) always so the UI task never blocks long - prevents scroll/touch
+        // freezes when SD holds the mutex. We may skip a blit during SD I/O; next frame will draw.
         static uint32_t lastBlitMs = 0;
         uint32_t now = millis();
         bool recentlyTouched = (now - ui->_lastTouchTime) < 350;
         bool shouldBlit = recentlyTouched || (now - lastBlitMs) >= 50;
-        bool criticalOverlay = ui->_countdownActive || ui->_finishActive;
-        TickType_t blitTimeout = criticalOverlay ? pdMS_TO_TICKS(50) : pdMS_TO_TICKS(1200);
+        TickType_t blitTimeout = pdMS_TO_TICKS(80);
 
         if (shouldBlit && ui->gfx && FpvLcdUI::s_buf) {
             if (spiMutexTake(blitTimeout)) {
@@ -375,6 +393,35 @@ void FpvLcdUI::createUI() {
     createPilotTab();
     createCalibTab();
     createSystemTab();
+
+    // Boot overlay: "FPVGate" + "Booting..." until main calls setBootComplete() after SD/bootstrap
+    lv_obj_t* scr = lv_scr_act();
+    if (scr) {
+        boot_overlay = lv_obj_create(scr);
+        lv_obj_set_size(boot_overlay, 240, 320);
+        lv_obj_set_pos(boot_overlay, 0, 0);
+        lv_obj_set_style_bg_color(boot_overlay, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_opa(boot_overlay, LV_OPA_80, 0);
+        lv_obj_set_style_border_width(boot_overlay, 0, 0);
+        lv_obj_set_style_pad_all(boot_overlay, 0, 0);
+        lv_obj_clear_flag(boot_overlay, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_move_foreground(boot_overlay);
+        boot_title_label = lv_label_create(boot_overlay);
+        lv_label_set_text(boot_title_label, "FPVGate");
+        lv_obj_set_style_text_font(boot_title_label, &lv_font_montserrat_32, 0);
+        lv_obj_set_style_text_color(boot_title_label, lv_color_hex(0xffffff), 0);
+        lv_obj_set_style_text_align(boot_title_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_bg_opa(boot_title_label, LV_OPA_TRANSP, 0);
+        lv_obj_align(boot_title_label, LV_ALIGN_CENTER, 0, -24);
+        boot_label = lv_label_create(boot_overlay);
+        lv_label_set_text(boot_label, "Booting...");
+        lv_obj_set_style_text_font(boot_label, &lv_font_montserrat_32, 0);
+        lv_obj_set_style_text_color(boot_label, lv_color_hex(0x00aaff), 0);
+        lv_obj_set_style_text_align(boot_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_bg_opa(boot_label, LV_OPA_TRANSP, 0);
+        lv_obj_align(boot_label, LV_ALIGN_CENTER, 0, 24);
+        _bootOverlayActive = true;
+    }
 
     // Force layout so scroll extent and hit-testing are correct (fixes scroll + touch in racing tab)
     lv_obj_update_layout(lv_scr_act());
@@ -764,20 +811,22 @@ void FpvLcdUI::createRacingTab() {
 
     lap_times_box = lv_obj_create(inner);
     lv_obj_set_width(lap_times_box, lv_pct(100));
-    lv_obj_set_height(lap_times_box, 100);
+    lv_obj_set_height(lap_times_box, 120);  // Visible area; content taller for scroll
     lv_obj_set_style_bg_color(lap_times_box, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(lap_times_box, 1, 0);
     lv_obj_set_style_border_color(lap_times_box, lv_color_hex(0x333333), 0);
-    lv_obj_set_style_pad_all(lap_times_box, 10, 0);
-    lv_obj_clear_flag(lap_times_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(lap_times_box, 8, 0);
+    lv_obj_add_flag(lap_times_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(lap_times_box, LV_DIR_VER);
+    lv_obj_set_flex_flow(lap_times_box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(lap_times_box, 2, 0);
     
-    // Create 5 lap time labels
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < LAP_TIMES_LABELS; i++) {
         lap_times_labels[i] = lv_label_create(lap_times_box);
         lv_label_set_text(lap_times_labels[i], "");
         lv_obj_set_style_text_font(lap_times_labels[i], &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(lap_times_labels[i], lv_color_hex(0xaaaaaa), 0);
-        lv_obj_set_pos(lap_times_labels[i], 5, 5 + (i * 18));
+        lv_obj_set_width(lap_times_labels[i], lv_pct(100));
     }
 }
 
@@ -1402,7 +1451,9 @@ void FpvLcdUI::addLap(uint32_t lapTimeMs) {
 // Thread-safe: called from loop() on core 1
 void FpvLcdUI::clearLaps() {
     _lapCount = 0;
-    for (int i = 0; i < MAX_DISPLAY_LAPS; i++) _lapBuffer[i] = 0;
+    for (int i = 0; i < MAX_DISPLAY_LAPS; i++) {
+        _lapBuffer[i] = 0;
+    }
     _lapsDirty = true;
 }
 
@@ -1501,7 +1552,7 @@ void FpvLcdUI::processLapUpdate() {
         lv_label_set_text(lap_count_label, buf);
     }
     
-    // Update lap time labels (newest first)
+    // Update lap time labels: full list, newest first (Lap N, Lap N-1, ...)
     for (int i = 0; i < MAX_DISPLAY_LAPS; i++) {
         if (!lap_times_labels[i]) continue;
         if (i < displayed) {
@@ -1510,12 +1561,14 @@ void FpvLcdUI::processLapUpdate() {
             uint32_t frac = ms % 1000;
             uint8_t lapNum = totalLaps - i;  // Most recent = highest number
             char buf[32];
-            snprintf(buf, sizeof(buf), "Lap %d: %lu.%03lus", lapNum, secs, frac);
+            snprintf(buf, sizeof(buf), "Lap %d: %lu.%03lus", lapNum, (unsigned long)secs, frac);
             lv_label_set_text(lap_times_labels[i], buf);
-            lv_obj_set_style_text_color(lap_times_labels[i], 
+            lv_obj_set_style_text_color(lap_times_labels[i],
                 i == 0 ? lv_color_hex(0x00ff00) : lv_color_hex(0xaaaaaa), 0);
+            lv_obj_clear_flag(lap_times_labels[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_label_set_text(lap_times_labels[i], "");
+            lv_obj_add_flag(lap_times_labels[i], LV_OBJ_FLAG_HIDDEN);
         }
     }
 }
@@ -1700,12 +1753,18 @@ void FpvLcdUI::updateThreshold(uint8_t enter_rssi, uint8_t exit_rssi) {
 }
 
 void FpvLcdUI::updateLapTimes(float* lapTimes, uint8_t lapCount) {
-    // Update lap time display
-    for (int i = 0; i < 5 && i < lapCount; i++) {
+    for (int i = 0; i < LAP_TIMES_LABELS && i < lapCount; i++) {
         if (lap_times_labels[i]) {
             char buf[32];
             snprintf(buf, sizeof(buf), "Lap %d: %.2fs", i + 1, lapTimes[i]);
             lv_label_set_text(lap_times_labels[i], buf);
+            lv_obj_clear_flag(lap_times_labels[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    for (int i = lapCount; i < LAP_TIMES_LABELS; i++) {
+        if (lap_times_labels[i]) {
+            lv_label_set_text(lap_times_labels[i], "");
+            lv_obj_add_flag(lap_times_labels[i], LV_OBJ_FLAG_HIDDEN);
         }
     }
 }
@@ -1724,61 +1783,77 @@ void FpvLcdUI::updateStatus(const char* status) {
     }
 }
 
+// Thread-safe: called from main (core 1). Only store values; LVGL update is done in UI task (core 0).
 void FpvLcdUI::updateRaceTime(uint32_t raceTimeMs) {
+    _pendingRaceTimeMs = raceTimeMs;
+    _raceTimingDirty = true;
+}
+
+void FpvLcdUI::updateCurrentLapTime(uint32_t lapTimeMs) {
+    _pendingCurrentLapTimeMs = lapTimeMs;
+    _raceTimingDirty = true;
+}
+
+void FpvLcdUI::updateFastestLap(uint32_t lapTimeMs) {
+    _pendingFastestLapMs = lapTimeMs;
+    _raceTimingDirty = true;
+}
+
+void FpvLcdUI::updateFastest3Laps(uint32_t totalTimeMs) {
+    _pendingFastest3LapsMs = totalTimeMs;
+    _raceTimingDirty = true;
+}
+
+// Called from UI task on core 0 only - applies pending race timing to LVGL (avoids core 1 touching LVGL).
+void FpvLcdUI::processRaceTimingUpdate() {
+    if (!_raceTimingDirty) return;
+    _raceTimingDirty = false;
+
+    uint32_t raceTimeMs = _pendingRaceTimeMs;
+    uint32_t currentLapMs = _pendingCurrentLapTimeMs;
+    uint32_t fastestMs = _pendingFastestLapMs;
+    uint32_t fastest3Ms = _pendingFastest3LapsMs;
+
     if (race_time_label) {
         uint32_t totalSeconds = raceTimeMs / 1000;
         uint32_t minutes = totalSeconds / 60;
         uint32_t seconds = totalSeconds % 60;
         uint32_t tenths = (raceTimeMs % 1000) / 100;
-        
         char buf[16];
         snprintf(buf, sizeof(buf), "%u:%02u.%u", minutes, seconds, tenths);
         lv_label_set_text(race_time_label, buf);
     }
-}
-
-void FpvLcdUI::updateCurrentLapTime(uint32_t lapTimeMs) {
     if (current_lap_label) {
-        uint32_t totalSeconds = lapTimeMs / 1000;
+        uint32_t totalSeconds = currentLapMs / 1000;
         uint32_t minutes = totalSeconds / 60;
         uint32_t seconds = totalSeconds % 60;
-        uint32_t tenths = (lapTimeMs % 1000) / 100;
-        
+        uint32_t tenths = (currentLapMs % 1000) / 100;
         char buf[16];
         snprintf(buf, sizeof(buf), "%u:%02u.%u", minutes, seconds, tenths);
         lv_label_set_text(current_lap_label, buf);
     }
-}
-
-void FpvLcdUI::updateFastestLap(uint32_t lapTimeMs) {
     if (fastest_lap_label) {
-        if (lapTimeMs == 0 || lapTimeMs == UINT32_MAX) {
+        if (fastestMs == 0 || fastestMs == UINT32_MAX) {
             lv_label_set_text(fastest_lap_label, "--:--");
         } else {
-            uint32_t totalSeconds = lapTimeMs / 1000;
+            uint32_t totalSeconds = fastestMs / 1000;
             uint32_t minutes = totalSeconds / 60;
             uint32_t seconds = totalSeconds % 60;
-            uint32_t tenths = (lapTimeMs % 1000) / 100;
-            
+            uint32_t tenths = (fastestMs % 1000) / 100;
             char buf[16];
             snprintf(buf, sizeof(buf), "%u:%02u.%u", minutes, seconds, tenths);
             lv_label_set_text(fastest_lap_label, buf);
         }
     }
-}
-
-void FpvLcdUI::updateFastest3Laps(uint32_t totalTimeMs) {
     if (fastest_3_label) {
-        if (totalTimeMs == 0 || totalTimeMs == UINT32_MAX) {
+        if (fastest3Ms == 0 || fastest3Ms == UINT32_MAX) {
             lv_label_set_text(fastest_3_label, "--:--");
         } else {
-            // Display as average time
-            uint32_t avgTimeMs = totalTimeMs / 3;
+            uint32_t avgTimeMs = fastest3Ms / 3;
             uint32_t totalSeconds = avgTimeMs / 1000;
             uint32_t minutes = totalSeconds / 60;
             uint32_t seconds = totalSeconds % 60;
             uint32_t tenths = (avgTimeMs % 1000) / 100;
-            
             char buf[16];
             snprintf(buf, sizeof(buf), "%u:%02u.%u", minutes, seconds, tenths);
             lv_label_set_text(fastest_3_label, buf);
@@ -1800,12 +1875,17 @@ uint16_t FpvLcdUI::consumeBuzzerBeep() {
 
 // === Countdown overlay methods ===
 
-void FpvLcdUI::startCountdown() {
+void FpvLcdUI::startCountdown(bool triggerStartWhenComplete) {
     if (_countdownActive) return;
     
-    Serial.println("LCD: Starting 5-second countdown");
+    _countdownTriggersStart = triggerStartWhenComplete;
+#ifdef HAS_I2S_AUDIO
+    if (g_audioAnnouncer) g_audioAnnouncer->announceCountdown();
+#endif
+    Serial.println("LCD: Starting 10-second countdown");
     _countdownActive = true;
-    _countdownValue = 5;
+    _countdownValue = 10;
+    _startingInFivePlayed = false;
     _lastBeepValue = -1;
     _countdownStartTime = millis();
     
@@ -1828,7 +1908,7 @@ void FpvLcdUI::startCountdown() {
     
     // Large centered countdown number
     countdown_label = lv_label_create(countdown_overlay);
-    lv_label_set_text(countdown_label, "5");
+    lv_label_set_text(countdown_label, "10");
     lv_obj_set_style_text_font(countdown_label, &lv_font_montserrat_32, 0);
     lv_obj_set_style_text_color(countdown_label, lv_color_hex(0xff7b00), 0);  // Orange
     lv_obj_set_style_text_align(countdown_label, LV_TEXT_ALIGN_CENTER, 0);
@@ -1844,24 +1924,31 @@ void FpvLcdUI::updateCountdown() {
     
     uint32_t elapsed = millis() - _countdownStartTime;
     
-    // Calculate expected value: 5, 4, 3, 2, 1, GO!
+    // Calculate expected value: 10, 9, ..., 1, GO! (1s each, GO! for 600ms)
     int expectedValue;
-    if (elapsed < 1000) expectedValue = 5;
-    else if (elapsed < 2000) expectedValue = 4;
-    else if (elapsed < 3000) expectedValue = 3;
-    else if (elapsed < 4000) expectedValue = 2;
-    else if (elapsed < 5000) expectedValue = 1;
-    else if (elapsed < 5600) expectedValue = 0;  // GO!
+    if (elapsed < 1000) expectedValue = 10;
+    else if (elapsed < 2000) expectedValue = 9;
+    else if (elapsed < 3000) expectedValue = 8;
+    else if (elapsed < 4000) expectedValue = 7;
+    else if (elapsed < 5000) expectedValue = 6;
+    else if (elapsed < 6000) expectedValue = 5;
+    else if (elapsed < 7000) expectedValue = 4;
+    else if (elapsed < 8000) expectedValue = 3;
+    else if (elapsed < 9000) expectedValue = 2;
+    else if (elapsed < 10000) expectedValue = 1;
+    else if (elapsed < 10600) expectedValue = 0;  // GO!
     else {
-        // Countdown complete, fire start
+        // Countdown complete; optionally fire start (LCD button flow; web flow is visual-only)
         stopCountdown();
         if (start_btn) {
             lv_obj_clear_state(start_btn, LV_STATE_DISABLED);
             lv_obj_add_flag(start_btn, LV_OBJ_FLAG_HIDDEN);  // Hide start button
         }
         if (stop_btn) lv_obj_clear_flag(stop_btn, LV_OBJ_FLAG_HIDDEN);  // Show stop button
-        _startRequested = true;  // Core 1 picks this up and calls ws.triggerStart()
-        Serial.println("LCD: Countdown complete, starting race");
+        if (_countdownTriggersStart) {
+            _startRequested = true;  // Core 1 picks this up and calls ws.triggerStart()
+            Serial.println("LCD: Countdown complete, starting race");
+        }
         return;
     }
     
@@ -1884,6 +1971,13 @@ void FpvLcdUI::updateCountdown() {
                 lv_label_set_text(countdown_label, buf);
                 lv_obj_set_style_text_color(countdown_label, lv_color_hex(0xff7b00), 0);  // Orange
                 lv_obj_align(countdown_label, LV_ALIGN_CENTER, 0, 0);
+                // "Starting in less than 5" only once, when we actually hit the 5-second mark
+                if (expectedValue == 5 && elapsed >= 5000 && !_startingInFivePlayed) {
+                    _startingInFivePlayed = true;
+#ifdef HAS_I2S_AUDIO
+                    if (g_audioAnnouncer) g_audioAnnouncer->announceStartingInFive();
+#endif
+                }
                 if (_lastBeepValue != expectedValue) {
                     _pendingBuzzerMs = 150;  // Short beep per count
                     _lastBeepValue = expectedValue;
@@ -1965,6 +2059,36 @@ void FpvLcdUI::stopFinish() {
     if (finish_overlay) {
         lv_obj_del(finish_overlay);
         finish_overlay = nullptr;
+    }
+}
+
+void FpvLcdUI::setBootComplete() {
+    _bootComplete = true;
+}
+
+void FpvLcdUI::requestCountdown(bool triggerStartOnComplete) {
+    _requestCountdownTriggerStart = triggerStartOnComplete;
+    _requestCountdown = true;
+}
+
+void FpvLcdUI::requestShowFinish() {
+    _requestShowFinish = true;
+}
+
+void FpvLcdUI::processBootOverlay() {
+    if (!_bootComplete || !_bootOverlayActive) return;
+    _bootOverlayActive = false;
+    if (boot_title_label) {
+        lv_obj_del(boot_title_label);
+        boot_title_label = nullptr;
+    }
+    if (boot_label) {
+        lv_obj_del(boot_label);
+        boot_label = nullptr;
+    }
+    if (boot_overlay) {
+        lv_obj_del(boot_overlay);
+        boot_overlay = nullptr;
     }
 }
 

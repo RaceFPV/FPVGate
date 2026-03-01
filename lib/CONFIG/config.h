@@ -336,6 +336,7 @@ class Config {
     char* getSsid();
     char* getPassword();
     uint8_t getOperationMode();
+    char* getPilotName();
     char* getPilotCallsign();
     char* getPilotPhonetic();
     uint32_t getPilotColor();

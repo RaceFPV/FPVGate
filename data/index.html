@@ -63,6 +63,9 @@
           <button id="addLapButton" onclick="addManualLap()" disabled data-i18n="race.add_lap">Add Lap</button>
           <button id="clearLapsButton" onclick="clearLaps()" data-i18n="race.clear_laps">Clear Laps</button>
         </div>
+        <div id="raceCountdownOverlay" class="race-countdown-overlay" style="display: none;" aria-hidden="true">
+          <span id="raceCountdownNumber">10</span>
+        </div>
         <!-- Unified Multi-Pilot Race View -->
         <div id="unifiedRaceView">
           <table id="lapTable" class="unified-lap-table">

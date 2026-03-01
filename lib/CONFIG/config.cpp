@@ -830,6 +830,10 @@ uint8_t Config::getWebhookLap() {
     return conf.webhookLap;
 }
 
+char* Config::getPilotName() {
+    return conf.pilotName;
+}
+
 char* Config::getPilotCallsign() {
     return conf.pilotCallsign;
 }

@@ -477,9 +477,14 @@ function handleRaceStateEvent(state) {
     updateRaceButtons();
     console.log("[Sync] Race started via SSE");
   } else if (state === "stopped") {
-    // Race stopped
+    // Race stopped (e.g. from LCD) – stop timer and reset displays like stopRace()
     raceRunning = false;
     stopRaceTimer();
+    timer.innerHTML = i18n.t("race.timer_default");
+    currentLapStartMs = 0;
+    var currentLapTimerEl = document.getElementById("currentLapTimer");
+    if (currentLapTimerEl) currentLapTimerEl.textContent = "00:00:00s";
+    stopDistancePolling();
     updateRaceButtons();
     console.log("[Sync] Race stopped via SSE");
   } else if (state === "cleared") {
@@ -2990,47 +2995,48 @@ async function startRace() {
     return;
   }
   
+  const RACE_COUNTDOWN_SECONDS = 10;  // Must match device LCD countdown (10.6s total: 10..1 + GO!)
+  const raceCountdownEl = document.getElementById("raceCountdownOverlay");
+  const raceCountdownNumberEl = document.getElementById("raceCountdownNumber");
+
   updateLapCounter();
   startRaceButton.disabled = true;
   startRaceButton.classList.add("active");
 
-  // iOS/Safari: unlock AudioContext for beeps during user interaction
-  if (beepAudioContext && beepAudioContext.state === "suspended") {
-    try {
-      await beepAudioContext.resume();
-      console.log("[Race] AudioContext resumed for beeps");
-    } catch (err) {
-      console.warn("[Race] AudioContext resume failed:", err);
-    }
-  }
-
-  // Ensure audio announcer is unlocked for mobile (user gesture opportunity)
-  // Only unlock if not already unlocked AND not currently playing
-  if (audioEnabled && audioAnnouncer && !audioAnnouncer.audioUnlocked && !audioAnnouncer.isPlaying) {
-    console.log("[Race] Unlocking audio announcer during race start gesture");
-    await audioAnnouncer.unlockAudioContextMobile();
-  }
-
-  // Trigger I2S speaker countdown (runs in parallel with browser audio)
+  // Fire countdown immediately so device LCD + I2S start right away
   fetch("/timer/countdown", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   }).catch((err) => console.log("[Race] Countdown endpoint not available:", err));
 
-  // Queue both announcements
-  queueSpeak(`<p>${i18n.t("settings.tts.arm_quad")}</p>`);
-  queueSpeak(`<p>${i18n.t("settings.tts.starting_soon")}</p>`);
-
-  // Wait for announcements to finish playing
-  while (audioAnnouncer.isSpeaking() || audioAnnouncer.audioQueue.length > 0) {
-    await new Promise((r) => setTimeout(r, 100));
+  if (beepAudioContext && beepAudioContext.state === "suspended") {
+    beepAudioContext.resume().catch((err) => console.warn("[Race] AudioContext resume failed:", err));
+  }
+  if (audioEnabled && audioAnnouncer && !audioAnnouncer.audioUnlocked && !audioAnnouncer.isPlaying) {
+    audioAnnouncer.unlockAudioContextMobile().catch(() => {});
   }
 
-  // Add random delay between 1-5 seconds after announcements complete
-  let delayTime = Math.random() * (5000 - 1000) + 1000;
-  await new Promise((r) => setTimeout(r, delayTime));
+  queueSpeak(`<p>${i18n.t("settings.tts.arm_quad")}</p>`);
 
-  // Play start beep and begin race
+  // Visible 10-second countdown (matches device LCD); total 10.5s so beep aligns with device "GO!"
+  if (raceCountdownEl && raceCountdownNumberEl) {
+    raceCountdownEl.style.display = "flex";
+    raceCountdownNumberEl.classList.remove("go");
+    for (let s = RACE_COUNTDOWN_SECONDS; s >= 1; s--) {
+      raceCountdownNumberEl.textContent = String(s);
+      // "Starting in less than 5" only when we actually show 5 (not at start)
+      if (s === 5) queueSpeak(`<p>${i18n.t("settings.tts.starting_soon")}</p>`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    raceCountdownNumberEl.textContent = "GO!";
+    raceCountdownNumberEl.classList.add("go");
+    await new Promise((r) => setTimeout(r, 500));
+    raceCountdownEl.style.display = "none";
+  } else {
+    await new Promise((r) => setTimeout(r, RACE_COUNTDOWN_SECONDS * 1000 + 500));
+  }
+
+  // Play start beep and begin race (synced with device)
   beep(1, 1, "square"); // needed for some reason to make sure we fire the first beep
   beep(500, 880, "square");
 
