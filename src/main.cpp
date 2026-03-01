@@ -537,6 +537,13 @@ void loop() {
             ws.triggerClearLaps();
             g_lcdUi->clearLaps();
         }
+        // Sync display with web timer actions (countdown overlay, STOPPED overlay)
+        auto lcdEv = ws.consumePendingLcdEvent();
+        if (lcdEv == Webserver::PendingLcdEvent::Countdown) {
+            g_lcdUi->requestCountdown(false);  // Web sends /timer/start separately
+        } else if (lcdEv == Webserver::PendingLcdEvent::ShowFinish) {
+            g_lcdUi->requestShowFinish();
+        }
         
         // Handle LCD system/band/channel button presses
         int8_t systemDelta = g_lcdUi->consumeSystemDelta();
@@ -701,8 +708,8 @@ void loop() {
     ElegantOTA.loop();
     
     // Initialize SD card after boot (deferred to prevent watchdog timeout)
-    // Try once after 3 seconds; LCD has SPI mutex so no collision risk
-    if (!sdInitAttempted && currentTimeMs > 3000) {
+    // At 2s; "Booting" overlay is shown until this block finishes, then user can interact
+    if (!sdInitAttempted && currentTimeMs > 2000) {
         sdInitAttempted = true;
         DEBUG("\n=== Deferred SD card initialization ===\n");
         
@@ -758,6 +765,19 @@ void loop() {
             DEBUG("SD card not available - using LittleFS only\n");
         }
     }
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+    // Dismiss boot overlay only when both SD init and WiFi services are ready, plus 500ms settle
+    static bool bootCompleteSent = false;
+    static uint32_t bootReadyAtMs = 0;
+    if (!bootCompleteSent && sdInitAttempted && ws.isServicesStarted()) {
+        if (bootReadyAtMs == 0) bootReadyAtMs = currentTimeMs;
+        if ((currentTimeMs - bootReadyAtMs) >= 500) {
+            if (g_lcdUi) g_lcdUi->setBootComplete();
+            bootCompleteSent = true;
+            DEBUG("\n=== Boot complete (overlay dismissed) ===\n");
+        }
+    }
+#endif
     
     /* DISABLED: RotorHazard mode loop
     if (currentMode == MODE_WIFI) {

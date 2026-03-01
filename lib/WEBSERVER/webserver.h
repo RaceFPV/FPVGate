@@ -43,6 +43,14 @@ class Webserver : public TransportInterface {
     bool consumePendingLap(uint32_t& lapMs);
     bool consumePendingClear();
 
+    /** Pending LCD display event: show countdown or finish overlay (set by web timer handlers, consumed by main loop). */
+    enum class PendingLcdEvent { None, Countdown, ShowFinish };
+    void setPendingLcdEvent(PendingLcdEvent ev);
+    PendingLcdEvent consumePendingLcdEvent();
+
+    /** True once WiFi (AP or STA) and web/DNS services are up. Used for boot overlay. */
+    bool isServicesStarted() const { return servicesStarted; }
+
    private:
     void startServices();
 
@@ -80,4 +88,7 @@ class Webserver : public TransportInterface {
     volatile uint32_t _pendingLcdLap = 0;
     volatile bool _hasLcdLap = false;
     volatile bool _pendingLcdClear = false;
+
+    // Pending LCD overlay event (set by HTTP timer handlers, consumed by main loop)
+    volatile PendingLcdEvent _pendingLcdEvent = PendingLcdEvent::None;
 };

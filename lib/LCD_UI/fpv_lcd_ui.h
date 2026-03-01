@@ -53,6 +53,14 @@ public:
     void updateFastestLap(uint32_t lapTimeMs);     // Update fastest lap display
     void updateFastest3Laps(uint32_t totalTimeMs); // Update best 3 consecutive
 
+    /** Call from main (core 1) when SD init and bootstrap are done; dismisses "Booting" overlay. */
+    void setBootComplete();
+
+    /** Request countdown overlay (e.g. from web). Safe to call from any core. triggerStartOnComplete: if false, countdown is visual-only and does not call triggerStart() when done. */
+    void requestCountdown(bool triggerStartOnComplete = true);
+    /** Request STOPPED overlay (e.g. from web). Safe to call from any core. */
+    void requestShowFinish();
+
 private:
     // Display hardware
 #if defined(BOARD_ESP32_S3_TOUCH)
@@ -137,6 +145,8 @@ private:
     bool _countdownActive;
     int _countdownValue;
     uint32_t _countdownStartTime;
+    bool _countdownTriggersStart;  // If true, set _startRequested when countdown completes (LCD button); if false, visual-only (web)
+    bool _startingInFivePlayed;    // One-shot: "starting in less than 5" only at 5s mark
     int _lastBeepValue;
     static const uint32_t COUNTDOWN_INTERVAL = 1000;  // 1 second per number
     
@@ -146,6 +156,13 @@ private:
     bool _finishActive;
     uint32_t _finishStartTime;
     static const uint32_t FINISH_DISPLAY_DURATION = 2000;  // Show for 2 seconds
+
+    // Boot overlay (shown until setBootComplete(); written from main, read by UI task)
+    lv_obj_t* boot_overlay;
+    lv_obj_t* boot_title_label;  // "FPVGate"
+    lv_obj_t* boot_label;       // "Booting..."
+    volatile bool _bootComplete;
+    bool _bootOverlayActive;
     
     // Touch and dimming
     uint32_t _lastTouchTime;
@@ -159,6 +176,11 @@ private:
     volatile bool _startRequested;
     volatile bool _stopRequested;
     volatile bool _clearRequested;
+
+    // Cross-core display requests (written by main/webserver, read by UI task on core 0)
+    volatile bool _requestCountdown;
+    volatile bool _requestCountdownTriggerStart;
+    volatile bool _requestShowFinish;
     
     // Cross-core system/band/channel button deltas (written from UI task core 0, read by loop core 1)
     volatile int8_t _systemDelta;
@@ -219,12 +241,13 @@ private:
     void updateScreenBrightness();
     
     // Countdown/finish overlay methods (called from UI task core 0 only)
-    void startCountdown();
+    void startCountdown(bool triggerStartWhenComplete = true);
     void updateCountdown();
     void stopCountdown();
     void showFinish();
     void updateFinish();
     void stopFinish();
+    void processBootOverlay();   // Dismiss boot overlay when _bootComplete (UI task only)
 
     // LVGL callbacks
     static void dispFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* color_p);

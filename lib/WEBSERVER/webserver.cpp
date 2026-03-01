@@ -269,6 +269,16 @@ bool Webserver::consumePendingClear() {
     return false;
 }
 
+void Webserver::setPendingLcdEvent(PendingLcdEvent ev) {
+    _pendingLcdEvent = ev;
+}
+
+Webserver::PendingLcdEvent Webserver::consumePendingLcdEvent() {
+    PendingLcdEvent ev = _pendingLcdEvent;
+    _pendingLcdEvent = PendingLcdEvent::None;
+    return ev;
+}
+
 bool Webserver::isConnected() {
     // WiFi transport is always "connected" if services are started
     // Individual clients connect/disconnect via SSE but that's transparent
@@ -617,6 +627,11 @@ void Webserver::startServices() {
     server.on("/check_network_status.txt", handleRoot);
     server.on("/ncsi.txt", handleRoot);
     server.on("/fwlink", handleRoot);
+    // Android captive portal probe paths – handle before serveStatic to avoid LittleFS open() errors
+    server.on("/connecttest.txt", handleRoot);
+    server.on("/connecttest.txt.gz", handleRoot);
+    server.on("/connecttest.txt/index.htm", handleRoot);
+    server.on("/connecttest.txt/index.htm.gz", handleRoot);
 
     server.on("/status", [this](AsyncWebServerRequest *request) {
         char buf[1536];
@@ -685,12 +700,9 @@ EEPROM:\n\
         request->send(response);
     });
     
+    // Countdown: only set pending LCD event; audio starts when LCD countdown actually starts (keeps them in sync)
     server.on("/timer/countdown", HTTP_POST, [this, sendCorsResponse](AsyncWebServerRequest *request) {
-#ifdef HAS_I2S_AUDIO
-        if (g_audioAnnouncer) {
-            g_audioAnnouncer->announceCountdown();
-        }
-#endif
+        setPendingLcdEvent(PendingLcdEvent::Countdown);
         sendCorsResponse(request, "{\"status\": \"OK\"}");
     });
     
@@ -726,6 +738,7 @@ EEPROM:\n\
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("stopped");
         }
+        setPendingLcdEvent(PendingLcdEvent::ShowFinish);
 #ifdef HAS_I2S_AUDIO
         if (g_audioAnnouncer) {
             g_audioAnnouncer->announceRaceStop();
