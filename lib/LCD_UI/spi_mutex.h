@@ -24,7 +24,7 @@ inline bool spiMutexTake(TickType_t timeout = portMAX_DELAY) {
         
         if (!acquired) {
             Serial.printf("[SPI MUTEX] TIMEOUT after %lums!\n", waitTime);
-        } else if (waitTime > 100) {
+        } else if (waitTime > 50) {
             Serial.printf("[SPI MUTEX] Long wait: %lums\n", waitTime);
         }
         return acquired;

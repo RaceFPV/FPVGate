@@ -110,6 +110,7 @@ bool RaceHistory::loadRaces() {
     }
     
     // Load each race file
+    int fileCount = 0;
     for (const String& filename : files) {
         if (!filename.endsWith(".json")) {
             continue;
@@ -170,6 +171,13 @@ bool RaceHistory::loadRaces() {
         }
         
         races.push_back(race);
+        fileCount++;
+        
+        // Yield to other tasks every 10 files to prevent watchdog timeout
+        // and reduce SPI mutex contention with LCD
+        if (fileCount % 10 == 0) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
     }
     
     DEBUG("Loaded %d races from individual files\n", races.size());
