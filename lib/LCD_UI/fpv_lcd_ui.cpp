@@ -314,7 +314,11 @@ void FpvLcdUI::touchpadRead(lv_indev_drv_t* indev_driver, lv_indev_data_t* data)
         data->state = LV_INDEV_STATE_REL;
         return;
     }
-    
+    // Block all touch until boot overlay is dismissed (prevents interaction during startup)
+    if (ui->_bootOverlayActive) {
+        data->state = LV_INDEV_STATE_REL;
+        return;
+    }
     // Throttle touch reads to ~200Hz for smoother swipe gestures
     static unsigned long lastTouchRead = 0;
     static lv_indev_data_t lastData = {0};
@@ -2077,18 +2081,12 @@ void FpvLcdUI::requestShowFinish() {
 
 void FpvLcdUI::processBootOverlay() {
     if (!_bootComplete || !_bootOverlayActive) return;
-    _bootOverlayActive = false;
-    if (boot_title_label) {
-        lv_obj_del(boot_title_label);
-        boot_title_label = nullptr;
-    }
-    if (boot_label) {
-        lv_obj_del(boot_label);
-        boot_label = nullptr;
-    }
+    _bootOverlayActive = false;  // allow touch immediately (touchpadRead checks this)
     if (boot_overlay) {
-        lv_obj_del(boot_overlay);
-        boot_overlay = nullptr;
+        // Move to back instead of delete/hide: keeps LVGL tree intact so display + touch keep working.
+        // Tabview is now on top for drawing and hit-testing.
+        lv_obj_move_background(boot_overlay);
+        lv_obj_invalidate(lv_scr_act());
     }
 }
 
