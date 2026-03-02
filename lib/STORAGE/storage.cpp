@@ -2,9 +2,7 @@
 #include "debug.h"
 #include "config.h"
 #include <FS.h>
-#if defined(WAVESHARE_ESP32S3_LCD2) && defined(ENABLE_LCD_UI) && ENABLE_LCD_UI
 #include "../LCD_UI/spi_mutex.h"
-#endif
 
 Storage::Storage() : sdAvailable(false) {
 #ifdef HAS_SD_CARD_SUPPORT
