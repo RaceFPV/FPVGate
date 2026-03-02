@@ -769,6 +769,8 @@ void loop() {
         }
     }
 #if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+    // Boot overlay runs *after* the SD block in the loop, so we only reach this once the SD init has run (or is blocking).
+    // Use absolute time: clear 2.5s after boot so we fire the first time we get here after that (no relative 2000ms wait).
     // Dismiss boot overlay only when both SD init and WiFi services are ready, plus 500ms settle
     static bool bootCompleteSent = false;
     static uint32_t bootReadyAtMs = 0;
