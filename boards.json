@@ -24,6 +24,16 @@
       "value": "wavesharelcd2",
       "label": "Waveshare ESP32-S3-LCD-2 (16MB Flash)",
       "expert_mode": 1
+    },
+    {
+      "value": "fpvgateaio",
+      "label": "FPVGate AIO (XIAO ESP32S3, 8MB)",
+      "expert_mode": 0
+    },
+    {
+      "value": "xiaos3plus",
+      "label": "XIAO ESP32S3 Plus (16MB Flash)",
+      "expert_mode": 0
     }
   ]
 }
