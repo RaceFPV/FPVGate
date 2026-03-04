@@ -21,11 +21,14 @@ class CST820
 {
 public:
     CST820(int8_t sda_pin = -1, int8_t scl_pin = -1, int8_t rst_pin = -1, int8_t int_pin = -1);
+    // Optional: use a specific I2C bus (e.g. Wire1 for 2.8 to avoid conflict / invalid state)
+    CST820(TwoWire* wire, int8_t sda_pin, int8_t scl_pin, int8_t rst_pin, int8_t int_pin);
 
     void begin(void);
     bool getTouch(uint16_t *x, uint16_t *y, uint8_t *gesture);
 
 private:
+    TwoWire* _wire;
     int8_t _sda, _scl, _rst, _int;
 
     uint8_t i2c_read(uint8_t addr);

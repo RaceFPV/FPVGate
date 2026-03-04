@@ -4,10 +4,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-// Shared SPI mutex for Waveshare ESP32-S3-LCD-2 board
-// The LCD and SD card share FSPI pins (MOSI=38, SCK=39, MISO=40)
-// All SPI bus access must be serialized through this mutex.
-
+// Shared SPI mutex for Waveshare ESP32-S3-LCD-2 board (LCD and SD share FSPI).
+// WAVESHARE_ESP32S3_LCD28 uses dedicated TF pins on HSPI, so no mutex needed.
 #if defined(WAVESHARE_ESP32S3_LCD2) && defined(ENABLE_LCD_UI) && ENABLE_LCD_UI
 
 extern SemaphoreHandle_t g_spiMutex;

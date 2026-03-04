@@ -67,13 +67,19 @@ bool Storage::initSD() {
         return false;
     }
 #endif
+#if defined(WAVESHARE_ESP32S3_LCD28)
+    // 2.8": SD uses dedicated TF pins (14/16/17/21) on HSPI — no shared bus, no mutex needed for SD init
+#endif
     
     // Create custom SPI bus for SD card
 #if defined(WAVESHARE_ESP32S3_LCD2)
-    // Waveshare board: SD card shares SPI pins with LCD (MOSI=38, SCK=39, MISO=40)
-    // Must use FSPI (same peripheral as LCD) with proper CS management
+    // LCD-2: SD card shares FSPI with LCD (MOSI=38, SCK=39, MISO=40)
     spi = new SPIClass(FSPI);
     DEBUG("SPI bus object created (FSPI - shared with LCD)\n");
+#elif defined(WAVESHARE_ESP32S3_LCD28)
+    // LCD-2.8: TF slot on dedicated pins per Waveshare wiki (SCK=14, MISO=16, MOSI=17, CS=21); use HSPI
+    spi = new SPIClass(HSPI);
+    DEBUG("SPI bus object created (HSPI - dedicated TF slot)\n");
 #else
     spi = new SPIClass(HSPI);
     DEBUG("SPI bus object created (HSPI)\n");
@@ -85,7 +91,7 @@ bool Storage::initSD() {
     
     // Try to initialize SD card at 10MHz (safe for short wires)
     DEBUG("Attempting SD.begin() at 10MHz...\n");
-#if !defined(WAVESHARE_ESP32S3_LCD2)
+#if !defined(WAVESHARE_ESP32S3_LCD2) && !defined(WAVESHARE_ESP32S3_LCD28)
     spiMutexTake();
 #endif
     bool sdOk = SD.begin(PIN_SD_CS, *spi, 10000000);
@@ -98,7 +104,7 @@ bool Storage::initSD() {
         DEBUG("  3. Loose wiring\n");
         DEBUG("  4. Incompatible card\n");
         DEBUG("  5. Insufficient power\n");
-#if defined(WAVESHARE_ESP32S3_LCD2)
+#if defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28)
         // Do NOT tear down FSPI: LCD shares the same bus. spi->end() leaves the peripheral
         // unusable and gfx->begin() does not fully re-init it. Leave bus begun so LCD keeps working.
         (void)0;
@@ -114,7 +120,7 @@ bool Storage::initSD() {
     if (cardType == CARD_NONE) {
         DEBUG("No SD card attached\n");
         SD.end();
-#if defined(WAVESHARE_ESP32S3_LCD2)
+#if defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28)
         // Do NOT tear down FSPI (shared with LCD) - see comment above.
         (void)0;
 #else

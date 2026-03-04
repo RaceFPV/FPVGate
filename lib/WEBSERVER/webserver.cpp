@@ -368,7 +368,12 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
             led->blink(200);
         }
     }
-    if (changeMode != wifiMode && changeMode != WIFI_OFF && (currentTimeMs - changeTimeMs) > WIFI_RECONNECT_TIMEOUT_MS) {
+    // On 2.8" LCD defer AP start to 3.5s so touch I2C has a clean window (WiFi at ~1.6s can cause NACK/259)
+    if (changeMode != wifiMode && changeMode != WIFI_OFF && (currentTimeMs - changeTimeMs) > WIFI_RECONNECT_TIMEOUT_MS
+#if defined(WAVESHARE_ESP32S3_LCD28)
+        && (currentTimeMs > 3500)
+#endif
+        ) {
         switch (changeMode) {
             case WIFI_AP:
                 DEBUG("Changing to WiFi AP mode\n");

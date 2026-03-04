@@ -3,7 +3,11 @@
 #include <lvgl.h>
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
+#if defined(WAVESHARE_ESP32S3_LCD28)
+#include "CST328.h"
+#else
 #include "CST820.h"
+#endif
 
 // LCD UI class matching StarForge display implementation
 class FpvLcdUI {
@@ -61,12 +65,26 @@ public:
     /** Request STOPPED overlay (e.g. from web). Safe to call from any core. */
     void requestShowFinish();
 
+#if defined(WAVESHARE_ESP32S3_LCD28)
+    /** Call from main loop() only (CPU 1). Reads touch I2C so Wire1 is used from same task as demo. */
+    void pollDemoTouch();
+    /** One UI iteration (process updates, lv_timer_handler, blit). Call from loop() when using LVGL-from-loop (LCD28 demo-style). */
+    void tick();
+#endif
+
 private:
     // Display hardware
 #if defined(BOARD_ESP32_S3_TOUCH)
     Arduino_DataBus* bus;
     Arduino_GFX* gfx;
+#if defined(WAVESHARE_ESP32S3_LCD28)
+    CST328* touch;       // nullptr when using Waveshare demo driver (Touch_CST328)
+    bool _useDemoTouch;   // true = use Touch_Init/Read_Data/Get_XY from demo
+    volatile uint16_t _demoTouchX, _demoTouchY;
+    volatile uint8_t _demoTouchPressed;  // 0 = released, 1 = pressed (written by loop, read by touchpadRead)
+#else
     CST820* touch;
+#endif
 #endif
 
     // LVGL display buffer and driver

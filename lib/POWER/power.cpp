@@ -2,7 +2,7 @@
 
 #ifdef ENABLE_POWER_SWITCH
 
-#if defined(ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(LILYGO_TENERGY_S3) || defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28) || defined(LILYGO_TENERGY_S3) || defined(ESP32S3_SUPERMINI)
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include <WiFi.h>

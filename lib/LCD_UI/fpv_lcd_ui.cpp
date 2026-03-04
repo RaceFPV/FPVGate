@@ -1,5 +1,12 @@
 #include "fpv_lcd_ui.h"
 #include "spi_mutex.h"
+#include "../CONFIG/config.h"
+#if defined(WAVESHARE_ESP32S3_LCD28)
+#include "Touch_CST328.h"
+#endif
+#if defined(ESP32)
+#include <esp_task_wdt.h>
+#endif
 #ifdef HAS_I2S_AUDIO
 #include "audio.h"
 extern AudioAnnouncer* g_audioAnnouncer;
@@ -10,15 +17,21 @@ extern AudioAnnouncer* g_audioAnnouncer;
 // Define the global SPI mutex
 SemaphoreHandle_t g_spiMutex = nullptr;
 
-// LCD pins for Waveshare ESP32-S3 Touch LCD
-#define LCD_BL 1  // Backlight pin
-
-// Touch I2C pins (CST820 on Waveshare ESP32-S3-Touch-LCD-2)
+// Backlight and touch pins come from config.h (WAVESHARE_ESP32S3_LCD2 or WAVESHARE_ESP32S3_LCD28)
+#if defined(LCD_BACKLIGHT)
+#define LCD_BL LCD_BACKLIGHT
+#else
+#define LCD_BL 1
+#endif
+#if defined(BOARD_ESP32_S3_TOUCH) && defined(LCD_I2C_SDA) && defined(LCD_I2C_SCL)
+// LCD_I2C_SDA, LCD_I2C_SCL, LCD_TOUCH_RST, LCD_TOUCH_INT from config.h
+#else
 #if defined(BOARD_ESP32_S3_TOUCH)
 #define LCD_I2C_SDA 48
 #define LCD_I2C_SCL 47
 #define LCD_TOUCH_RST -1
 #define LCD_TOUCH_INT -1
+#endif
 #endif
 
 // Static member initialization
@@ -36,6 +49,9 @@ FpvLcdUI::FpvLcdUI()
     : 
 #if defined(BOARD_ESP32_S3_TOUCH)
       bus(nullptr), gfx(nullptr), touch(nullptr),
+#if defined(WAVESHARE_ESP32S3_LCD28)
+      _useDemoTouch(false), _demoTouchX(0), _demoTouchY(0), _demoTouchPressed(0),
+#endif
 #endif
       rssi_label(nullptr), rssi_chart(nullptr), rssi_series(nullptr),
       lap_count_label(nullptr), status_label(nullptr),
@@ -74,18 +90,22 @@ FpvLcdUI::FpvLcdUI()
 
 FpvLcdUI::~FpvLcdUI() {
 #if defined(BOARD_ESP32_S3_TOUCH)
-    if (touch) delete touch;
+#if defined(WAVESHARE_ESP32S3_LCD28)
+    if (touch) delete (CST328*)touch;
+#else
+    if (touch) delete (CST820*)touch;
+#endif
+#endif
     if (gfx) delete gfx;
     if (bus) delete bus;
     if (s_buf) {
         heap_caps_free(s_buf);
         s_buf = nullptr;
     }
-#endif
 }
 
 bool FpvLcdUI::begin() {
-#if !defined(ENABLE_LCD_UI) || !defined(WAVESHARE_ESP32S3_LCD2)
+#if !defined(ENABLE_LCD_UI) || (!defined(WAVESHARE_ESP32S3_LCD2) && !defined(WAVESHARE_ESP32S3_LCD28))
     return false;
 #endif
 
@@ -99,14 +119,17 @@ bool FpvLcdUI::begin() {
     Serial.println("LCD: Backlight OFF (initializing)");
 
 #if defined(BOARD_ESP32_S3_TOUCH)
-    // Waveshare ESP32-S3-Touch-LCD-2: Use Arduino_GFX with SPI2
+    // Waveshare ESP32-S3-Touch-LCD-2 or 2.8: Use Arduino_GFX with SPI
     Serial.println("LCD: Using Arduino_GFX for ESP32-S3");
-    
-    // Create SPI data bus (DC, CS, SCK, MOSI, MISO, SPI_NUM, isSPI_Mode)
+#if defined(WAVESHARE_ESP32S3_LCD28)
+    // 2.8" board: DC=41, CS=42, SCK=40, MOSI=45, RST=39 (LCD MISO NC)
+    bus = new Arduino_ESP32SPI(41 /* DC */, 42 /* CS */, 40 /* SCK */, 45 /* MOSI */, -1 /* MISO */, FSPI, true);
+    gfx = new Arduino_ST7789(bus, 39 /* RST */, 0 /* rotation */, true /* IPS */, 240 /* width */, 320 /* height */);
+#else
+    // 2" LCD-2: DC=42, CS=45, SCK=39, MOSI=38, MISO=40
     bus = new Arduino_ESP32SPI(42 /* DC */, 45 /* CS */, 39 /* SCK */, 38 /* MOSI */, 40 /* MISO */, FSPI /* spi_num */, true);
-    
-    // Create ST7789 display driver (bus, RST, rotation, IPS, width, height)
     gfx = new Arduino_ST7789(bus, -1 /* RST */, 0 /* rotation */, true /* IPS */, 240 /* width */, 320 /* height */);
+#endif
     
     // Initialize display
     Serial.println("LCD: Calling gfx->begin()...");
@@ -118,6 +141,16 @@ bool FpvLcdUI::begin() {
     
     gfx->fillScreen(0x0000);  // BLACK in RGB565 (removed as a global by newer GFX lib versions)
     Serial.println("LCD: Arduino_GFX initialized");
+
+#if defined(WAVESHARE_ESP32S3_LCD28)
+    Serial.println("LCD: Initializing touch (CST328)...");
+    _useDemoTouch = true;
+    touch = nullptr;
+    if (!Touch_Init()) {
+        Serial.println("LCD: Touch_Init failed (CST328 demo driver)");
+        _useDemoTouch = false;
+    }
+#endif
 #endif
 
     // Turn on backlight
@@ -188,19 +221,25 @@ bool FpvLcdUI::begin() {
     
     Serial.println("LCD: LVGL display registered");
 
-#if defined(BOARD_ESP32_S3_TOUCH)
-    // Initialize touch controller (CST820 on I2C)
-    Serial.println("LCD: Initializing CST820 touch...");
+#if defined(BOARD_ESP32_S3_TOUCH) && !defined(WAVESHARE_ESP32S3_LCD28)
+    // 2" LCD: initialize CST820 touch (LCD28 touch already inited above, after gfx->begin())
+    Serial.println("LCD: Initializing touch...");
     touch = new CST820(LCD_I2C_SDA, LCD_I2C_SCL, LCD_TOUCH_RST, LCD_TOUCH_INT);
     touch->begin();
-    
-    lv_indev_drv_init(&s_indevDrv);
-    s_indevDrv.type = LV_INDEV_TYPE_POINTER;
-    s_indevDrv.read_cb = touchpadRead;
-    s_indevDrv.user_data = this;
-    lv_indev_drv_register(&s_indevDrv);
-    Serial.println("LCD: Touch initialized");
 #endif
+
+    if (touch
+#if defined(WAVESHARE_ESP32S3_LCD28)
+        || _useDemoTouch
+#endif
+    ) {
+        lv_indev_drv_init(&s_indevDrv);
+        s_indevDrv.type = LV_INDEV_TYPE_POINTER;
+        s_indevDrv.read_cb = touchpadRead;
+        s_indevDrv.user_data = this;
+        lv_indev_drv_register(&s_indevDrv);
+        Serial.println("LCD: Touch initialized");
+    }
 
     // Create UI
     Serial.println("LCD: Creating UI...");
@@ -233,12 +272,20 @@ void FpvLcdUI::uiTask(void* parameter) {
         vTaskDelete(NULL);
         return;
     }
-    
+
+    // Subscribe this task to the task WDT so libs that call esp_task_wdt_reset() don't log "task not found"
+#if defined(ESP32)
+    esp_task_wdt_add(NULL);
+#endif
+
     // Wait a bit before starting LVGL loop to ensure everything is initialized
     vTaskDelay(pdMS_TO_TICKS(500));
-    
+
     // Main LVGL event loop
     while (true) {
+#if defined(ESP32)
+        esp_task_wdt_reset();  // we subscribed above; must feed or task gets killed
+#endif
         // Process cross-core data updates (safe: we're on core 0)
         ui->processRssiUpdate();
         ui->processLapUpdate();
@@ -310,37 +357,54 @@ void FpvLcdUI::dispFlush(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t*
 
 void FpvLcdUI::touchpadRead(lv_indev_drv_t* indev_driver, lv_indev_data_t* data) {
     FpvLcdUI* ui = static_cast<FpvLcdUI*>(indev_driver->user_data);
+    static lv_indev_data_t lastData = {0};
+    unsigned long now = millis();
+
+#if defined(WAVESHARE_ESP32S3_LCD28)
+    if (ui && ui->_useDemoTouch) {
+        if (ui->_bootOverlayActive) {
+            data->state = LV_INDEV_STATE_REL;
+            return;
+        }
+        // No I2C here: touch is read from loop() (CPU 1) via pollDemoTouch(); we only return cached state.
+        // Matches demo where touch I2C runs in the same task as loop().
+        data->point.x = ui->_demoTouchX;
+        data->point.y = ui->_demoTouchY;
+        data->state = ui->_demoTouchPressed ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
+        if (ui->_demoTouchPressed) {
+            ui->_lastTouchTime = now;
+            if (ui->_screenDimmed) {
+                ui->_screenDimmed = false;
+                ui->updateScreenBrightness();
+            }
+        }
+        return;
+    }
+#endif
+
     if (!ui || !ui->touch) {
         data->state = LV_INDEV_STATE_REL;
         return;
     }
-    // Block all touch until boot overlay is dismissed (prevents interaction during startup)
     if (ui->_bootOverlayActive) {
         data->state = LV_INDEV_STATE_REL;
         return;
     }
-    // Throttle touch reads to ~200Hz for smoother swipe gestures
     static unsigned long lastTouchRead = 0;
-    static lv_indev_data_t lastData = {0};
-    unsigned long now = millis();
-    
-    if (now - lastTouchRead < 5) {  // 5ms = 200Hz (was 10ms = 100Hz)
+    if (now - lastTouchRead < 50) {
         *data = lastData;
         return;
     }
     lastTouchRead = now;
-    
+
     uint16_t touchX, touchY;
     uint8_t gesture;
-    
     bool touched = ui->touch->getTouch(&touchX, &touchY, &gesture);
-    
+
     if (touched) {
         data->state = LV_INDEV_STATE_PR;
         data->point.x = touchX;
         data->point.y = touchY;
-        
-        // Wake screen on touch
         ui->_lastTouchTime = now;
         if (ui->_screenDimmed) {
             ui->_screenDimmed = false;
@@ -349,7 +413,6 @@ void FpvLcdUI::touchpadRead(lv_indev_drv_t* indev_driver, lv_indev_data_t* data)
     } else {
         data->state = LV_INDEV_STATE_REL;
     }
-    
     lastData = *data;
 }
 
@@ -2068,6 +2131,7 @@ void FpvLcdUI::stopFinish() {
 
 void FpvLcdUI::setBootComplete() {
     _bootComplete = true;
+    processBootOverlay();  // dismiss overlay immediately (no need to wait for next tick)
 }
 
 void FpvLcdUI::requestCountdown(bool triggerStartOnComplete) {
@@ -2079,8 +2143,69 @@ void FpvLcdUI::requestShowFinish() {
     _requestShowFinish = true;
 }
 
+#if defined(WAVESHARE_ESP32S3_LCD28)
+void FpvLcdUI::tick() {
+    processRssiUpdate();
+    processLapUpdate();
+    processBandChannelUpdate();
+    processThresholdUpdate();
+    processBatteryUpdate();
+    processRaceTimingUpdate();
+    if (_countdownActive) updateCountdown();
+    if (_finishActive) updateFinish();
+    processBootOverlay();
+    if (_requestCountdown) {
+        bool trigger = _requestCountdownTriggerStart;
+        _requestCountdown = false;
+        startCountdown(trigger);
+    }
+    if (_requestShowFinish) {
+        _requestShowFinish = false;
+        showFinish();
+    }
+    lv_timer_handler();
+#if defined(BOARD_ESP32_S3_TOUCH)
+    static uint32_t lastBlitMs = 0;
+    uint32_t now = millis();
+    bool recentlyTouched = (now - _lastTouchTime) < 350;
+    bool shouldBlit = recentlyTouched || (now - lastBlitMs) >= 50;
+    TickType_t blitTimeout = pdMS_TO_TICKS(80);
+    if (shouldBlit && gfx && s_buf) {
+        if (spiMutexTake(blitTimeout)) {
+            gfx->draw16bitBeRGBBitmap(0, 0, (uint16_t*)s_buf, 240, 320);
+            spiMutexGive();
+            lastBlitMs = now;
+        }
+    }
+#endif
+}
+
+void FpvLcdUI::pollDemoTouch() {
+    if (!_useDemoTouch) return;
+    static uint32_t lastPoll = 0;
+    uint32_t now = millis();
+    if (now - lastPoll < 5) return;
+    lastPoll = now;
+    uint16_t touchpad_x[5] = {0};
+    uint16_t touchpad_y[5] = {0};
+    uint16_t strength[5] = {0};
+    uint8_t touchpad_cnt = 0;
+    uint8_t readOk = Touch_Read_Data();
+    uint8_t touchpad_pressed = readOk ? Touch_Get_XY(touchpad_x, touchpad_y, strength, &touchpad_cnt, CST328_LCD_TOUCH_MAX_POINTS) : 0;
+    if (touchpad_pressed && touchpad_cnt > 0) {
+        _demoTouchX = touchpad_x[0];
+        _demoTouchY = touchpad_y[0];
+        _demoTouchPressed = 1;
+    } else {
+        _demoTouchPressed = 0;
+    }
+}
+#endif
+
 void FpvLcdUI::processBootOverlay() {
-    if (!_bootComplete || !_bootOverlayActive) return;
+    if (!_bootOverlayActive) return;
+    // Dismiss when main called setBootComplete() or 5s timeout (so overlay never stays stuck)
+    if (!_bootComplete && (millis() <= 5000)) return;
     _bootOverlayActive = false;  // allow touch immediately (touchpadRead checks this)
     if (boot_overlay) {
         // Move to back instead of delete/hide: keeps LVGL tree intact so display + touch keep working.

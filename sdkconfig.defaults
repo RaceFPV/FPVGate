@@ -1,0 +1,3 @@
+# Disable task watchdog so libraries that call esp_task_wdt_reset() don't log "task not found"
+# (No task is subscribed to the TWDT; disabling stops the spam and avoids crashes when loop blocks.)
+CONFIG_ESP_TASK_WDT_ENABLE=n

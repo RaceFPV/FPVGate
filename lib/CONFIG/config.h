@@ -112,6 +112,36 @@
 // LCD backlight (for power management)
 #define LCD_BACKLIGHT 1
 
+// Waveshare ESP32-S3-Touch-LCD-2.8 (2.8" 240x320, 16MB Flash, 8MB PSRAM, TF slot)
+// Schematic: GPIO10/11 = I2C for IMU/RTC (we use touch on 1/3). LCD: MOSI=45, SCK=40, CS=42, DC=41, RST=39.
+// TF slot per Waveshare wiki: SCK=14, MISO=16, MOSI=17, CS=21 (dedicated; SD_D1/D2 NC). RX5808 CLOCK on 44 (header RXD); avoid 43 if it has in-line resistor.
+#elif defined(WAVESHARE_ESP32S3_LCD28)
+
+#define PIN_LED 2              // On-board or header (2.8 uses GPIO2 for TP_RST; use 2 or 43/44 from header)
+// No RGB LED on 2.8" board
+#define PIN_VBAT 8             // Battery voltage sense on GPIO8 (ADC1); use external divider if > 3.3V
+#define VBAT_SCALE 2           // Adjust for your divider (e.g. 2 = 2:1)
+#define VBAT_ADD 2             // Calibration offset (tenths of volt)
+// RX5808: RSSI must be ADC1 — ADC2 (e.g. GPIO15) is unreliable when WiFi is on (shared with radio). Use GPIO7 (ADC1).
+#define PIN_RX5808_RSSI 7      // RSSI on GPIO7 (ADC1_CH6) — wire RX5808 RSSI output here; 15 (ADC2) does not work with WiFi
+#define PIN_RX5808_DATA 10     // CH1/SPIDATA on GPIO10
+#define PIN_RX5808_SELECT 11   // CH2/SPILE on GPIO11
+#define PIN_RX5808_CLOCK 44    // CH3/SPICLK on GPIO44 (12-pin header RXD); try 44 if 43 has series resistor
+#define PIN_BUZZER 6           // Buzzer if added externally (board has I2S speaker, not simple buzzer)
+#define BUZZER_INVERTED false
+#define PIN_MODE_SWITCH 19     // Mode selection (12-pin D-/GPIO19; when USB unplugged acts as GPIO)
+// SD Card: Waveshare wiki TF slot pins (dedicated, not shared with LCD). Storage uses HSPI.
+#define PIN_SD_CS 21
+#define PIN_SD_SCK 14
+#define PIN_SD_MOSI 17
+#define PIN_SD_MISO 16
+// Touch: CST328 on dedicated I2C (SDA=1, SCL=3, RST=2, INT=4) at 0x1A — per Waveshare demo
+#define LCD_I2C_SDA 1
+#define LCD_I2C_SCL 3
+#define LCD_TOUCH_RST 2
+#define LCD_TOUCH_INT 4
+#define LCD_BACKLIGHT 5        // LCD_BL on 2.8
+
 // Seeed Studio XIAO ESP32S3
 #elif defined(SEEED_XIAO_ESP32S3)
 
@@ -182,18 +212,18 @@
 // ====================================================================
 
 // ESP32-S3 family boards (SD card support, SPI, USB CDC)
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28)
     #define HAS_SD_CARD_SUPPORT 1
     #define HAS_SPI_CLASS 1
 #endif
 
-// Boards with RGB LED support
-#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(PIN_RGB_LED)
+// Boards with RGB LED support (WAVESHARE_ESP32S3_LCD28 has no RGB LED; GPIO15 is RSSI)
+#if !defined(WAVESHARE_ESP32S3_LCD28) && (defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(PIN_RGB_LED))
     #define HAS_RGB_LED 1
 #endif
 
-// Boards with built-in battery monitoring
-#if defined(LILYGO_TENERGY_S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(ENABLE_BATTERY_TEST)
+// Boards with built-in battery monitoring (LCD28: GPIO8 ADC per board)
+#if defined(LILYGO_TENERGY_S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28) || defined(ENABLE_BATTERY_TEST)
     #define HAS_BATTERY_MONITOR 1
 #endif
 

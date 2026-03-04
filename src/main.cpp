@@ -16,7 +16,7 @@
 #ifdef HAS_RGB_LED
 #include "rgbled.h"
 #endif
-#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+#if ENABLE_LCD_UI && (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28))
 #include "../lib/LCD_UI/fpv_lcd_ui.h"
 #endif
 #ifdef ENABLE_POWER_SWITCH
@@ -24,6 +24,9 @@
 #endif
 #ifdef HAS_I2S_AUDIO
 #include "audio.h"
+#endif
+#if defined(ESP32)
+#include <esp_task_wdt.h>
 #endif
 
 // ====================================================================
@@ -81,7 +84,7 @@ AudioAnnouncer* g_audioAnnouncer = &audioAnnouncer;
 void* g_audioAnnouncer = nullptr;
 #endif
 static LapTimer timer;
-#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+#if ENABLE_LCD_UI && (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28))
 static FpvLcdUI* g_lcdUi = nullptr;
 static TaskHandle_t g_lcdUiTask = nullptr;
 static uint16_t g_lastKnownFreq = 0;  // Track config frequency for web->LCD sync
@@ -170,7 +173,7 @@ void setup() {
     // If power switch is OFF at boot, enter deep sleep immediately
     // ====================================================================
 #ifdef ENABLE_POWER_SWITCH
-#if defined(WAVESHARE_ESP32S3_LCD2) && defined(LCD_BACKLIGHT)
+#if (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28)) && defined(LCD_BACKLIGHT)
     // Initialize power manager BEFORE anything else
     // If switch is OFF, this will enter deep sleep immediately
     if (!powerManager.init(PIN_POWER_SWITCH, LCD_BACKLIGHT)) {
@@ -241,6 +244,8 @@ void setup() {
         DEBUG("LilyGO T-Energy S3 build detected - WiFi Mode (Battery monitoring enabled)\n");
 #elif defined(WAVESHARE_ESP32S3_LCD2)
         DEBUG("Waveshare ESP32-S3-LCD-2 build detected - WiFi Mode (Battery monitoring enabled)\n");
+#elif defined(WAVESHARE_ESP32S3_LCD28)
+        DEBUG("Waveshare ESP32-S3-Touch-LCD-2.8 build detected - WiFi Mode\n");
 #elif defined(ESP32S3) && defined(ENABLE_BATTERY_TEST)
         DEBUG("ESP32S3 DevKitC build - WiFi Mode (Battery TEST MODE enabled on GPIO%d)\n", PIN_VBAT);
 #elif defined(ESP32S3)
@@ -249,13 +254,21 @@ void setup() {
         DEBUG("Generic ESP32 build - WiFi Mode\n");
 #endif
     
-#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+#if defined(ESP32) && ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD28)
+    // Disable task WDT at runtime so libs (AsyncTCP, etc.) that call esp_task_wdt_reset() don't log "task not found"
+    esp_task_wdt_deinit();
+#endif
+#if ENABLE_LCD_UI && (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28))
     // Initialize LVGL-based StarForge-style UI (Arduino_GFX + full-screen buffer)
     DEBUG("Initializing LCD UI...\n");
     
     g_lcdUi = new FpvLcdUI();
     if (g_lcdUi) {
         if (g_lcdUi->begin()) {
+#if defined(WAVESHARE_ESP32S3_LCD28)
+            // 2.8": run LVGL from loop() like the demo (no separate task) so touch I2C context matches exactly
+            DEBUG("LCD UI ready (LVGL from loop, demo-style)\n");
+#else
             BaseType_t result = xTaskCreatePinnedToCore(
                 FpvLcdUI::uiTask, 
                 "LcdUI", 
@@ -265,7 +278,6 @@ void setup() {
                 &g_lcdUiTask, 
                 0
             );
-            
             if (result == pdPASS) {
                 DEBUG("LCD UI task started successfully (LVGL)\n");
             } else {
@@ -273,6 +285,7 @@ void setup() {
                 delete g_lcdUi;
                 g_lcdUi = nullptr;
             }
+#endif
         } else {
             DEBUG("LCD UI begin() failed\n");
             delete g_lcdUi;
@@ -367,7 +380,7 @@ void setup() {
     
     DEBUG("Transport system initialized (WiFi + USB)\n");
     
-#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+#if ENABLE_LCD_UI && (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28))
     // Initialize LCD band/channel display from config
     if (g_lcdUi) {
         uint8_t bandIdx = config.getBandIndex();
@@ -406,7 +419,7 @@ void setup() {
 
 void loop() {
     uint32_t currentTimeMs = millis();
-    
+
     // Debug: Periodic "alive" message every 5 seconds with detailed memory stats
     static uint32_t lastAliveMs = 0;
     if (currentTimeMs - lastAliveMs > 5000) {
@@ -430,7 +443,7 @@ void loop() {
     // POWER MANAGEMENT - Monitor switch for OFF transition (if enabled)
     // ====================================================================
 #ifdef ENABLE_POWER_SWITCH
-#if defined(WAVESHARE_ESP32S3_LCD2) && defined(LCD_BACKLIGHT)
+#if (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28)) && defined(LCD_BACKLIGHT)
     if (!powerManager.monitorSwitch()) {
         // Switch flipped to OFF - graceful shutdown
         DEBUG("\n=== Power switch turned OFF - shutting down ===\n");
@@ -454,7 +467,7 @@ void loop() {
     // Timing always runs
     timer.handleLapTimerUpdate(currentTimeMs);
     
-#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+#if ENABLE_LCD_UI && (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28))
     // Feed live RSSI and timing data to LCD UI
     if (g_lcdUi) {
         // Deferred race save from previous LCD Stop (runs one loop later to avoid holding SPI during stop)
@@ -596,7 +609,11 @@ void loop() {
                 config.setFrequency(newFreq);
                 g_lcdUi->setBandChannelDisplay(sys, bandIdx, channelIdx, newFreq);
                 g_lastKnownFreq = newFreq;
+#if !defined(WAVESHARE_ESP32S3_LCD28)
                 ws.triggerConfigUpdated();
+#else
+                // 2.8": skip SSE notify from LCD path to avoid heap double-free (parallelTask/core0 vs loop/core1)
+#endif
                 DEBUG("[LCD] System/Band/Channel: sys=%d band=%d ch=%d freq=%d\n", sys, bandIdx, channelIdx, newFreq);
             }
         }
@@ -632,7 +649,9 @@ void loop() {
             g_lcdUi->setThresholdDisplay(enter, exit_val);
             g_lastKnownEnter = enter;
             g_lastKnownExit = exit_val;
+#if !defined(WAVESHARE_ESP32S3_LCD28)
             ws.triggerConfigUpdated();
+#endif
             DEBUG("[LCD] Threshold: enter=%d exit=%d\n", enter, exit_val);
         }
         
@@ -672,6 +691,12 @@ void loop() {
         if (ws.consumePendingClear()) {
             g_lcdUi->clearLaps();
         }
+#if defined(WAVESHARE_ESP32S3_LCD28)
+        // Demo-style: touch + LVGL from loop() then delay(5), same as demo's Lvgl_Loop(); vTaskDelay(5);
+        g_lcdUi->pollDemoTouch();
+        g_lcdUi->tick();
+        vTaskDelay(pdMS_TO_TICKS(5));
+#endif
     }
 #endif
     
@@ -680,7 +705,7 @@ void loop() {
         uint32_t lapTime = timer.getLapTime();
         transportManager.broadcastLapEvent(lapTime);
         
-#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+#if ENABLE_LCD_UI && (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28))
         if (g_lcdUi) {
             g_lcdUi->addLap(lapTime);
         }
@@ -768,18 +793,24 @@ void loop() {
             DEBUG("SD card not available - using LittleFS only\n");
         }
     }
-#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
-    // Boot overlay runs *after* the SD block in the loop, so we only reach this once the SD init has run (or is blocking).
-    // Use absolute time: clear 2.5s after boot so we fire the first time we get here after that (no relative 2000ms wait).
-    // Dismiss boot overlay only when both SD init and WiFi services are ready, plus 500ms settle
+#if ENABLE_LCD_UI && (defined(WAVESHARE_ESP32S3_LCD2) || defined(WAVESHARE_ESP32S3_LCD28))
+    // Dismiss boot overlay when: (a) SD init done and WiFi services ready + 500ms, or (b) 5s timeout so user is never stuck
     static bool bootCompleteSent = false;
     static uint32_t bootReadyAtMs = 0;
-    if (!bootCompleteSent && sdInitAttempted && ws.isServicesStarted()) {
-        if (bootReadyAtMs == 0) bootReadyAtMs = currentTimeMs;
-        if ((currentTimeMs - bootReadyAtMs) >= 500) {
+    bool normalBoot = !bootCompleteSent && sdInitAttempted && ws.isServicesStarted();
+    bool timeoutBoot = !bootCompleteSent && (currentTimeMs > 5000);
+    if (!bootCompleteSent && (normalBoot || timeoutBoot)) {
+        if (normalBoot) {
+            if (bootReadyAtMs == 0) bootReadyAtMs = currentTimeMs;
+            if ((currentTimeMs - bootReadyAtMs) >= 500) {
+                if (g_lcdUi) g_lcdUi->setBootComplete();
+                bootCompleteSent = true;
+                DEBUG("\n=== Boot complete (overlay dismissed) ===\n");
+            }
+        } else if (timeoutBoot) {
             if (g_lcdUi) g_lcdUi->setBootComplete();
             bootCompleteSent = true;
-            DEBUG("\n=== Boot complete (overlay dismissed) ===\n");
+            DEBUG("\n=== Boot overlay dismissed (5s timeout) ===\n");
         }
     }
 #endif
