@@ -1,13 +1,13 @@
 # FPVGate RotorHazard Plugin
 
-Companion plugin for [FPVGate](https://github.com/your-repo/FPVGate) that allows an FPVGate infrared lap timer to submit laps directly into RotorHazard via Socket.IO.
+Companion plugin for [FPVGate](https://github.com/your-repo/FPVGate) that allows an FPVGate RSSI lap timer to submit laps directly into RotorHazard via Socket.IO.
 
 ## How It Works
 
 The integration is fully bidirectional:
 
 **FPVGate -> RH (lap recording)**
-When the IR gate triggers, the FPVGate firmware fires an HTTP POST to `POST /fpvgate/lap` on the RH server. The plugin records it as a lap via `rhapi.race.lap_add()`. FPVGate's IP is auto-detected from this request — no manual configuration needed.
+When the RSSI gate triggers, the FPVGate firmware fires an HTTP POST to `POST /fpvgate/lap` on the RH server. The plugin records it as a lap via `rhapi.race.lap_add()`. FPVGate's IP is auto-detected from this request — no manual configuration needed.
 
 **RH -> FPVGate (race control)**
 The plugin listens to RH race lifecycle events and sends the corresponding command back to FPVGate:
