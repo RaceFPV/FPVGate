@@ -47,6 +47,15 @@ class RHManager {
     // Returns true if at least one successful clock sync has been performed
     bool isClockSynced() const;
 
+    // Returns the computed clock offset (millis() + offset = RH monotonic ms)
+    int64_t getClockOffsetMs() const;
+
+    // Returns the round-trip time of the most recent successful sync (ms)
+    uint32_t getLastSyncRttMs() const;
+
+    // Request an immediate clock sync on the next process() tick
+    void requestSync();
+
     // Call when WiFi newly connects - triggers an immediate clock sync
     void onWifiConnected();
 
@@ -59,10 +68,11 @@ class RHManager {
     PendingLap pendingLaps[RH_QUEUE_SIZE];
 
     // Clock synchronisation state
-    int64_t  clockOffsetMs;  // add to millis() to get RH monotonic ms
-    bool     clockSynced;    // true once first sync succeeds
-    bool     needsSync;      // set true on WiFi connect for immediate sync
-    uint32_t lastSyncMs;     // millis() when last sync was performed
+    int64_t  clockOffsetMs;   // add to millis() to get RH monotonic ms
+    bool     clockSynced;     // true once first sync succeeds
+    bool     needsSync;       // set true on WiFi connect for immediate sync
+    uint32_t lastSyncMs;      // millis() when last sync was performed
+    uint32_t lastSyncRttMs;   // round-trip time of the most recent successful sync (ms)
 
     void sendPendingLaps();
     void syncClock();

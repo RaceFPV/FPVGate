@@ -1039,13 +1039,25 @@ EEPROM:\n\
         DynamicJsonDocument doc(256);
         bool en = rhManager && rhManager->isEnabled();
         bool conn = rhManager && rhManager->isConnected();
-        doc["enabled"] = en;
-        doc["connected"] = conn;
-        doc["host"] = conf->getRhHostIP();
-        doc["node"] = conf->getRhNodeIndex();
+        bool synced = rhManager && rhManager->isClockSynced();
+        uint32_t rttMs = rhManager ? rhManager->getLastSyncRttMs() : 0;
+        doc["enabled"]     = en;
+        doc["connected"]   = conn;
+        doc["clockSynced"] = synced;
+        doc["rttMs"]       = rttMs;
+        doc["host"]        = conf->getRhHostIP();
+        doc["node"]        = conf->getRhNodeIndex();
         String output;
         serializeJson(doc, output);
         request->send(200, "application/json", output);
+    });
+
+    // RotorHazard clock sync trigger endpoint
+    server.on("/api/rh/syncClock", HTTP_POST, [this, sendCorsResponse](AsyncWebServerRequest *request) {
+        if (rhManager) {
+            rhManager->requestSync();
+        }
+        sendCorsResponse(request, "{\"status\":\"queued\"}");
     });
 
     // WiFi status endpoint (register before serveStatic to prevent VFS errors)

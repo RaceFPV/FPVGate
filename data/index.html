@@ -866,21 +866,64 @@
                   <!-- This Device row (auto-populated) and other devices rendered by JS -->
                 </div>
                 
-                <!-- Add Device Input -->
-                <div class="config-item">
-                  <label for="addSyncDeviceInput" data-i18n="settings.sync.add_device">Add Device:</label>
-                  <input type="text" id="addSyncDeviceInput" placeholder="e.g., 192.168.0.100 or fpvgate2.local" maxlength="31" style="flex: 1" data-i18n-placeholder="settings.sync.add_device_placeholder" />
+                <!-- Add/Test panel (hidden in RotorHazard mode) -->
+                <div id="syncAddDevicePanel">
+                  <!-- Add Device Input -->
+                  <div class="config-item">
+                    <label for="addSyncDeviceInput" data-i18n="settings.sync.add_device">Add Device:</label>
+                    <input type="text" id="addSyncDeviceInput" placeholder="e.g., 192.168.0.100 or fpvgate2.local" maxlength="31" style="flex: 1" data-i18n-placeholder="settings.sync.add_device_placeholder" />
+                  </div>
+                  <button onclick="addSyncDevice()" style="width: 100%; margin-top: 8px" data-i18n="settings.sync.add_device_btn">Add Device</button>
+
+                  <!-- Test All Button -->
+                  <button onclick="testAllSyncDevices()" style="width: 100%; margin-top: 12px; background-color: var(--accent-color)" data-i18n="settings.sync.test_all">Test All Connections</button>
+
+                  <!-- Info Box -->
+                  <div style="margin-top: 12px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 13px">
+                    <p style="margin: 0; color: var(--secondary-color)" data-i18n="settings.sync.info_note">Set one device as Master to control race start/stop. Other devices set as Slave will follow the Master and send their lap times to it.</p>
+                  </div>
                 </div>
-                <button onclick="addSyncDevice()" style="width: 100%; margin-top: 8px" data-i18n="settings.sync.add_device_btn">Add Device</button>
-                
-                <!-- Test All Button -->
-                <button onclick="testAllSyncDevices()" style="width: 100%; margin-top: 12px; background-color: var(--accent-color)" data-i18n="settings.sync.test_all">Test All Connections</button>
-                
-                <!-- Info Box -->
-                <div style="margin-top: 12px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; font-size: 13px">
-                  <p style="margin: 0; color: var(--secondary-color)" data-i18n="settings.sync.info_note">Set one device as Master to control race start/stop. Other devices set as Slave will follow the Master and send their lap times to it.</p>
+
+                <!-- RotorHazard config panel (shown when RH mode selected) -->
+                <div id="rhConfigPanel" style="display: none; margin-top: 8px">
+                  <div class="config-item">
+                    <label for="rhHostIP">RH Host IP:</label>
+                    <input type="text" id="rhHostIP" placeholder="e.g. 192.168.0.50" maxlength="31" style="flex: 1" />
+                  </div>
+                  <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px">IP address of the RotorHazard server (port 5000 is used automatically)</div>
+
+                  <div class="config-item" style="margin-top: 12px">
+                    <label for="rhNodeIndex">Node Seat (0-7):</label>
+                    <select id="rhNodeIndex">
+                      <option value="0">Seat 0</option>
+                      <option value="1">Seat 1</option>
+                      <option value="2">Seat 2</option>
+                      <option value="3">Seat 3</option>
+                      <option value="4">Seat 4</option>
+                      <option value="5">Seat 5</option>
+                      <option value="6">Seat 6</option>
+                      <option value="7">Seat 7</option>
+                    </select>
+                  </div>
+                  <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px">Which RH node seat this FPVGate corresponds to</div>
+
+                  <div class="config-item" style="margin-top: 12px">
+                    <label>Connection Status:</label>
+                    <div style="flex: 1; display: flex; align-items: center; gap: 8px">
+                      <span id="rhStatusBadge" style="padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--bg-secondary); color: var(--secondary-color)">Unknown</span>
+                      <button onclick="refreshRHStatus()" style="padding: 4px 12px; font-size: 12px; background-color: var(--accent-color)">Refresh</button>
+                    </div>
+                  </div>
+
+                  <div class="config-item" style="margin-top: 12px">
+                    <label>Clock Sync:</label>
+                    <div style="flex: 1; display: flex; align-items: center; gap: 8px">
+                      <span id="rhSyncStatus" style="font-size: 12px; color: var(--secondary-color)">Not synced</span>
+                      <button onclick="syncRHClock()" id="rhSyncBtn" style="padding: 4px 12px; font-size: 12px; background-color: var(--accent-color)">Sync Now</button>
+                    </div>
+                  </div>
                 </div>
-                
+
                 <!-- Slave Mode Indicator (shown when this device is slave) -->
                 <div id="slaveModeIndicator" style="display: none; margin-top: 12px; padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; border-left: 4px solid var(--primary-color)">
                   <p style="margin: 0; font-weight: bold; color: var(--primary-color)" data-i18n="settings.sync.slave_active">Slave Mode Active</p>

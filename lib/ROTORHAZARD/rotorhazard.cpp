@@ -10,7 +10,8 @@ RHManager::RHManager()
       clockOffsetMs(0),
       clockSynced(false),
       needsSync(false),
-      lastSyncMs(0) {
+      lastSyncMs(0),
+      lastSyncRttMs(0) {
     memset(pendingLaps, 0, sizeof(pendingLaps));
 }
 
@@ -29,9 +30,16 @@ void RHManager::setEnabled(bool en) {
     }
 }
 
-bool RHManager::isEnabled()     const { return enabled; }
-bool RHManager::isConnected()   const { return lastPostOk; }
-bool RHManager::isClockSynced() const { return clockSynced; }
+bool RHManager::isEnabled()       const { return enabled; }
+bool RHManager::isConnected()     const { return lastPostOk; }
+bool RHManager::isClockSynced()   const { return clockSynced; }
+int64_t  RHManager::getClockOffsetMs()  const { return clockOffsetMs; }
+uint32_t RHManager::getLastSyncRttMs()  const { return lastSyncRttMs; }
+
+void RHManager::requestSync() {
+    needsSync = true;
+    DEBUG("[RH] Manual sync requested\n");
+}
 
 void RHManager::onWifiConnected() {
     lastPostOk = false;
@@ -133,10 +141,11 @@ void RHManager::syncClock() {
 
     uint32_t rtt      = t2 - t1;
     int64_t  midpoint = (int64_t)t1 + (int64_t)(rtt / 2);
-    clockOffsetMs = serverMs - midpoint;
-    clockSynced   = true;
-    needsSync     = false;
-    lastSyncMs    = t2;
+    clockOffsetMs  = serverMs - midpoint;
+    clockSynced    = true;
+    needsSync      = false;
+    lastSyncMs     = t2;
+    lastSyncRttMs  = rtt;
 
     DEBUG("[RH] Clock synced: offset=%lld ms, rtt=%u ms\n",
           (long long)clockOffsetMs, rtt);
