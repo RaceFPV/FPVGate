@@ -1354,6 +1354,9 @@ onload = async function (e) {
       rhNodeIndexSelect.value = configData.rhNodeIndex;
     }
 
+    // Update banner now that rhEnabled is known
+    updateSlaveModelUI();
+
     // Mark config as loaded so saves from calibration tab work
     configLoaded = true;
   }
@@ -3156,11 +3159,12 @@ function updateRaceSyncMode(mode, skipSave = false) {
   }
 }
 
-// Update race buttons and banner for slave/master/personal mode
+// Update race buttons and banner for slave/master/personal/rotorhazard mode
 function updateSlaveModelUI() {
   const personalBanner = document.getElementById("personalModeRaceBanner");
   const slaveBanner = document.getElementById("slaveModeRaceBanner");
   const masterBanner = document.getElementById("masterModeRaceBanner");
+  const rotorhazardBanner = document.getElementById("rotorhazardModeRaceBanner");
   const startBtn = document.getElementById("startRaceButton");
   const stopBtn = document.getElementById("stopRaceButton");
   const clearBtn = document.getElementById("clearLapsButton");
@@ -3170,6 +3174,7 @@ function updateSlaveModelUI() {
     if (personalBanner) personalBanner.style.display = "none";
     if (slaveBanner) slaveBanner.style.display = "block";
     if (masterBanner) masterBanner.style.display = "none";
+    if (rotorhazardBanner) rotorhazardBanner.style.display = "none";
     if (startBtn) {
       startBtn.disabled = true;
       startBtn.style.opacity = "0.5";
@@ -3183,6 +3188,7 @@ function updateSlaveModelUI() {
     if (personalBanner) personalBanner.style.display = "none";
     if (slaveBanner) slaveBanner.style.display = "none";
     if (masterBanner) masterBanner.style.display = "block";
+    if (rotorhazardBanner) rotorhazardBanner.style.display = "none";
     if (startBtn) {
       startBtn.disabled = false;
       startBtn.style.opacity = "1";
@@ -3192,10 +3198,18 @@ function updateSlaveModelUI() {
       clearBtn.style.opacity = "1";
     }
   } else {
-    // Personal mode - enable buttons and show personal banner
-    if (personalBanner) personalBanner.style.display = "block";
+    // Personal or RotorHazard mode - enable buttons
     if (slaveBanner) slaveBanner.style.display = "none";
     if (masterBanner) masterBanner.style.display = "none";
+    if (rhEnabled === 1) {
+      // RotorHazard mode - show RH banner instead of personal
+      if (personalBanner) personalBanner.style.display = "none";
+      if (rotorhazardBanner) rotorhazardBanner.style.display = "block";
+    } else {
+      // Personal mode
+      if (personalBanner) personalBanner.style.display = "block";
+      if (rotorhazardBanner) rotorhazardBanner.style.display = "none";
+    }
     if (startBtn) {
       startBtn.disabled = false;
       startBtn.style.opacity = "1";
