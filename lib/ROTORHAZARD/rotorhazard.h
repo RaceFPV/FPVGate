@@ -59,6 +59,14 @@ class RHManager {
     // Call when WiFi newly connects - triggers an immediate clock sync
     void onWifiConnected();
 
+    // Notify RotorHazard to stage (arm) a new race.
+    // Fire-and-forget: the request is queued and sent on the next process() tick.
+    void startRace();
+
+    // Notify RotorHazard to stop the current race.
+    // Fire-and-forget: the request is queued and sent on the next process() tick.
+    void stopRace();
+
    private:
     Config* conf;
 
@@ -76,6 +84,10 @@ class RHManager {
 
     void sendPendingLaps();
     void syncClock();
+    void postRaceControl(const char* path);
+
+    bool pendingRaceStart;
+    bool pendingRaceStop;
 };
 
 #endif // ROTORHAZARD_H

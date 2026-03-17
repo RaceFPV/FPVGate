@@ -11,7 +11,9 @@ RHManager::RHManager()
       clockSynced(false),
       needsSync(false),
       lastSyncMs(0),
-      lastSyncRttMs(0) {
+      lastSyncRttMs(0),
+      pendingRaceStart(false),
+      pendingRaceStop(false) {
     memset(pendingLaps, 0, sizeof(pendingLaps));
 }
 
@@ -71,8 +73,55 @@ void RHManager::process() {
         syncClock();
     }
 
+    // Send queued race-control notifications
+    if (pendingRaceStart) {
+        pendingRaceStart = false;
+        postRaceControl("/fpvgate/race/stage");
+    }
+    if (pendingRaceStop) {
+        pendingRaceStop = false;
+        postRaceControl("/fpvgate/race/stop");
+    }
+
     if (pendingCount > 0) {
         sendPendingLaps();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Race control - notify RH to stage or stop a race
+// ---------------------------------------------------------------------------
+
+void RHManager::startRace() {
+    if (!enabled) return;
+    pendingRaceStart = true;
+    DEBUG("[RH] Race start queued\n");
+}
+
+void RHManager::stopRace() {
+    if (!enabled) return;
+    pendingRaceStop = true;
+    DEBUG("[RH] Race stop queued\n");
+}
+
+void RHManager::postRaceControl(const char* path) {
+    const char* host = conf->getRhHostIP();
+    if (host[0] == '\0') return;
+
+    char url[80];
+    snprintf(url, sizeof(url), "http://%s:%d%s", host, RH_DEFAULT_PORT, path);
+
+    HTTPClient http;
+    http.setConnectTimeout(RH_HTTP_TIMEOUT_MS);
+    http.setTimeout(RH_HTTP_TIMEOUT_MS);
+
+    if (http.begin(url)) {
+        http.addHeader("Content-Type", "application/json");
+        int code = http.POST("{}");
+        http.end();
+        DEBUG("[RH] POST %s -> HTTP %d\n", path, code);
+    } else {
+        DEBUG("[RH] postRaceControl: http.begin() failed for %s\n", url);
     }
 }
 

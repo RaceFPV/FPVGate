@@ -639,6 +639,10 @@ EEPROM:\n\
         sendSyncCommand(conf, "/timer/start");
         // Start local timer
         timer->start();
+        // Notify RotorHazard (queued, sent on next process() tick)
+        if (rhManager && rhManager->isEnabled()) {
+            rhManager->startRace();
+        }
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("started");
         }
@@ -663,6 +667,10 @@ EEPROM:\n\
         sendSyncCommand(conf, "/timer/stop");
         // Stop local timer
         timer->stop();
+        // Notify RotorHazard (queued, sent on next process() tick)
+        if (rhManager && rhManager->isEnabled()) {
+            rhManager->stopRace();
+        }
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("stopped");
         }
