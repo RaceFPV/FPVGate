@@ -51,6 +51,20 @@ class LapTimer {
     float getDistanceRemaining();
     Track* getSelectedTrack();
 
+    // Returns the race-elapsed time (ms) at the moment of the last gate crossing.
+    // Use this to pass an accurate timestamp to RotorHazard.
+    uint32_t getLastCrossingRaceTimeMs();
+
+    // Returns the raw millis() value at the moment of the last gate crossing.
+    // Use getLastCrossingAbsoluteMs() + RHManager::clockOffsetMs for an RH-synced timestamp.
+    uint32_t getLastCrossingAbsoluteMs();
+
+    // Returns the raw millis() value when the current race was started (0 if not running).
+    uint32_t getRaceStartMs();
+
+    // Returns ms elapsed since race start (0 if not running).
+    uint32_t getElapsedRaceTimeMs();
+
    private:
     laptimer_state_e state = STOPPED;
     RX5808 *rx;
@@ -62,6 +76,7 @@ class LapTimer {
     boolean lapCountWraparound;
     uint32_t raceStartTimeMs;
     uint32_t startTimeMs;
+    uint32_t lastCrossingRaceTimeMs;  // ms from race start to last detected crossing
     uint8_t lapCount;
     uint8_t rssiCount;
     uint32_t lapTimes[LAPTIMER_LAP_HISTORY];
