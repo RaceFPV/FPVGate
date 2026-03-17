@@ -13,6 +13,7 @@ RHManager::RHManager()
       lastSyncMs(0),
       lastSyncRttMs(0),
       pendingRaceStart(false),
+      pendingRaceStartMs(0),
       pendingRaceStop(false) {
     memset(pendingLaps, 0, sizeof(pendingLaps));
 }
@@ -92,10 +93,11 @@ void RHManager::process() {
 // Race control - notify RH to stage or stop a race
 // ---------------------------------------------------------------------------
 
-void RHManager::startRace() {
+void RHManager::startRace(uint32_t raceStartMs) {
     if (!enabled) return;
-    pendingRaceStart = true;
-    DEBUG("[RH] Race start queued\n");
+    pendingRaceStart   = true;
+    pendingRaceStartMs = raceStartMs;
+    DEBUG("[RH] Race start queued (raceStartMs=%u)\n", raceStartMs);
 }
 
 void RHManager::stopRace() {
@@ -111,13 +113,24 @@ void RHManager::postRaceControl(const char* path) {
     char url[80];
     snprintf(url, sizeof(url), "http://%s:%d%s", host, RH_DEFAULT_PORT, path);
 
+    // For race stage, include the synced start time so RH uses FPVGate's reference.
+    // startTimeMs = raceStartMs + clockOffsetMs  =>  RH monotonic milliseconds.
+    // This causes RH to set its start_time_monotonic to the same instant as FPVGate,
+    // bypassing the configured countdown delay and keeping both timers in sync.
+    char body[64] = "{}";
+    if (clockSynced && strstr(path, "stage") != nullptr) {
+        int64_t startTimeMs = (int64_t)pendingRaceStartMs + clockOffsetMs;
+        snprintf(body, sizeof(body), "{\"startTimeMs\":%lld}", (long long)startTimeMs);
+        DEBUG("[RH] Race stage with startTimeMs=%lld\n", (long long)startTimeMs);
+    }
+
     HTTPClient http;
     http.setConnectTimeout(RH_HTTP_TIMEOUT_MS);
     http.setTimeout(RH_HTTP_TIMEOUT_MS);
 
     if (http.begin(url)) {
         http.addHeader("Content-Type", "application/json");
-        int code = http.POST("{}");
+        int code = http.POST(body);
         http.end();
         DEBUG("[RH] POST %s -> HTTP %d\n", path, code);
     } else {

@@ -60,8 +60,11 @@ class RHManager {
     void onWifiConnected();
 
     // Notify RotorHazard to stage (arm) a new race.
+    // raceStartMs is the local millis() value when the race was started.
+    // When the clock is synced, this is converted to RH monotonic time and sent
+    // as startTimeMs so RH uses the same reference, bypassing its countdown.
     // Fire-and-forget: the request is queued and sent on the next process() tick.
-    void startRace();
+    void startRace(uint32_t raceStartMs);
 
     // Notify RotorHazard to stop the current race.
     // Fire-and-forget: the request is queued and sent on the next process() tick.
@@ -86,8 +89,9 @@ class RHManager {
     void syncClock();
     void postRaceControl(const char* path);
 
-    bool pendingRaceStart;
-    bool pendingRaceStop;
+    bool     pendingRaceStart;
+    uint32_t pendingRaceStartMs;  // millis() at race start, sent as startTimeMs when synced
+    bool     pendingRaceStop;
 };
 
 #endif // ROTORHAZARD_H

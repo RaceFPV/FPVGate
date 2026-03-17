@@ -640,8 +640,9 @@ EEPROM:\n\
         // Start local timer
         timer->start();
         // Notify RotorHazard (queued, sent on next process() tick)
+        // Pass the race start timestamp so RH can sync to the same reference.
         if (rhManager && rhManager->isEnabled()) {
-            rhManager->startRace();
+            rhManager->startRace(timer->getRaceStartMs());
         }
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("started");
