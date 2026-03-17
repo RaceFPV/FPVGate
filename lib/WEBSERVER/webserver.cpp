@@ -41,7 +41,7 @@ static const char *wifi_ap_password = "fpvgate1";
 static const char *wifi_ap_address = "192.168.4.1";
 String wifi_ap_ssid;
 
-void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMonitor, Buzzer *buzzer, Led *l, RaceHistory *raceHist, Storage *stor, SelfTest *test, RX5808 *rx5808, TrackManager *trackMgr, WebhookManager *webhookMgr) {
+void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMonitor, Buzzer *buzzer, Led *l, RaceHistory *raceHist, Storage *stor, SelfTest *test, RX5808 *rx5808, TrackManager *trackMgr, WebhookManager *webhookMgr, RHManager *rhMgr) {
 
     ipAddress.fromString(wifi_ap_address);
 
@@ -62,6 +62,7 @@ void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMoni
     rx = rx5808;
     trackManager = trackMgr;
     webhooks = webhookMgr;
+    rhManager = rhMgr;
     transportMgr = nullptr;
 
     wifi_ap_ssid = String(wifi_ap_ssid_prefix) + "_" + WiFi.macAddress().substring(WiFi.macAddress().length() - 6);
@@ -709,6 +710,10 @@ EEPROM:\n\
                 DEBUG("[Slave] Manual lap - sending to master: %u ms\n", lapTimeMs);
                 sendLapToMaster(lapTimeMs);
             }
+            // Report lap to RotorHazard with raw millis() timestamps for clock sync
+            if (rhManager && timer) {
+                rhManager->triggerLap(millis(), timer->getRaceStartMs());
+            }
         }
         request->send(200, "application/json", "{\"status\": \"OK\"}");
     });
@@ -1029,6 +1034,20 @@ EEPROM:\n\
         request->send(404, "text/plain", "Audio file not found");
     });
     
+    // RotorHazard integration status endpoint
+    server.on("/api/rh/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        DynamicJsonDocument doc(256);
+        bool en = rhManager && rhManager->isEnabled();
+        bool conn = rhManager && rhManager->isConnected();
+        doc["enabled"] = en;
+        doc["connected"] = conn;
+        doc["host"] = conf->getRhHostIP();
+        doc["node"] = conf->getRhNodeIndex();
+        String output;
+        serializeJson(doc, output);
+        request->send(200, "application/json", output);
+    });
+
     // WiFi status endpoint (register before serveStatic to prevent VFS errors)
     server.on("/api/wifi", HTTP_GET, [this](AsyncWebServerRequest *request) {
         DynamicJsonDocument doc(512);

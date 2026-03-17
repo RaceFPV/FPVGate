@@ -508,6 +508,8 @@ void LapTimer::finishLap() {
     } else {
         lapTimes[lapCount] = rssiPeakTimeMs - startTimeMs;
     }
+    // Record race-elapsed time at this crossing for RotorHazard timestamp
+    lastCrossingRaceTimeMs = rssiPeakTimeMs - raceStartTimeMs;
     DEBUG("Lap finished, lap time = %u\n", lapTimes[lapCount]);
 
     if (selectedTrack && selectedTrack->distance > 0) {
@@ -614,6 +616,23 @@ void LapTimer::setTrack(Track* track) {
     } else {
         DEBUG("Track deselected\n");
     }
+}
+
+uint32_t LapTimer::getLastCrossingRaceTimeMs() {
+    return lastCrossingRaceTimeMs;
+}
+
+uint32_t LapTimer::getLastCrossingAbsoluteMs() {
+    return raceStartTimeMs + lastCrossingRaceTimeMs;
+}
+
+uint32_t LapTimer::getRaceStartMs() {
+    return raceStartTimeMs;
+}
+
+uint32_t LapTimer::getElapsedRaceTimeMs() {
+    if (state != RUNNING) return 0;
+    return millis() - raceStartTimeMs;
 }
 
 float LapTimer::getTotalDistance() {
