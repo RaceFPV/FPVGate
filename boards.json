@@ -31,6 +31,11 @@
       "expert_mode": 0
     },
     {
+      "value": "fpvgateaiov3",
+      "label": "FPVGate AIO V3 (XIAO ESP32S3, 8MB)",
+      "expert_mode": 0
+    },
+    {
       "value": "xiaos3plus",
       "label": "XIAO ESP32S3 Plus (16MB Flash)",
       "expert_mode": 0

@@ -7,7 +7,7 @@
 #include <Arduino.h>
 #include <FastLED.h>
 
-#define NUM_LEDS 2
+// NUM_LEDS is defined per-board in config.h
 
 typedef enum {
     RGB_OFF,
