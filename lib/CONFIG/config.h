@@ -79,10 +79,10 @@
 #define PIN_RX5808_RSSI 8       // RSSI on GPIO8 (ADC1, breakout)
 #define PIN_RX5808_DATA 2     // CH1 on GPIO2 (Data)
 #define PIN_RX5808_SELECT 4   // CH2 on GPIO4 (LE)
-#define PIN_RX5808_CLOCK 6    // CH3 on GPIO18 (Clk)
-#define PIN_BUZZER 15           // Buzzer on GPIO47 (on header)
+#define PIN_RX5808_CLOCK 6    // CH3 on GPIO6 (Clk)
+#define PIN_BUZZER 15           // Buzzer on GPIO15 (on header)
 #define BUZZER_INVERTED false
-#define PIN_POWER_SWITCH 13     // Power toggle switch (optional: GPIO7 to GND = deep sleep)
+#define PIN_POWER_SWITCH 13     // Power toggle switch (optional: GPIO13 to GND = deep sleep)
 // SD Card SPI pins (built-in TF card slot, shared SPI bus with LCD)
 #define PIN_SD_CS 41
 #define PIN_SD_SCK 39
