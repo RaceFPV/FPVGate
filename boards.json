@@ -26,11 +26,6 @@
       "expert_mode": 1
     },
     {
-      "value": "fpvgateaio",
-      "label": "FPVGate AIO (8MB)",
-      "expert_mode": 0
-    },
-    {
       "value": "fpvgateaiov3",
       "label": "FPVGate AIO V3 (8MB) - Coming Soon",
       "expert_mode": 1
