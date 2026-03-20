@@ -9,6 +9,3 @@ Expert Mode:
   - ESP32-S3 Super Mini (4MB Flash)
   - LilyGO T-Energy S3
   - XIAO ESP32S3 Plus (16MB Flash)
-
-Legacy:
-  - ESP32 DevKit (4MB Flash, non-S3)

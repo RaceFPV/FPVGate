@@ -246,7 +246,7 @@ Exit  ├/──────────\─
 ## Project Status
 
 **Current Version:** v1.7.0
-**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/), FPVGate AIO V3, ESP32 DevKit
+**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/), FPVGate AIO V3
 **License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
 
@@ -255,7 +255,7 @@ Exit  ├/──────────\─
 **v1.7.0 (Latest Release - March 20, 2026)**
 - **RotorHazard Integration** - Bidirectional race control, NTP clock sync, lap submission, companion RH plugin
 - **I2S Speaker Audio (MAX98357A)** - Hardware speaker output for race announcements
-- **New Boards** - FPVGate AIO V3, XIAO ESP32S3 Plus, ESP32 DevKit
+- **New Boards** - FPVGate AIO V3, XIAO ESP32S3 Plus
 - **Config v16** - New fields for RH integration and speaker settings
 
 **v1.6.2 (February 26, 2026)**

@@ -4,7 +4,7 @@
 
 ## Upgrade Notes
 - **Config reset recommended** - Config version bumped from 14 to 16
-- New board targets: FPVGate AIO V3, XIAO ESP32S3 Plus, ESP32 DevKit
+- New board targets: FPVGate AIO V3, XIAO ESP32S3 Plus
 - RotorHazard integration requires the companion plugin from `rh-plugin/`
 
 ## What's New
@@ -26,7 +26,6 @@
 ### New Board Support
 - **FPVGate AIO V3** - All-In-One board (XIAO ESP32S3-based, 3 LEDs)
 - **XIAO ESP32S3 Plus** - 16MB flash variant
-- **ESP32 DevKit** - Generic ESP32 (non-S3) support
 
 ### Other Changes
 - Centralized NUM_LEDS per board in config.h
