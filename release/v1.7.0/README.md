@@ -24,7 +24,7 @@
 - Wiring: BCLK=GPIO16, LRC=GPIO17, DOUT=GPIO18 (DevKitC-1)
 
 ### New Board Support
-- **FPVGate AIO V3** - All-In-One board (XIAO ESP32S3-based, 3 LEDs)
+- **FPVGate AIO V3** - Upcoming official hardware release coming soon
 - **XIAO ESP32S3 Plus** - 16MB flash variant
 
 ### Other Changes

@@ -130,7 +130,7 @@ Detailed wiring diagrams are available for each supported board:
 
 - **[Seeed Studio XIAO ESP32S3](docs/wiring/Seeed-XIAO-ESP32S3.md)** - Recommended, compact, 8MB
 - **[ESP32-S3 DevKitC-1 (8MB Flash)](docs/wiring/ESP32-S3-DevKitC-1.md)** - Alternative
-- **FPVGate AIO V3** - All-In-One board (XIAO ESP32S3-based)
+- **FPVGate AIO V3** - Upcoming official hardware release coming soon
 - **[ESP32-S3 Super Mini (4MB Flash)](docs/wiring/ESP32-S3-SuperMini.md)** - Not recommended (see note below)
 - **[LilyGO T-Energy S3](docs/wiring/LilyGO-T-Energy-S3.md)** - Expert mode, integrated battery
 - **XIAO ESP32S3 Plus (16MB Flash)** - Expert mode
@@ -246,7 +246,7 @@ Exit  ├/──────────\─
 ## Project Status
 
 **Current Version:** v1.7.0
-**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/), FPVGate AIO V3
+**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/), FPVGate AIO V3 (coming soon)
 **License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
 

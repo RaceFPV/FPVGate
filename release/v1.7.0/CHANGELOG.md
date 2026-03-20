@@ -43,7 +43,7 @@
 - **Wiring** - I2S pins on ESP32-S3 DevKitC-1: BCLK=GPIO16, LRC=GPIO17, DOUT=GPIO18
 
 ### Added - Hardware
-- **FPVGate AIO V3** - New All-In-One board target (XIAO ESP32S3-based)
+- **FPVGate AIO V3** - New All-In-One board target (upcoming official hardware release coming soon)
   - Custom pin mapping: RGB on D7 (GPIO44), 3 LEDs, RX5808 on D2-D5, buzzer on D6
   - Mode switch on D0 (GPIO1), SD card on D1/D8/D9/D10
 - **XIAO ESP32S3 Plus** - New board definition with 16MB flash

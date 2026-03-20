@@ -41,7 +41,7 @@ All notable changes to FPVGate will be documented in this file.
 - **Wiring** - I2S pins on ESP32-S3 DevKitC-1: BCLK=GPIO16, LRC=GPIO17, DOUT=GPIO18
 
 ### Added - Hardware
-- **FPVGate AIO V3** - New All-In-One board target (XIAO ESP32S3-based, 3 LEDs)
+- **FPVGate AIO V3** - New All-In-One board target (upcoming official hardware release coming soon)
 - **XIAO ESP32S3 Plus** - New board definition with 16MB flash
 - **Centralized NUM_LEDS** - Each board now defines its own LED count in config.h
 
