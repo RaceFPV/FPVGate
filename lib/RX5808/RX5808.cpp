@@ -9,6 +9,7 @@
 static volatile uint16_t s_lastDmaBatteryRaw = 0;
 static volatile bool s_dmaBatteryAvailable = false;
 static volatile bool s_dmaBatterySeen = false;
+static volatile uint32_t s_dmaFrameCounter = 0;
 static uint8_t s_dmaBatteryChannel = 0xFF;
 static uint8_t s_dmaBatteryUnit = 0xFF;
 static uint8_t s_dmaRssiChannel = 0xFF;
@@ -201,6 +202,19 @@ uint8_t RX5808::readRssi() {
 
 #ifdef USE_ADC_DMA
     if (adcDmaInitialized) {
+        // Recover if continuous ADC stalls (can happen after flash/EEPROM writes).
+        static uint32_t lastFrameCounter = 0;
+        static uint32_t lastFrameMs = 0;
+        uint32_t nowMs = millis();
+        uint32_t frameCounter = s_dmaFrameCounter;
+        if (frameCounter != lastFrameCounter) {
+            lastFrameCounter = frameCounter;
+            lastFrameMs = nowMs;
+        } else if ((nowMs - lastFrameMs) > 500) {
+            DEBUG("ADC DMA: stream stalled, restarting continuous ADC\n");
+            initAdcDma();
+            lastFrameMs = nowMs;
+        }
         return lastDmaRssi;  // Updated continuously by adcConvDoneHandler ISR
     }
 #endif
@@ -250,6 +264,7 @@ static bool IRAM_ATTR adcConvDoneHandler(adc_continuous_handle_t /*handle*/,
         s_lastDmaBatteryRaw = (uint16_t)(batterySum / batteryCount);
         s_dmaBatterySeen = true;
     }
+    s_dmaFrameCounter++;
     return false;  // no high-priority task woken
 }
 
@@ -257,6 +272,14 @@ static bool IRAM_ATTR adcConvDoneHandler(adc_continuous_handle_t /*handle*/,
 // Called once from init().  On any failure the driver is left uninitialised and
 // readRssi() will silently fall through to return lastDmaRssi (0).
 void RX5808::initAdcDma() {
+    // Restart-safe cleanup of existing handle.
+    if (adcHandle != nullptr) {
+        adc_continuous_stop((adc_continuous_handle_t)adcHandle);
+        adc_continuous_deinit((adc_continuous_handle_t)adcHandle);
+        adcHandle = nullptr;
+        adcDmaInitialized = false;
+    }
+
     // Resolve the GPIO pin to an ADC unit + channel at runtime.
     adc_unit_t unit;
     adc_channel_t channel;

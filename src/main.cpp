@@ -15,6 +15,8 @@
 #include "rotorhazard.h"
 // DISABLED FOR NOW: #include "nodemode.h"  // Uncomment to re-enable RotorHazard support
 #include <ElegantOTA.h>
+#include "esp_log.h"
+#include "esp_task_wdt.h"
 #ifdef HAS_RGB_LED
 #include "rgbled.h"
 #endif
@@ -31,6 +33,7 @@
 #if defined(ESP32)
 // Increase Arduino loopTask stack to reduce overflow risk with LCD/UI + async stack usage.
 SET_LOOP_TASK_STACK_SIZE(16384);
+extern bool loopTaskWDTEnabled;
 #endif
 
 // ====================================================================
@@ -298,6 +301,14 @@ void setup() {
 #endif
     
     // Note: config.init() already called above
+    // Keep logs usable even if third-party libs call esp_task_wdt_reset() on
+    // unregistered tasks in this framework mix.
+    esp_log_level_set("task_wdt", ESP_LOG_NONE);
+#if defined(ESP32)
+    disableLoopWDT();
+    esp_task_wdt_deinit();
+    loopTaskWDTEnabled = false;
+#endif
     rx.init();
     buzzer.init(PIN_BUZZER, BUZZER_INVERTED);
     buzzer.setVolume(config.getBeepVolume());  // Apply saved volume
