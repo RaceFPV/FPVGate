@@ -28,6 +28,9 @@ class RX5808 {
     void setFrequency(uint16_t frequency);
     uint8_t readRssi();
     void handleFrequencyChange(uint32_t currentTimeMs, uint16_t potentiallyNewFreq);
+#ifdef USE_ADC_DMA
+    static bool getDmaBatteryRaw(uint16_t &raw);
+#endif
 
    private:
     uint8_t rx5808DataPin = 0;  // DATA (CH1) output line to RX5808 module

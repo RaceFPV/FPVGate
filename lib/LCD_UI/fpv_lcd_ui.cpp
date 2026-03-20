@@ -1,5 +1,6 @@
 #include "fpv_lcd_ui.h"
 #include "spi_mutex.h"
+#include <math.h>
 #ifdef HAS_I2S_AUDIO
 #include "audio.h"
 extern AudioAnnouncer* g_audioAnnouncer;
@@ -1401,10 +1402,12 @@ void FpvLcdUI::processBatteryUpdate() {
     uint16_t voltage = _pendingBatteryVoltage;
     if (!battery_label || !battery_icon) return;
 
-    // Calculate percentage from voltage (3.0V = 0%, 4.2V = 100%)
-    int16_t percentage = map(voltage, 30, 42, 0, 100);
-    if (percentage < 0) percentage = 0;
-    if (percentage > 100) percentage = 100;
+    // Calculate percentage from voltage using float precision, then round for display.
+    float volts = voltage / 10.0f;
+    float percentageF = ((volts - 3.0f) / 1.2f) * 100.0f;  // 3.0V -> 0%, 4.2V -> 100%
+    if (percentageF < 0.0f) percentageF = 0.0f;
+    if (percentageF > 100.0f) percentageF = 100.0f;
+    int16_t percentage = (int16_t)lroundf(percentageF);
 
     char buf[8];
     snprintf(buf, sizeof(buf), "%d%%", percentage);
@@ -1427,7 +1430,6 @@ void FpvLcdUI::processBatteryUpdate() {
 
     if (battery_voltage_label) {
         char voltageBuf[16];
-        float volts = voltage / 10.0f;
         snprintf(voltageBuf, sizeof(voltageBuf), "%.2fV", volts);
         lv_label_set_text(battery_voltage_label, voltageBuf);
         lv_obj_set_style_text_color(battery_voltage_label, lv_color_hex(color), 0);

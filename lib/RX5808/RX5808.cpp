@@ -6,6 +6,13 @@
 #ifdef USE_ADC_DMA
 // Included only in this translation unit to avoid polluting the include chain.
 #include "esp_adc/adc_continuous.h"
+static volatile uint16_t s_lastDmaBatteryRaw = 0;
+static volatile bool s_dmaBatteryAvailable = false;
+static volatile bool s_dmaBatterySeen = false;
+static uint8_t s_dmaBatteryChannel = 0xFF;
+static uint8_t s_dmaBatteryUnit = 0xFF;
+static uint8_t s_dmaRssiChannel = 0xFF;
+static uint8_t s_dmaRssiUnit = 0xFF;
 #endif
 
 RX5808::RX5808(uint8_t _rssiInputPin, uint8_t _rx5808DataPin, uint8_t _rx5808SelPin, uint8_t _rx5808ClkPin) {
@@ -18,11 +25,13 @@ RX5808::RX5808(uint8_t _rssiInputPin, uint8_t _rx5808DataPin, uint8_t _rx5808Sel
 
 void RX5808::init() {
     pinMode(rssiInputPin, INPUT);
+#ifndef USE_ADC_DMA
     analogReadResolution(12);
 #if defined(ADC_11db)
     analogSetPinAttenuation(rssiInputPin, ADC_11db);
 #elif defined(ADC_ATTEN_DB_12)
     analogSetPinAttenuation(rssiInputPin, ADC_ATTEN_DB_12);
+#endif
 #endif
     pinMode(rx5808DataPin, OUTPUT);
     pinMode(rx5808SelPin, OUTPUT);
@@ -219,15 +228,28 @@ static bool IRAM_ATTR adcConvDoneHandler(adc_continuous_handle_t /*handle*/,
                                           void *user_data) {
     volatile uint8_t *pLastRssi = (volatile uint8_t *)user_data;
     uint32_t sum = 0, count = 0;
+    uint32_t batterySum = 0, batteryCount = 0;
     for (uint32_t i = 0; i + SOC_ADC_DIGI_RESULT_BYTES <= edata->size; i += SOC_ADC_DIGI_RESULT_BYTES) {
         const adc_digi_output_data_t *p =
             (const adc_digi_output_data_t *)&edata->conv_frame_buffer[i];
+        uint32_t channel = p->type2.channel & 0x0F;
+        uint32_t unit = p->type2.unit & 0x01;
         uint32_t data = p->type2.data;
-        if (data > 2047) data = 2047;
-        sum += data;
-        count++;
+        if (data > 4095) data = 4095;
+        if (s_dmaBatteryAvailable && unit == s_dmaBatteryUnit && channel == s_dmaBatteryChannel) {
+            batterySum += data;
+            batteryCount++;
+        } else if (unit == s_dmaRssiUnit && channel == s_dmaRssiChannel) {
+            if (data > 2047) data = 2047;
+            sum += data;
+            count++;
+        }
     }
     if (count > 0) *pLastRssi = (uint8_t)((sum / count) >> 3);
+    if (batteryCount > 0) {
+        s_lastDmaBatteryRaw = (uint16_t)(batterySum / batteryCount);
+        s_dmaBatterySeen = true;
+    }
     return false;  // no high-priority task woken
 }
 
@@ -243,6 +265,8 @@ void RX5808::initAdcDma() {
         return;
     }
     adcChannel = (uint8_t)channel;
+    s_dmaRssiChannel = (uint8_t)channel;
+    s_dmaRssiUnit = (uint8_t)unit;
 
     // conv_frame_size: bytes per DMA frame (16 samples × 4 bytes = 64 bytes).
     // A full frame is produced every 16/20000 s ≈ 0.8 ms at 20 kHz, so a
@@ -257,12 +281,37 @@ void RX5808::initAdcDma() {
         return;
     }
 
-    adc_digi_pattern_config_t pattern = {
+    adc_digi_pattern_config_t pattern[2] = {{
         .atten     = ADC_ATTEN_DB_12,  // full 0–2500 mV input range
         .channel   = adcChannel,
         .unit      = (uint8_t)unit,
         .bit_width = ADC_BITWIDTH_12,
-    };
+    }};
+    uint8_t patternNum = 1;
+#if defined(HAS_BATTERY_MONITOR) && defined(PIN_VBAT)
+    adc_unit_t batteryUnit;
+    adc_channel_t batteryChannel;
+    if (adc_continuous_io_to_channel(PIN_VBAT, &batteryUnit, &batteryChannel) == ESP_OK && batteryUnit == unit &&
+        batteryChannel != channel) {
+        pattern[1].atten = ADC_ATTEN_DB_12;
+        pattern[1].channel = (uint8_t)batteryChannel;
+        pattern[1].unit = (uint8_t)batteryUnit;
+        pattern[1].bit_width = ADC_BITWIDTH_12;
+        patternNum = 2;
+        s_dmaBatteryChannel = (uint8_t)batteryChannel;
+        s_dmaBatteryUnit = (uint8_t)batteryUnit;
+        s_dmaBatteryAvailable = true;
+        s_dmaBatterySeen = false;
+    } else {
+        s_dmaBatteryAvailable = false;
+        s_dmaBatterySeen = false;
+        s_dmaBatteryUnit = 0xFF;
+    }
+#else
+    s_dmaBatteryAvailable = false;
+    s_dmaBatterySeen = false;
+    s_dmaBatteryUnit = 0xFF;
+#endif
     adc_digi_convert_mode_t convMode;
     if (unit == ADC_UNIT_1) {
         convMode = ADC_CONV_SINGLE_UNIT_1;
@@ -275,8 +324,8 @@ void RX5808::initAdcDma() {
     }
 
     adc_continuous_config_t cont_cfg = {
-        .pattern_num    = 1,
-        .adc_pattern    = &pattern,
+        .pattern_num    = patternNum,
+        .adc_pattern    = pattern,
         .sample_freq_hz = 20 * 1000,  // 20 kHz continuous sampling
         .conv_mode      = convMode,   // match the ADC unit mapped from rssiInputPin
         .format         = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
@@ -307,7 +356,19 @@ void RX5808::initAdcDma() {
     adcHandle = (void*)handle;
     DEBUG("ADC DMA: RSSI pin %d → ADC unit %d ch %d, 20 kHz continuous (callback mode)\n",
           rssiInputPin, (int)unit, (int)adcChannel);
+    if (s_dmaBatteryAvailable) {
+        DEBUG("ADC DMA: Battery pin %d -> ADC unit %d ch %d (shared stream)\n", PIN_VBAT, (int)unit,
+              (int)s_dmaBatteryChannel);
+    } else {
+        DEBUG("ADC DMA: Battery channel not attached to shared stream\n");
+    }
     adcDmaInitialized = true;
+}
+
+bool RX5808::getDmaBatteryRaw(uint16_t &raw) {
+    if (!s_dmaBatteryAvailable || !s_dmaBatterySeen) return false;
+    raw = s_lastDmaBatteryRaw;
+    return true;
 }
 #endif
 

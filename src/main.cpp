@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include "debug.h"
 #include "led.h"
 #include "webserver.h"
@@ -25,6 +26,11 @@
 #endif
 #ifdef HAS_I2S_AUDIO
 #include "audio.h"
+#endif
+
+#if defined(ESP32)
+// Increase Arduino loopTask stack to reduce overflow risk with LCD/UI + async stack usage.
+SET_LOOP_TASK_STACK_SIZE(16384);
 #endif
 
 // ====================================================================
@@ -231,6 +237,12 @@ void setup() {
     
     // Always enable debug output (WiFi mode only)
     DEBUG_INIT;
+    
+#ifdef USE_ADC_DMA
+    DEBUG("Build flag: USE_ADC_DMA=ON\n");
+#else
+    DEBUG("Build flag: USE_ADC_DMA=OFF\n");
+#endif
 
     // Debug: Show config state after serial is ready
     DEBUG("Config state: SSID='%s', timerNumber=%d, version=0x%08X\n", 
@@ -306,6 +318,10 @@ void setup() {
 #ifdef HAS_BATTERY_MONITOR
     // Initialize battery monitoring with config voltage divider ratio
     float voltageDivider = config.getBatteryVoltageDivider();
+#if defined(WAVESHARE_ESP32S3_LCD2)
+    // Migrate older saved configs that defaulted too low for this board.
+    if (voltageDivider < 3.2f) voltageDivider = 3.3f;
+#endif
     if (voltageDivider == 0.0f) voltageDivider = VBAT_SCALE;  // Fallback to default if not set
     monitor.init(PIN_VBAT, voltageDivider, VBAT_ADD, &buzzer, &led);
     DEBUG("Battery monitoring initialized on GPIO%d (divider=%.1f, add=%d)\n", PIN_VBAT, voltageDivider, VBAT_ADD);
@@ -410,7 +426,8 @@ void setup() {
 }
 
 void loop() {
-    uint32_t currentTimeMs = millis();
+    uint32_t nowMs = millis();
+    uint32_t currentTimeMs = nowMs;
     
     // Debug: Periodic "alive" message every 5 seconds with detailed memory stats
     static uint32_t lastAliveMs = 0;
@@ -494,6 +511,7 @@ void loop() {
         if (currentTimeMs - lastBatteryUpdate > 5000) {
             lastBatteryUpdate = currentTimeMs;
             uint16_t voltage = monitor.getBatteryVoltage();
+            DEBUG("Battery monitor sample: %u (%.2fV)\n", voltage, voltage / 10.0f);
             g_lcdUi->setBatteryDisplay(voltage);
         }
 #endif

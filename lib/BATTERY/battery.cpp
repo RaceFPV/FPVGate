@@ -4,45 +4,7 @@
 
 #include "debug.h"
 #ifdef USE_ADC_DMA
-#include "esp_adc/adc_oneshot.h"
-#endif
-
-#ifdef USE_ADC_DMA
-void BatteryMonitor::initAdcOneshot() {
-    adc_unit_t unit;
-    adc_channel_t channel;
-    if (adc_oneshot_io_to_channel(vbatPin, &unit, &channel) != ESP_OK) {
-        DEBUG("Battery ADC: pin %d cannot be mapped to an ADC channel\n", vbatPin);
-        return;
-    }
-
-    adc_oneshot_unit_init_cfg_t unitCfg = {
-        .unit_id = unit,
-        .clk_src = ADC_RTC_CLK_SRC_DEFAULT,
-        .ulp_mode = ADC_ULP_MODE_DISABLE,
-    };
-
-    adc_oneshot_unit_handle_t handle = nullptr;
-    if (adc_oneshot_new_unit(&unitCfg, &handle) != ESP_OK) {
-        DEBUG("Battery ADC: failed to create oneshot unit for pin %d\n", vbatPin);
-        return;
-    }
-
-    adc_oneshot_chan_cfg_t chanCfg = {
-        .atten = ADC_ATTEN_DB_12,
-        .bitwidth = ADC_BITWIDTH_12,
-    };
-    if (adc_oneshot_config_channel(handle, channel, &chanCfg) != ESP_OK) {
-        DEBUG("Battery ADC: failed to configure channel for pin %d\n", vbatPin);
-        adc_oneshot_del_unit(handle);
-        return;
-    }
-
-    adcOneshotHandle = (void*)handle;
-    adcChannel = (uint8_t)channel;
-    adcOneshotInitialized = true;
-    DEBUG("Battery ADC: pin %d -> ADC unit %d ch %d (oneshot)\n", vbatPin, (int)unit, (int)channel);
-}
+#include "RX5808.h"
 #endif
 
 void BatteryMonitor::init(uint8_t pin, float batScale, uint8_t batAdd, Buzzer *buzzer, Led *l) {
@@ -56,20 +18,25 @@ void BatteryMonitor::init(uint8_t pin, float batScale, uint8_t batAdd, Buzzer *b
     measurementIndex = 0;
     lastCheckTimeMs = millis();
     enableDebug = false;  // Start with debug disabled
+    dmaAverageSeeded = false;
     pinMode(vbatPin, INPUT);
+#ifndef USE_ADC_DMA
     analogReadResolution(12);
 #if defined(ADC_11db)
     analogSetPinAttenuation(vbatPin, ADC_11db);
 #elif defined(ADC_ATTEN_DB_12)
     analogSetPinAttenuation(vbatPin, ADC_ATTEN_DB_12);
 #endif
+#endif
 #ifdef USE_ADC_DMA
-    initAdcOneshot();
+    DEBUG("Battery ADC: pin %d (shared DMA stream)\n", vbatPin);
 #endif
 
+#ifndef USE_ADC_DMA
     for (int i = 0; i < AVERAGING_SIZE; i++) {
         getBatteryVoltage();  // kick averaging sum up to speed.
     }
+#endif
 }
 
 static uint16_t averageSum = 0;
@@ -77,19 +44,30 @@ static uint16_t averageSum = 0;
 uint16_t BatteryMonitor::getBatteryVoltage() {
     // 0-3.3V maps to 0-4095, battery voltage ranges from 4.2V to 3.0V, but the voltage is divided, so 2.1V - 1.5V
     uint16_t raw = 0;
+    bool hasSample = true;
 #ifdef USE_ADC_DMA
-    if (adcOneshotInitialized) {
-        int rawInt = 0;
-        if (adc_oneshot_read((adc_oneshot_unit_handle_t)adcOneshotHandle, (adc_channel_t)adcChannel, &rawInt) == ESP_OK) {
-            raw = (uint16_t)rawInt;
-        } else {
-            raw = analogRead(vbatPin);  // fallback if oneshot read fails
-        }
-    } else {
-        raw = analogRead(vbatPin);  // fallback if oneshot init failed
-    }
+    hasSample = RX5808::getDmaBatteryRaw(raw);
 #else
     raw = analogRead(vbatPin);
+#endif
+#ifdef USE_ADC_DMA
+    // Do not poison the moving average with zeros before DMA has delivered
+    // the first battery-channel sample.
+    if (!hasSample) {
+        uint16_t averaged = round(averageSum / AVERAGING_SIZE);
+        uint16_t scaled = map(averaged, 0, 4095, 0, (uint16_t)(33 * scale)) + add;
+        return scaled;
+    }
+    if (!dmaAverageSeeded) {
+        // Seed the moving average with first valid sample for instant convergence.
+        averageSum = 0;
+        for (uint8_t i = 0; i < AVERAGING_SIZE; i++) {
+            measurements[i] = raw;
+            averageSum += raw;
+        }
+        measurementIndex = 0;
+        dmaAverageSeeded = true;
+    }
 #endif
     averageSum = averageSum - measurements[measurementIndex];  // substract oldest val
     measurements[measurementIndex] = raw;                      // replace old with new val
