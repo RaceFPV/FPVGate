@@ -77,6 +77,17 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 - Gate LED control with granular event settings
 - Network-based device integration
 
+**RotorHazard Integration**
+- Bidirectional race start/stop with RotorHazard
+- NTP-style clock synchronization for accurate timing
+- Automatic lap submission to RH via HTTP POST
+- Companion RH plugin included (`rh-plugin/`)
+
+**I2S Speaker Audio (MAX98357A)**
+- Hardware speaker output for race announcements
+- Non-blocking MP3 playback from SD card
+- Countdown, lap times, race start/stop audio
+
 **Developer Friendly**
 - Comprehensive self-test diagnostics (19 tests)
 - OTA firmware updates
@@ -119,8 +130,10 @@ Detailed wiring diagrams are available for each supported board:
 
 - **[Seeed Studio XIAO ESP32S3](docs/wiring/Seeed-XIAO-ESP32S3.md)** - Recommended, compact, 8MB
 - **[ESP32-S3 DevKitC-1 (8MB Flash)](docs/wiring/ESP32-S3-DevKitC-1.md)** - Alternative
+- **FPVGate AIO V3** - All-In-One board (XIAO ESP32S3-based)
 - **[ESP32-S3 Super Mini (4MB Flash)](docs/wiring/ESP32-S3-SuperMini.md)** - Not recommended (see note below)
 - **[LilyGO T-Energy S3](docs/wiring/LilyGO-T-Energy-S3.md)** - Expert mode, integrated battery
+- **XIAO ESP32S3 Plus (16MB Flash)** - Expert mode
 
 > **Note on ESP32-S3 Super Mini:** Through testing, this board has proven unreliable due to inconsistent quality from various suppliers. Some revisions experience frequent brownouts under load. This board is still supported but is not recommended for new builds.
 
@@ -200,7 +213,7 @@ pio run -e ESP32S3SuperMini -t uploadfs
 **[Development Guide](docs/DEVELOPMENT.md)** - Building from source, contributing  
 
 **Additional Docs:**
-- [Quick Start](QUICKSTART.md) - Fast track for experienced users
+- [RotorHazard Integration](docs/ROTORHAZARD_INTEGRATION.md) - Connect FPVGate to RotorHazard
 - [Voice Generation](docs/VOICE_GENERATION_README.md) - Generate custom voices
 - [Multi-Voice Setup](docs/MULTI_VOICE_SETUP.md) - Configure multiple voices
 - [SD Card Migration](docs/SD_CARD_MIGRATION_GUIDE.md) - SD card setup
@@ -232,57 +245,33 @@ Exit  ├/──────────\─
 
 ## Project Status
 
-**Current Version:** v1.6.1
-**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/), Seeed Studio XIAO ESP32S3
+**Current Version:** v1.7.0
+**Platform:** [ESP32-S3 DevKitC-1](https://docs.keyestudio.com/projects/ESP32-S3/en/latest/1.Introduction.html), [Seeed Studio XIAO ESP32S3](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/), FPVGate AIO V3, ESP32 DevKit
 **License:** CC BY-NC-SA 4.0  
 **Status:** Stable - actively maintained
 
 ### Recent Updates
 
-**v1.6.1 (Latest Release - February 14, 2026)**
+**v1.7.0 (Latest Release - March 20, 2026)**
+- **RotorHazard Integration** - Bidirectional race control, NTP clock sync, lap submission, companion RH plugin
+- **I2S Speaker Audio (MAX98357A)** - Hardware speaker output for race announcements
+- **New Boards** - FPVGate AIO V3, XIAO ESP32S3 Plus, ESP32 DevKit
+- **Config v16** - New fields for RH integration and speaker settings
+
+**v1.6.2 (February 26, 2026)**
+- **Waveshare ESP32-S3-LCD-2** - New board support (Expert Mode)
+- **Calibration Ignore Regions** - Mark noisy RSSI sections to exclude from threshold
+- **Novacore Filter Tuning** - Per-filter toggles and parameter sliders
+- **Debug RSSI Overlay** - Real-time debug chart in diagnostics
+
+**v1.6.1 (February 14, 2026)**
 - **Multi-Pilot Race Analysis** - Current lap timer, lap times chart, consistency chart
 - **Race Synchronization** - Redesigned sync UI, TTS format override, speech keepalive
 - **Mobile Experience** - Settings modal navigation, iOS Safari hostname fix
-- **Bug Fixes** - Start race button hanging, mobile audio announcer, DevKit pin corrections
 
 **v1.6.0 (February 9, 2026)**
 - **Race Synchronization System** - Multi-timer sync for distributed race timing
 - **Audio Controls** - Beep volume slider, independent browser audio volume
-- **WebSocket Sync** - Real-time sync between master and slave timers
-
-**v1.5.7 (February 7, 2026)**
-- **OSD Setup Section** - Quick actions for horizontal and vertical On Screen Displays
-- **Custom Theme** - User-defined colors for background, highlight, text, menu and secondary
-- **Theme Organization** - Preset themes grouped for easier selection
-
-**v1.5.1-dev**
-- [ESP32-S3 Super Mini](https://www.espboards.dev/esp32/esp32-s3-super-mini/) support (4MB flash variant)
-- Compact form factor with optimized pin mappings
-- Dual board support (DevKitC-1 and Super Mini)
-
-**v1.5.0**
-- Digital FPV Band Support - DJI, HDZero, WalkSnail (16 new bands)
-- Improved Lap Detection Algorithm - Minimizes false positives with enhanced signal processing
-- 5-stage RSSI filtering pipeline (Kalman, median, moving average, EMA, step limiter)
-- Enhanced Kalman filter with proper initialization
-- Fixed VTx frequency persistence bug
-- Fixed RGB LED RMT channel conflict on ESP32-S3
-- Contributor integration from Richard Amiss (@ramiss)
-
-**v1.4.0**
-- Track Management System - Create, edit, and manage track profiles with images
-- Distance Tracking - Real-time distance display and statistics
-- Webhook System - HTTP webhooks for external LED controller integration
-- Gate LED Control - Granular control over webhook triggers (race start/stop, laps)
-- Enhanced Self-Tests - Comprehensive diagnostics for all device features (19 tests)
-- WiFi Reboot Fix - Apply WiFi settings button now properly reboots device
-- Enhanced Race Editing - Edit race metadata, lap times, and track associations
-- Track Selection - Choose active track before racing (persists to EEPROM)
-
-**v1.3.3**
-- Modern Configuration UI with full-screen overlay modal
-- WebSocket Stability with SSE keepalive mechanism
-- Fixed duplicate element IDs and WiFi configuration issues
 
 **[Full changelog →](CHANGELOG.md)**
 

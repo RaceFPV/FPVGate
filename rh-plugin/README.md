@@ -1,6 +1,8 @@
 # FPVGate RotorHazard Plugin
 
-Companion plugin for [FPVGate](https://github.com/your-repo/FPVGate) that allows an FPVGate RSSI lap timer to submit laps directly into RotorHazard via Socket.IO.
+Companion plugin for [FPVGate](https://github.com/LouisHitchcock/FPVGate) that allows an FPVGate RSSI lap timer to submit laps directly into RotorHazard.
+
+**Plugin repository:** [github.com/LouisHitchcock/fpvgate-rh-plugin](https://github.com/LouisHitchcock/fpvgate-rh-plugin)
 
 ## How It Works
 
