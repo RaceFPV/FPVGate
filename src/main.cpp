@@ -231,7 +231,7 @@ void setup() {
     
     // Always enable debug output (WiFi mode only)
     DEBUG_INIT;
-    
+
     // Debug: Show config state after serial is ready
     DEBUG("Config state: SSID='%s', timerNumber=%d, version=0x%08X\n", 
           config.getSsid(), config.getTimerNumber(), config.getVersion());

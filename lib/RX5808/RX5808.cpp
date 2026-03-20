@@ -287,12 +287,6 @@ void RX5808::initAdcDma() {
         return;
     }
 
-    if (adc_continuous_start(handle) != ESP_OK) {
-        DEBUG("ADC DMA: failed to start\n");
-        adc_continuous_deinit(handle);
-        return;
-    }
-
     // Register ISR callback — fires on each completed DMA frame so readRssi()
     // never needs to call any IDF function (avoids esp_task_wdt_reset spam).
     adc_continuous_evt_cbs_t cbs = {};
@@ -300,6 +294,12 @@ void RX5808::initAdcDma() {
     if (adc_continuous_register_event_callbacks(handle, &cbs, (void*)&lastDmaRssi) != ESP_OK) {
         DEBUG("ADC DMA: failed to register callback\n");
         adc_continuous_stop(handle);
+        adc_continuous_deinit(handle);
+        return;
+    }
+
+    if (adc_continuous_start(handle) != ESP_OK) {
+        DEBUG("ADC DMA: failed to start\n");
         adc_continuous_deinit(handle);
         return;
     }

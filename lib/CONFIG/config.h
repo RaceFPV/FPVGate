@@ -76,7 +76,7 @@
 #define PIN_VBAT 5             // Battery voltage sense
 #define VBAT_SCALE 2           // 2:1 voltage divider (200K/100K)
 #define VBAT_ADD 0             // Calibration offset
-#define PIN_RX5808_RSSI 17      // RSSI on GPIO17 (Rssi)
+#define PIN_RX5808_RSSI 8       // RSSI on GPIO8 (ADC1, breakout)
 #define PIN_RX5808_DATA 2     // CH1 on GPIO2 (Data)
 #define PIN_RX5808_SELECT 4   // CH2 on GPIO4 (LE)
 #define PIN_RX5808_CLOCK 6    // CH3 on GPIO18 (Clk)
