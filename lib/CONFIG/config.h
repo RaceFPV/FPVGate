@@ -69,20 +69,20 @@
 // Waveshare ESP32-S3-LCD-2 (16MB Flash, 8MB PSRAM, built-in TF card)
 #elif defined(WAVESHARE_ESP32S3_LCD2)
 
-#define PIN_LED 2              // External status LED (on header)
-#define PIN_RGB_LED 15         // WS2812 RGB LED (on header, optional external)
+#define PIN_LED 21             // External status LED on header (avoid USB GPIO20)
+// NOTE: Do not use GPIO19/20 for RGB on S3; those are native USB D-/D+.
+#define PIN_RGB_LED 15         // Optional external WS2812 DIN on header (safe for USB)
 #define NUM_LEDS 2
 #define PIN_VBAT 5             // Battery voltage sense
-#define VBAT_SCALE 3           // 3:1 voltage divider (200K/100K)
+#define VBAT_SCALE 2           // 2:1 voltage divider (200K/100K)
 #define VBAT_ADD 0             // Calibration offset
-#define PIN_RX5808_RSSI 4      // RSSI on GPIO4
-#define PIN_RX5808_DATA 17     // CH1 on GPIO17
-#define PIN_RX5808_SELECT 21   // CH2 on GPIO21
-#define PIN_RX5808_CLOCK 18    // CH3 on GPIO18
-#define PIN_BUZZER 6           // Buzzer on GPIO6 (on header)
+#define PIN_RX5808_RSSI 17      // RSSI on GPIO17 (Rssi)
+#define PIN_RX5808_DATA 2     // CH1 on GPIO2 (Data)
+#define PIN_RX5808_SELECT 4   // CH2 on GPIO4 (LE)
+#define PIN_RX5808_CLOCK 6    // CH3 on GPIO18 (Clk)
+#define PIN_BUZZER 15           // Buzzer on GPIO47 (on header)
 #define BUZZER_INVERTED false
-#define PIN_MODE_SWITCH 9      // Mode selection (on header)
-#define PIN_POWER_SWITCH 7     // Power toggle switch (optional: GPIO7 to GND = deep sleep)
+#define PIN_POWER_SWITCH 13     // Power toggle switch (optional: GPIO7 to GND = deep sleep)
 // SD Card SPI pins (built-in TF card slot, shared SPI bus with LCD)
 #define PIN_SD_CS 41
 #define PIN_SD_SCK 39
@@ -243,7 +243,7 @@
 #endif
 
 // Boards with RGB LED support
-#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(FPVGATE_AIO_V3) || defined(XIAO_ESP32S3_PLUS) || defined(PIN_RGB_LED)
+#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(FPVGATE_AIO_V3) || defined(XIAO_ESP32S3_PLUS) || defined(PIN_RGB_LED)
     #define HAS_RGB_LED 1
 #endif
 

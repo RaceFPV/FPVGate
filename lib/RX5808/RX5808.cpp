@@ -18,6 +18,12 @@ RX5808::RX5808(uint8_t _rssiInputPin, uint8_t _rx5808DataPin, uint8_t _rx5808Sel
 
 void RX5808::init() {
     pinMode(rssiInputPin, INPUT);
+    analogReadResolution(12);
+#if defined(ADC_11db)
+    analogSetPinAttenuation(rssiInputPin, ADC_11db);
+#elif defined(ADC_ATTEN_DB_12)
+    analogSetPinAttenuation(rssiInputPin, ADC_ATTEN_DB_12);
+#endif
     pinMode(rx5808DataPin, OUTPUT);
     pinMode(rx5808SelPin, OUTPUT);
     pinMode(rx5808ClkPin, OUTPUT);
@@ -257,11 +263,22 @@ void RX5808::initAdcDma() {
         .unit      = (uint8_t)unit,
         .bit_width = ADC_BITWIDTH_12,
     };
+    adc_digi_convert_mode_t convMode;
+    if (unit == ADC_UNIT_1) {
+        convMode = ADC_CONV_SINGLE_UNIT_1;
+    } else if (unit == ADC_UNIT_2) {
+        convMode = ADC_CONV_SINGLE_UNIT_2;
+    } else {
+        DEBUG("ADC DMA: unsupported ADC unit %d for pin %d\n", (int)unit, rssiInputPin);
+        adc_continuous_deinit(handle);
+        return;
+    }
+
     adc_continuous_config_t cont_cfg = {
         .pattern_num    = 1,
         .adc_pattern    = &pattern,
-        .sample_freq_hz = 20 * 1000,              // 20 kHz continuous sampling
-        .conv_mode      = ADC_CONV_SINGLE_UNIT_1, // ADC1 only (avoids WiFi conflict)
+        .sample_freq_hz = 20 * 1000,  // 20 kHz continuous sampling
+        .conv_mode      = convMode,   // match the ADC unit mapped from rssiInputPin
         .format         = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
     };
     if (adc_continuous_config(handle, &cont_cfg) != ESP_OK) {

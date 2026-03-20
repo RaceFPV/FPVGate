@@ -36,6 +36,13 @@ class BatteryMonitor {
     uint8_t lastAlarmThreshold;  // Track last alarm threshold for debug control
     Buzzer *buz;
     Led *led;
+#ifdef USE_ADC_DMA
+    // Keep ADC driver model consistent with RSSI DMA builds.
+    void* adcOneshotHandle = nullptr;  // adc_oneshot_unit_handle_t
+    uint8_t adcChannel = 0;            // adc_channel_t
+    bool adcOneshotInitialized = false;
+    void initAdcOneshot();
+#endif
 };
 
 #endif  // BATTERY_H

@@ -61,10 +61,8 @@ class LapTimer {
     float getDistanceRemaining();
     Track* getSelectedTrack();
 
-<<<<<<< HEAD
     /** Copy lap times (ms) in order for saving; only laps > 0. Call before stop(). */
     void getLapTimesForSave(std::vector<uint32_t>& out) const;
-=======
     // Returns the race-elapsed time (ms) at the moment of the last gate crossing.
     // Use this to pass an accurate timestamp to RotorHazard.
     uint32_t getLastCrossingRaceTimeMs();
@@ -78,7 +76,6 @@ class LapTimer {
 
     // Returns ms elapsed since race start (0 if not running).
     uint32_t getElapsedRaceTimeMs();
->>>>>>> da822aeb8bbd1b10f1c647c5b3a217d6b8bbb284
 
    private:
     laptimer_state_e state = STOPPED;
