@@ -26,14 +26,19 @@
       "expert_mode": 1
     },
     {
-      "value": "fpvgateaio",
-      "label": "FPVGate AIO (XIAO ESP32S3, 8MB)",
-      "expert_mode": 0
+      "value": "fpvgateaiov3",
+      "label": "FPVGate AIO V3 (8MB) - Coming Soon",
+      "expert_mode": 1
     },
     {
       "value": "xiaos3plus",
       "label": "XIAO ESP32S3 Plus (16MB Flash)",
-      "expert_mode": 0
+      "expert_mode": 1
+    },
+    {
+      "value": "novablade",
+      "label": "NovaBlade (16MB Flash)",
+      "expert_mode": 1
     }
   ]
 }

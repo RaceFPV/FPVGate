@@ -86,18 +86,32 @@ void Config::load(void) {
     if (version != CONFIG_VERSION) {
         DEBUG("EEPROM config version mismatch (found=%u, expected=%u)\n", version, CONFIG_VERSION);
         
-        // Migration from version 14 to 15: add speakerEnabled
-        if (version == 14) {
-            DEBUG("Migrating config from v14 to v15 (adding speakerEnabled)\n");
-            conf.speakerEnabled = 1;  // Enabled by default
+        // Migration from version 15 to 16: add RotorHazard integration fields
+        if (version == 15) {
+            DEBUG("Migrating config from v15 to v16 (adding RH integration fields)\n");
+            conf.rhEnabled = 0;
+            memset(conf.rhHostIP, 0, sizeof(conf.rhHostIP));
+            conf.rhNodeIndex = 0;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
             DEBUG("Migration complete, config preserved\n");
         }
-        // Migration from version 13 to 15: add Novacore filter config + speakerEnabled
+        // Migration from version 14 to 15: add speakerEnabled
+        else if (version == 14) {
+            DEBUG("Migrating config from v14 to v15 (adding speakerEnabled)\n");
+            conf.speakerEnabled = 1;  // Enabled by default
+            conf.rhEnabled = 0;
+            memset(conf.rhHostIP, 0, sizeof(conf.rhHostIP));
+            conf.rhNodeIndex = 0;
+            conf.version = CONFIG_VERSION | CONFIG_MAGIC;
+            modified = true;
+            write();
+            DEBUG("Migration complete, config preserved\n");
+        }
+        // Migration from version 13 to 16
         else if (version == 13) {
-            DEBUG("Migrating config from v13 to v15 (adding Novacore filter config + speaker)\n");
+            DEBUG("Migrating config from v13 to v16\n");
             conf.novaFilterKalman = 1;
             conf.novaFilterMedian = 0;
             conf.novaFilterMA = 0;
@@ -107,14 +121,17 @@ void Config::load(void) {
             conf.novaEmaAlpha = 15;
             conf.novaStepMax = 20;
             conf.speakerEnabled = 1;
+            conf.rhEnabled = 0;
+            memset(conf.rhHostIP, 0, sizeof(conf.rhHostIP));
+            conf.rhNodeIndex = 0;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
             DEBUG("Migration complete, config preserved\n");
         }
-        // Migration from version 12 to 15
+        // Migration from version 12 to 16
         else if (version == 12) {
-            DEBUG("Migrating config from v12 to v15 (adding receiverRadio + filter config + speaker)\n");
+            DEBUG("Migrating config from v12 to v16\n");
             conf.receiverRadio = 0;
             conf.novaFilterKalman = 1;
             conf.novaFilterMedian = 0;
@@ -125,14 +142,17 @@ void Config::load(void) {
             conf.novaEmaAlpha = 15;
             conf.novaStepMax = 20;
             conf.speakerEnabled = 1;
+            conf.rhEnabled = 0;
+            memset(conf.rhHostIP, 0, sizeof(conf.rhHostIP));
+            conf.rhNodeIndex = 0;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
             DEBUG("Migration complete, config preserved\n");
         }
-        // Migration from version 11 to 15
+        // Migration from version 11 to 16
         else if (version == 11) {
-            DEBUG("Migrating config from v11 to v15\n");
+            DEBUG("Migrating config from v11 to v16\n");
             conf.autoThresholdEnabled = 0;
             conf.autoThresholdOffset = 15;
             conf.receiverRadio = 0;
@@ -145,14 +165,17 @@ void Config::load(void) {
             conf.novaEmaAlpha = 15;
             conf.novaStepMax = 20;
             conf.speakerEnabled = 1;
+            conf.rhEnabled = 0;
+            memset(conf.rhHostIP, 0, sizeof(conf.rhHostIP));
+            conf.rhNodeIndex = 0;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
             DEBUG("Migration complete, config preserved\n");
         }
-        // Migration from version 10 to 15
+        // Migration from version 10 to 16
         else if (version == 10) {
-            DEBUG("Migrating config from v10 to v15\n");
+            DEBUG("Migrating config from v10 to v16\n");
             memset(conf.masterHostname, 0, sizeof(conf.masterHostname));
             conf.autoThresholdEnabled = 0;
             conf.autoThresholdOffset = 15;
@@ -166,6 +189,9 @@ void Config::load(void) {
             conf.novaEmaAlpha = 15;
             conf.novaStepMax = 20;
             conf.speakerEnabled = 1;
+            conf.rhEnabled = 0;
+            memset(conf.rhHostIP, 0, sizeof(conf.rhHostIP));
+            conf.rhNodeIndex = 0;
             conf.version = CONFIG_VERSION | CONFIG_MAGIC;
             modified = true;
             write();
@@ -313,6 +339,11 @@ void Config::toJson(AsyncResponseStream& destination, BatteryMonitor* batteryMon
 #else
     config["hasI2SAudio"] = 0;
 #endif
+    
+    // RotorHazard integration
+    config["rhEnabled"] = conf.rhEnabled;
+    config["rhHostIP"] = conf.rhHostIP;
+    config["rhNodeIndex"] = conf.rhNodeIndex;
     
     // Add battery voltage if monitor exists
     if (batteryMonitor) {
@@ -713,6 +744,28 @@ void Config::fromJson(JsonObject source) {
         uint8_t val = source["speakerEnabled"].as<uint8_t>();
         if (val <= 1) {
             conf.speakerEnabled = val;
+            modified = true;
+        }
+    }
+    // RotorHazard integration
+    if (source.containsKey("rhEnabled") && source["rhEnabled"] != conf.rhEnabled) {
+        uint8_t val = source["rhEnabled"].as<uint8_t>();
+        if (val <= 1) {
+            conf.rhEnabled = val;
+            modified = true;
+        }
+    }
+    if (source.containsKey("rhHostIP")) {
+        const char* v = source["rhHostIP"] | "";
+        if (strcmp(v, conf.rhHostIP) != 0) {
+            strlcpy(conf.rhHostIP, v, sizeof(conf.rhHostIP));
+            modified = true;
+        }
+    }
+    if (source.containsKey("rhNodeIndex") && source["rhNodeIndex"] != conf.rhNodeIndex) {
+        uint8_t val = source["rhNodeIndex"].as<uint8_t>();
+        if (val <= 7) {
+            conf.rhNodeIndex = val;
             modified = true;
         }
     }
@@ -1264,6 +1317,29 @@ void Config::setSpeakerEnabled(uint8_t enabled) {
     }
 }
 
+// RotorHazard integration
+uint8_t Config::getRhEnabled() { return conf.rhEnabled; }
+void Config::setRhEnabled(uint8_t enabled) {
+    if (enabled <= 1 && conf.rhEnabled != enabled) {
+        conf.rhEnabled = enabled;
+        modified = true;
+    }
+}
+char* Config::getRhHostIP() { return conf.rhHostIP; }
+void Config::setRhHostIP(const char* ip) {
+    if (strcmp(ip, conf.rhHostIP) != 0) {
+        strlcpy(conf.rhHostIP, ip, sizeof(conf.rhHostIP));
+        modified = true;
+    }
+}
+uint8_t Config::getRhNodeIndex() { return conf.rhNodeIndex; }
+void Config::setRhNodeIndex(uint8_t index) {
+    if (index <= 7 && conf.rhNodeIndex != index) {
+        conf.rhNodeIndex = index;
+        modified = true;
+    }
+}
+
 void Config::setDefaults(void) {
     DEBUG("Setting EEPROM defaults\n");
     // Reset everything to 0/false and then just set anything that zero is not appropriate
@@ -1330,6 +1406,10 @@ void Config::setDefaults(void) {
     conf.novaEmaAlpha = 15;          // alpha=0.15
     conf.novaStepMax = 20;           // max step per sample
     conf.speakerEnabled = 1;         // Speaker enabled by default
+    // RotorHazard integration defaults
+    conf.rhEnabled = 0;              // Disabled by default
+    memset(conf.rhHostIP, 0, sizeof(conf.rhHostIP));  // Empty host
+    conf.rhNodeIndex = 0;            // Seat 0 by default
     modified = true;
     write();
 }

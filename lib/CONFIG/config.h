@@ -21,31 +21,13 @@
 
 */
 
-//ESP32-C3
-#if defined(ESP32C3)
-
-#define PIN_LED 1
-#define PIN_VBAT 0
-#define VBAT_SCALE 2
-#define VBAT_ADD 2
-#define PIN_RX5808_RSSI 3
-#define PIN_RX5808_DATA 6     //CH1
-#define PIN_RX5808_SELECT 7   //CH2
-#define PIN_RX5808_CLOCK 4    //CH3
-#define PIN_BUZZER 5
-#define BUZZER_INVERTED false
-#define PIN_MODE_SWITCH 1     // Mode selection: LOW=WiFi, HIGH=RotorHazard
-// SD Card SPI pins
-#define PIN_SD_CS 8
-#define PIN_SD_SCK 2
-#define PIN_SD_MOSI 10
-#define PIN_SD_MISO 9
 
 //ESP32-S3 Super Mini
-#elif defined(ESP32S3_SUPERMINI)
+#if defined(ESP32S3_SUPERMINI)
 
 #define PIN_LED 2              // External status LED (if present)
 #define PIN_RGB_LED 1          // WS2812 RGB LED on GPIO1
+#define NUM_LEDS 2
 #define PIN_VBAT 0
 #define VBAT_SCALE 2
 #define VBAT_ADD 2
@@ -55,7 +37,7 @@
 #define PIN_RX5808_CLOCK 4     // CH3 on Pin 4
 #define PIN_BUZZER 5
 #define BUZZER_INVERTED false
-#define PIN_MODE_SWITCH 1      // Mode selection: LOW=WiFi, HIGH=RotorHazard
+//#define PIN_MODE_SWITCH 1      // Mode selection: LOW=WiFi, HIGH=RotorHazard
 // SD Card SPI pins
 #define PIN_SD_CS 8
 #define PIN_SD_SCK 2
@@ -67,7 +49,8 @@
 
 #define PIN_LED 2              // SAME AS DEVKITC: External LED on GPIO 2
 #define PIN_RGB_LED 48         // SAME AS DEVKITC: WS2812 RGB LED
-#define PIN_VBAT 3             // DIFFERENT: Battery voltage sense (T-Energy built-in divider on GPIO 3)
+#define NUM_LEDS 2
+#define PIN_VBAT 3             // DIFFERENT:
 #define VBAT_SCALE 2           // 2:1 voltage divider (100K/100K)
 #define VBAT_ADD 2             // Calibration offset
 #define PIN_RX5808_RSSI 4      // SAME AS DEVKITC: RSSI on GPIO 4
@@ -88,7 +71,8 @@
 
 #define PIN_LED 2              // External status LED (on header)
 #define PIN_RGB_LED 15         // WS2812 RGB LED (on header, optional external)
-#define PIN_VBAT 5             // Battery voltage sense (built-in 200K/100K divider on GPIO5)
+#define NUM_LEDS 2
+#define PIN_VBAT 5             // Battery voltage sense
 #define VBAT_SCALE 3           // 3:1 voltage divider (200K/100K)
 #define VBAT_ADD 0             // Calibration offset
 #define PIN_RX5808_RSSI 4      // RSSI on GPIO4
@@ -154,11 +138,55 @@
 #define PIN_SD_MOSI 9          // D10
 #define PIN_SD_MISO 8          // D9
 
+// FPVGate AIO V3 (XIAO ESP32S3-based, custom pinout)
+#elif defined(FPVGATE_AIO_V3)
+
+#define PIN_LED 21             // Onboard user LED
+#define PIN_RGB_LED 44         // NeoPixel chain on D7 (GPIO44)
+#define NUM_LEDS 3
+#define PIN_VBAT 0             // External divider required if used
+#define VBAT_SCALE 2
+#define VBAT_ADD 2
+#define PIN_RX5808_RSSI 3      // D2 (GPIO3)
+#define PIN_RX5808_DATA 5      // D4 (GPIO5)
+#define PIN_RX5808_SELECT 6    // D5 (GPIO6) - LE
+#define PIN_RX5808_CLOCK 4     // D3 (GPIO4)
+#define PIN_BUZZER 43          // D6 (GPIO43)
+#define BUZZER_INVERTED false
+#define PIN_MODE_SWITCH 1      // D0 (GPIO1)
+// SD Card SPI pins
+#define PIN_SD_CS 2            // D1 (GPIO2)
+#define PIN_SD_SCK 7           // D8 (GPIO7)
+#define PIN_SD_MOSI 8          // D9 (GPIO8)
+#define PIN_SD_MISO 9          // D10 (GPIO9)
+
+// XIAO ESP32S3 Plus (16MB Flash)
+#elif defined(XIAO_ESP32S3_PLUS)
+
+#define PIN_LED 21             // Onboard user LED
+#define PIN_RGB_LED 44         // NeoPixel chain on D7 (GPIO44)
+#define NUM_LEDS 2
+#define PIN_VBAT 1             // D0 (GPIO1) - BATSENSE
+#define VBAT_SCALE 2
+#define VBAT_ADD 2
+#define PIN_RX5808_RSSI 3      // D2 (GPIO3)
+#define PIN_RX5808_DATA 5      // D4 (GPIO5)
+#define PIN_RX5808_SELECT 6    // D5 (GPIO6) - LE
+#define PIN_RX5808_CLOCK 4     // D3 (GPIO4)
+#define PIN_BUZZER 43          // D6 (GPIO43)
+#define BUZZER_INVERTED false
+// SD Card SPI pins
+#define PIN_SD_CS 2            // D1 (GPIO2)
+#define PIN_SD_SCK 7           // D8 (GPIO7)
+#define PIN_SD_MOSI 9          // D10 (GPIO9)
+#define PIN_SD_MISO 8          // D9 (GPIO8)
+
 // Seeed Studio XIAO ESP32S3
 #elif defined(SEEED_XIAO_ESP32S3)
 
 #define PIN_LED 21             // Onboard user LED
 #define PIN_RGB_LED 44         // NeoPixel signal on D7 (GPIO44)
+#define NUM_LEDS 2
 #define PIN_VBAT 0             // External divider required if used
 #define VBAT_SCALE 2
 #define VBAT_ADD 2
@@ -180,7 +208,8 @@
 
 #define PIN_LED 2
 #define PIN_RGB_LED 5          // WS2812 RGB LED on GPIO5
-#define PIN_VBAT 1             // Battery voltage test pin (connect 3.0-4.2V via voltage divider)
+#define NUM_LEDS 2
+#define PIN_VBAT 1             // Battery voltage test pin
 #define VBAT_SCALE 2           // 2:1 voltage divider (adjust based on your divider)
 #define VBAT_ADD 2             // Calibration offset: +0.2V correction
 #define PIN_RX5808_RSSI 4      // RSSI on Pin 4 (GPIO3 is a strapping pin - causes boot issues!)
@@ -200,22 +229,6 @@
 #define PIN_I2S_LRC  17
 #define PIN_I2S_DOUT 18
 
-//ESP32 (DevKit C1 and similar)
-#else
-
-#define PIN_LED 21
-#define PIN_RGB_LED 5          // WS2812 RGB LED on GPIO5
-#define PIN_VBAT 35
-#define VBAT_SCALE 2
-#define VBAT_ADD 2
-#define PIN_RX5808_RSSI 33
-#define PIN_RX5808_DATA 19   //CH1
-#define PIN_RX5808_SELECT 22 //CH2
-#define PIN_RX5808_CLOCK 23  //CH3
-#define PIN_BUZZER 27
-#define BUZZER_INVERTED false
-#define PIN_MODE_SWITCH 33   // Mode selection: LOW=WiFi, HIGH=RotorHazard
-
 #endif
 
 // ====================================================================
@@ -224,13 +237,13 @@
 // ====================================================================
 
 // ESP32-S3 family boards (SD card support, SPI, USB CDC)
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(FPVGATE_AIO) || defined(XIAO_ESP32S3_PLUS)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(FPVGATE_AIO_V3) || defined(XIAO_ESP32S3_PLUS)
     #define HAS_SD_CARD_SUPPORT 1
     #define HAS_SPI_CLASS 1
 #endif
 
 // Boards with RGB LED support
-#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(FPVGATE_AIO) || defined(XIAO_ESP32S3_PLUS) || defined(PIN_RGB_LED)
+#if defined(ESP32S3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(FPVGATE_AIO_V3) || defined(XIAO_ESP32S3_PLUS) || defined(PIN_RGB_LED)
     #define HAS_RGB_LED 1
 #endif
 
@@ -251,7 +264,7 @@
 #define EEPROM_RESERVED_SIZE 768
 #define CONFIG_MAGIC_MASK (0b11U << 30)
 #define CONFIG_MAGIC (0b01U << 30)
-#define CONFIG_VERSION 15U
+#define CONFIG_VERSION 16U
 
 // Race sync mode constants
 #define RACE_SYNC_DISABLED 0
@@ -328,6 +341,10 @@ typedef struct {
     uint8_t novaEmaAlpha;           // EMA alpha * 100 (5-80, lower = more smoothing)
     uint8_t novaStepMax;            // Step limiter max per sample (5-50)
     uint8_t speakerEnabled;         // I2S speaker output enabled (0=disabled, 1=enabled)
+    // RotorHazard integration
+    uint8_t rhEnabled;               // RH integration enabled (0=disabled, 1=enabled)
+    char rhHostIP[32];               // RH server IP or hostname
+    uint8_t rhNodeIndex;             // Node/seat index on RH (0-7)
 } laptimer_config_t;
 
 class Storage;  // Forward declaration
@@ -459,6 +476,14 @@ class Config {
     // Speaker output
     uint8_t getSpeakerEnabled();
     void setSpeakerEnabled(uint8_t enabled);
+    
+    // RotorHazard integration
+    uint8_t getRhEnabled();
+    void setRhEnabled(uint8_t enabled);
+    char* getRhHostIP();
+    void setRhHostIP(const char* ip);
+    uint8_t getRhNodeIndex();
+    void setRhNodeIndex(uint8_t index);
     
     // Novacore filter config
     uint8_t getNovaFilterKalman();

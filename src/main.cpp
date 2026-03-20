@@ -11,6 +11,7 @@
 #include "trackmanager.h"
 #include "usb.h"
 #include "webhook.h"
+#include "rotorhazard.h"
 // DISABLED FOR NOW: #include "nodemode.h"  // Uncomment to re-enable RotorHazard support
 #include <ElegantOTA.h>
 #ifdef HAS_RGB_LED
@@ -68,6 +69,7 @@ static Led led;
 static RaceHistory raceHistory;
 static TrackManager trackManager;
 static WebhookManager webhookManager;
+static RHManager rhManager;
 #ifdef HAS_RGB_LED
 static RgbLed rgbLed;
 RgbLed* g_rgbLed = &rgbLed;
@@ -345,10 +347,13 @@ void setup() {
         }
     }
     
+    // Initialize RotorHazard integration
+    rhManager.init(&config);
+    
 #ifdef HAS_BATTERY_MONITOR
-    ws.init(&config, &timer, &monitor, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager, &webhookManager);
+    ws.init(&config, &timer, &monitor, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager, &webhookManager, &rhManager);
 #else
-    ws.init(&config, &timer, nullptr, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager, &webhookManager);
+    ws.init(&config, &timer, nullptr, &buzzer, &led, &raceHistory, &storage, &selfTest, &rx, &trackManager, &webhookManager, &rhManager);
 #endif
     
     // Initialize USB transport
@@ -686,6 +691,9 @@ void loop() {
         }
 #endif
 
+        // Report crossing to RotorHazard with raw millis() timestamps for clock sync
+        rhManager.triggerLap(timer.getLastCrossingAbsoluteMs(), timer.getRaceStartMs());
+        
 #ifdef HAS_I2S_AUDIO
         // Announce lap on speaker
         audioAnnouncer.announceLap(lapTime);
@@ -702,6 +710,9 @@ void loop() {
     
     // Process queued webhooks (non-blocking)
     webhookManager.process();
+    
+    // Process RotorHazard connection and queued lap events
+    rhManager.process();
     
     // WiFi mode - original behavior (RotorHazard mode disabled)
     ElegantOTA.loop();
