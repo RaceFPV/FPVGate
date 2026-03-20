@@ -4,6 +4,13 @@
 #include <LittleFS.h>
 
 #include "debug.h"
+
+static float sanitizeBatteryDivider(float ratio) {
+#if defined(WAVESHARE_ESP32S3_LCD2)
+    if (ratio < 3.2f) return 3.3f;
+#endif
+    return ratio;
+}
 #include "storage.h"
 #include "battery.h"
 
@@ -603,7 +610,7 @@ void Config::fromJson(JsonObject source) {
         modified = true;
     }
     if (source.containsKey("batteryVoltageDivider")) {
-        float v = source["batteryVoltageDivider"].as<float>();
+        float v = sanitizeBatteryDivider(source["batteryVoltageDivider"].as<float>());
         if (conf.batteryVoltageDivider != v) {
             conf.batteryVoltageDivider = v;
             modified = true;
@@ -1161,6 +1168,7 @@ float Config::getBatteryVoltageDivider() {
 }
 
 void Config::setBatteryVoltageDivider(float ratio) {
+    ratio = sanitizeBatteryDivider(ratio);
     if (conf.batteryVoltageDivider != ratio) {
         conf.batteryVoltageDivider = ratio;
         modified = true;
