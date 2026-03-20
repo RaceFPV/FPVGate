@@ -34,6 +34,11 @@
       "value": "xiaos3plus",
       "label": "XIAO ESP32S3 Plus (16MB Flash)",
       "expert_mode": 1
+    },
+    {
+      "value": "novablade",
+      "label": "NovaBlade (16MB Flash)",
+      "expert_mode": 1
     }
   ]
 }
