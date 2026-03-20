@@ -179,23 +179,6 @@
 #define PIN_I2S_LRC  17
 #define PIN_I2S_DOUT 18
 
-//ESP32 (DevKit C1 and similar)
-#else
-
-#define PIN_LED 21
-#define PIN_RGB_LED 5          // WS2812 RGB LED on GPIO5
-#define NUM_LEDS 2
-#define PIN_VBAT 35
-#define VBAT_SCALE 2
-#define VBAT_ADD 2
-#define PIN_RX5808_RSSI 33
-#define PIN_RX5808_DATA 19   //CH1
-#define PIN_RX5808_SELECT 22 //CH2
-#define PIN_RX5808_CLOCK 23  //CH3
-#define PIN_BUZZER 27
-#define BUZZER_INVERTED false
-#define PIN_MODE_SWITCH 33   // Mode selection: LOW=WiFi, HIGH=RotorHazard
-
 #endif
 
 // ====================================================================
