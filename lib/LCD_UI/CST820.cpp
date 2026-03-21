@@ -10,29 +10,19 @@ CST820::CST820(int8_t sda_pin, int8_t scl_pin, int8_t rst_pin, int8_t int_pin)
 
 void CST820::begin(void)
 {
-    // Initialize I2C
-    if (_sda != -1 && _scl != -1)
-    {
+    if (_sda != -1 && _scl != -1) {
         Wire.begin(_sda, _scl);
-    }
-    else
-    {
+    } else {
         Wire.begin();
     }
+    Wire.setClock(100000);
 
-    // Int Pin Configuration
-    if (_int != -1)
-    {
-        pinMode(_int, OUTPUT);
-        digitalWrite(_int, HIGH);
-        delay(1);
-        digitalWrite(_int, LOW);
-        delay(1);
+    // TP_INT: open-drain from touch IC — MCU is input with pull-up. Never drive this as OUTPUT.
+    if (_int != -1) {
+        pinMode(_int, INPUT_PULLUP);
     }
 
-    // Reset Pin Configuration
-    if (_rst != -1)
-    {
+    if (_rst != -1) {
         pinMode(_rst, OUTPUT);
         digitalWrite(_rst, LOW);
         delay(10);
@@ -40,6 +30,7 @@ void CST820::begin(void)
         delay(300);
     }
 
+    delay(50);
     // Disable auto low-power mode
     i2c_write(0xFE, 0XFF);
 }
@@ -65,20 +56,24 @@ bool CST820::getTouch(uint16_t *x, uint16_t *y, uint8_t *gesture)
 
 uint8_t CST820::i2c_read(uint8_t addr)
 {
-    uint8_t rdData;
-    uint8_t rdDataCount;
-    do
-    {
+    uint8_t rdData = 0;
+    for (int attempt = 0; attempt < 10; attempt++) {
         Wire.beginTransmission(I2C_ADDR_CST820);
         Wire.write(addr);
-        Wire.endTransmission(false);
-        rdDataCount = Wire.requestFrom(I2C_ADDR_CST820, 1);
-    } while (rdDataCount == 0);
-    while (Wire.available())
-    {
+        uint8_t tx = Wire.endTransmission(false);
+        if (tx != 0) {
+            delayMicroseconds(200);
+            continue;
+        }
+        uint8_t n = Wire.requestFrom(I2C_ADDR_CST820, (uint8_t)1);
+        if (n == 0) {
+            delayMicroseconds(200);
+            continue;
+        }
         rdData = Wire.read();
+        return rdData;
     }
-    return rdData;
+    return 0;
 }
 
 uint8_t CST820::i2c_read_continuous(uint8_t addr, uint8_t *data, uint32_t length)

@@ -1,4 +1,5 @@
 #include "fpv_lcd_ui.h"
+#include "config.h"
 #include "spi_mutex.h"
 #include <math.h>
 #ifdef HAS_I2S_AUDIO
@@ -13,14 +14,6 @@ SemaphoreHandle_t g_spiMutex = nullptr;
 
 // LCD pins for Waveshare ESP32-S3 Touch LCD
 #define LCD_BL 1  // Backlight pin
-
-// Touch I2C pins (CST820 on Waveshare ESP32-S3-Touch-LCD-2)
-#if defined(BOARD_ESP32_S3_TOUCH)
-#define LCD_I2C_SDA 48
-#define LCD_I2C_SCL 47
-#define LCD_TOUCH_RST -1
-#define LCD_TOUCH_INT -1
-#endif
 
 // Static member initialization
 lv_disp_draw_buf_t FpvLcdUI::s_drawBuf;
@@ -106,8 +99,8 @@ bool FpvLcdUI::begin() {
     // Create SPI data bus (DC, CS, SCK, MOSI, MISO, SPI_NUM, isSPI_Mode)
     bus = new Arduino_ESP32SPI(42 /* DC */, 45 /* CS */, 39 /* SCK */, 38 /* MOSI */, 40 /* MISO */, FSPI /* spi_num */, true);
     
-    // Create ST7789 display driver (bus, RST, rotation, IPS, width, height)
-    gfx = new Arduino_ST7789(bus, -1 /* RST */, 0 /* rotation */, true /* IPS */, 240 /* width */, 320 /* height */);
+    // ST7789 HW RST = GPIO0: shared with touch (exits CST816 deep sleep before I2C). See config.h LCD_PANEL_RST.
+    gfx = new Arduino_ST7789(bus, LCD_PANEL_RST, 0 /* rotation */, true /* IPS */, 240 /* width */, 320 /* height */);
     
     // Initialize display
     Serial.println("LCD: Calling gfx->begin()...");
@@ -192,6 +185,7 @@ bool FpvLcdUI::begin() {
 #if defined(BOARD_ESP32_S3_TOUCH)
     // Initialize touch controller (CST820 on I2C)
     Serial.println("LCD: Initializing CST820 touch...");
+    delay(80);  // Extra settle after shared GPIO0 reset from gfx->begin() before first touch I2C
     touch = new CST820(LCD_I2C_SDA, LCD_I2C_SCL, LCD_TOUCH_RST, LCD_TOUCH_INT);
     touch->begin();
     
@@ -227,6 +221,30 @@ bool FpvLcdUI::begin() {
 
     return true;
 }
+
+#if defined(BOARD_ESP32_S3_TOUCH)
+void FpvLcdUI::prepareHardwareForDeepSleep() {
+    if (!bus) {
+        return;
+    }
+    // Backlight is often the largest draw; turn off before SPI sleep (enterDeepSleep also clears it).
+    pinMode(LCD_BL, OUTPUT);
+    digitalWrite(LCD_BL, LOW);
+
+    // Caller must suspend LcdUI task first so no SPI blit runs after SLPIN.
+    if (!spiMutexTake(pdMS_TO_TICKS(500))) {
+        return;
+    }
+    // ST7789T3 (Sitronix DCS): DISPOFF then SLPIN — panel driver sleep, not just idle.
+    bus->sendCommand(0x28);  // DISPOFF
+    delay(20);
+    bus->sendCommand(0x10);  // SLPIN
+    delay(120);
+    spiMutexGive();
+
+    // Do not send CST816 I2C sleep (0xE5): wake needs clean shared RST; touch sleep caused I2C NACK.
+}
+#endif
 
 void FpvLcdUI::uiTask(void* parameter) {
     FpvLcdUI* ui = static_cast<FpvLcdUI*>(parameter);

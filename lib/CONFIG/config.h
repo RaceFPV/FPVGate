@@ -88,11 +88,15 @@
 #define PIN_SD_SCK 39
 #define PIN_SD_MOSI 38
 #define PIN_SD_MISO 40
-// Touch I2C pins (CST820 capacitive touch controller)
+// Touch I2C pins (CST816D / CST820 family)
 #define LCD_I2C_SDA 48
 #define LCD_I2C_SCL 47
+// GPIO0: shared LCD + touch reset (schematic). ST7789 tftInit pulses this; keep -1 for CST820 to avoid double-reset after LVGL.
+#define LCD_PANEL_RST 0
 #define LCD_TOUCH_RST -1
-#define LCD_TOUCH_INT -1
+#define LCD_TOUCH_INT 46   // TP_INT (touch IRQ, open-drain); MCU must use INPUT_PULLUP, not drive as output
+// QMI8658 IMU (same I2C bus as touch: SDA 48 / SCL 47)
+#define PIN_QMI8658_INT1 3   // IMU INT1 (input); optional for future motion wake
 // LCD backlight (for power management)
 #define LCD_BACKLIGHT 1
 

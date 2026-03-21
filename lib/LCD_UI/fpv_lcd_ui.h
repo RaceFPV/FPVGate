@@ -56,6 +56,11 @@ public:
     /** Call from main (core 1) when SD init and bootstrap are done; dismisses "Booting" overlay. */
     void setBootComplete();
 
+#if defined(BOARD_ESP32_S3_TOUCH)
+    /** ST7789 DISPOFF+SLPIN; CST816D touch sleep. Call before ESP deep sleep (after SD unmount). */
+    void prepareHardwareForDeepSleep();
+#endif
+
     /** Request countdown overlay (e.g. from web). Safe to call from any core. triggerStartOnComplete: if false, countdown is visual-only and does not call triggerStart() when done. */
     void requestCountdown(bool triggerStartOnComplete = true);
     /** Request STOPPED overlay (e.g. from web). Safe to call from any core. */

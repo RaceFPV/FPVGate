@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "freertos/task.h"
 #include "debug.h"
 #include "led.h"
 #include "webserver.h"
@@ -22,6 +23,7 @@
 #endif
 #if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
 #include "../lib/LCD_UI/fpv_lcd_ui.h"
+#include "qmi8658.h"
 #endif
 #ifdef ENABLE_POWER_SWITCH
 #include "power.h"
@@ -93,6 +95,7 @@ void* g_audioAnnouncer = nullptr;
 #endif
 static LapTimer timer;
 #if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+static Qmi8658 g_qmi8658;
 static FpvLcdUI* g_lcdUi = nullptr;
 static TaskHandle_t g_lcdUiTask = nullptr;
 static uint16_t g_lastKnownFreq = 0;  // Track config frequency for web->LCD sync
@@ -267,6 +270,9 @@ void setup() {
     g_lcdUi = new FpvLcdUI();
     if (g_lcdUi) {
         if (g_lcdUi->begin()) {
+            if (!g_qmi8658.begin()) {
+                DEBUG("QMI8658 IMU not found — continuing without it\n");
+            }
             BaseType_t result = xTaskCreatePinnedToCore(
                 FpvLcdUI::uiTask, 
                 "LcdUI", 
@@ -442,6 +448,29 @@ static void shutdownForDeepSleep() {
     timer.handleLapTimerUpdate(millis());
     config.write();
     storage.shutdownForPowerOff();
+
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+    // Suspend LVGL first so touch releases the shared I2C bus before QMI8658 power-down.
+    if (g_lcdUiTask) {
+        vTaskSuspend(g_lcdUiTask);
+        delay(50);
+    }
+    g_qmi8658.powerDown();
+#endif
+
+    // RX5808 analog module stays on the 3.3 V rail and draws ~100–200 mA in receive; deep sleep only
+    // powers down the ESP32. Stop the core-0 task from calling handleFrequencyChange, then power it down.
+    if (xTimerTask) {
+        vTaskSuspend(xTimerTask);
+        delay(10);
+    }
+    rx.setFrequency(POWER_DOWN_FREQ_MHZ);
+
+#if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
+    if (g_lcdUi) {
+        g_lcdUi->prepareHardwareForDeepSleep();
+    }
+#endif
 }
 #endif
 #endif
