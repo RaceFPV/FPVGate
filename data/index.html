@@ -797,6 +797,66 @@
                   </div>
                 </div>
                 <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px" data-i18n="settings.led.lap_flash_tip">Send /Lap webhook (White flash)</div>
+
+                <div class="config-item" style="margin-top: 16px">
+                  <label for="leaderColorMode">Race Leader Color:</label>
+                  <select id="leaderColorMode" onchange="saveLeaderColorMode()">
+                    <option value="0">Disabled</option>
+                    <option value="1">Highest Lap Count</option>
+                    <option value="2">Fastest Lap</option>
+                    <option value="3">Fastest 3 Consecutive</option>
+                    <option value="4">Most Recent Lap</option>
+                    <option value="5">Fastest Average</option>
+                  </select>
+                </div>
+                <div style="font-size: 12px; color: var(--secondary-color); margin-left: 170px; margin-top: -8px">Automatically set gate LEDs to the race leader's pilot color</div>
+
+                <h4 style="margin-top: 20px; margin-bottom: 12px">Gate LED Control</h4>
+
+                <!-- All Gates Master Control -->
+                <div style="padding: 14px; background-color: var(--bg-secondary); border-radius: 8px; margin-bottom: 12px">
+                  <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer" onclick="document.getElementById('allGatesPanel').style.display = document.getElementById('allGatesPanel').style.display === 'none' ? 'block' : 'none'">
+                    <span style="font-weight: bold; font-size: 15px">All Gates</span>
+                    <span style="font-size: 12px; color: var(--secondary-color)">Master Control</span>
+                  </div>
+                  <div id="allGatesPanel" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color)">
+                    <div class="config-item" style="margin-bottom: 8px">
+                      <label style="min-width: 80px">Effect:</label>
+                      <select id="gateEffectAll" style="flex: 1">
+                        <option value="off">Off</option>
+                        <option value="solid" selected>Solid</option>
+                        <option value="rainbow">Rainbow</option>
+                        <option value="fade">Color Fade</option>
+                        <option value="pulse">Pulse</option>
+                        <option value="sparkle">Sparkle</option>
+                      </select>
+                    </div>
+                    <div class="config-item" style="margin-bottom: 8px">
+                      <label style="min-width: 80px">Color:</label>
+                      <input type="color" id="gateColorAll" value="#FF0000" style="height: 36px; flex: 1; max-width: 80px; border: 2px solid var(--border-color); border-radius: 4px" />
+                    </div>
+                    <div class="config-item" style="margin-bottom: 8px">
+                      <label style="min-width: 80px">Brightness:</label>
+                      <div style="flex: 1; display: flex; align-items: center; gap: 8px">
+                        <input type="range" id="gateBrightnessAll" min="0" max="255" value="200" style="flex: 1" oninput="document.getElementById('gateBrightnessAllVal').textContent=this.value" />
+                        <span id="gateBrightnessAllVal" style="font-size: 13px; min-width: 28px">200</span>
+                      </div>
+                    </div>
+                    <div class="config-item" style="margin-bottom: 12px">
+                      <label style="min-width: 80px">Speed:</label>
+                      <div style="flex: 1; display: flex; align-items: center; gap: 8px">
+                        <input type="range" id="gateSpeedAll" min="1" max="100" value="50" style="flex: 1" oninput="document.getElementById('gateSpeedAllVal').textContent=this.value" />
+                        <span id="gateSpeedAllVal" style="font-size: 13px; min-width: 28px">50</span>
+                      </div>
+                    </div>
+                    <button onclick="sendToAllGates()" style="width: 100%; background-color: var(--accent-color)">Apply to All Gates</button>
+                  </div>
+                </div>
+
+                <!-- Individual Gate Devices -->
+                <div id="gateDevicesList">
+                  <p style="color: var(--secondary-color); text-align: center; padding: 12px; font-size: 13px">Loading gate devices...</p>
+                </div>
               </div>
             </div>
 

@@ -1710,6 +1710,25 @@ EEPROM:\n\
         led->on(200);
     });
 
+    // Race color endpoint - sets solid color for race duration, auto-restores on race stop
+    server.on("/led/racecolor", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (request->hasParam("color", true)) {
+            String colorStr = request->getParam("color", true)->value();
+            uint32_t color = strtol(colorStr.c_str(), NULL, 16);
+            if (g_rgbLed) {
+                g_rgbLed->setRaceColor(color);
+            }
+            // Forward to external LED controllers via webhook
+            if (webhooks && conf->getGateLEDsEnabled()) {
+                webhooks->triggerRaceColor(color);
+            }
+            request->send(200, "application/json", "{\"status\": \"OK\"}");
+        } else {
+            request->send(400, "application/json", "{\"status\": \"ERROR\", \"message\": \"Missing color\"}");
+        }
+        led->on(200);
+    });
+
     // LED debug status endpoint
     server.on("/led/debug", HTTP_GET, [this](AsyncWebServerRequest *request) {
         char buf[256];
@@ -1921,6 +1940,57 @@ EEPROM:\n\
         }
         led->on(200);
     });
+
+    // Proxy endpoint: forward JSON to individual or all gate LED controllers
+    AsyncCallbackJsonWebHandler *webhookSendHandler = new AsyncCallbackJsonWebHandler("/webhooks/send", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (!webhooks) {
+            request->send(400, "application/json", "{\"status\": \"ERROR\", \"message\": \"Webhooks not initialized\"}");
+            return;
+        }
+        
+        JsonObject jsonObj = json.as<JsonObject>();
+        String targetIP = jsonObj["ip"] | "all";
+        
+        // Build the payload to forward (everything except the "ip" field)
+        DynamicJsonDocument fwdDoc(512);
+        if (jsonObj.containsKey("effect")) fwdDoc["effect"] = jsonObj["effect"];
+        if (jsonObj.containsKey("brightness")) fwdDoc["brightness"] = jsonObj["brightness"];
+        if (jsonObj.containsKey("speed")) fwdDoc["speed"] = jsonObj["speed"];
+        if (jsonObj.containsKey("color")) {
+            JsonArray srcColor = jsonObj["color"];
+            JsonArray dstColor = fwdDoc.createNestedArray("color");
+            for (JsonVariant v : srcColor) dstColor.add(v);
+        }
+        
+        String payload;
+        serializeJson(fwdDoc, payload);
+        
+        uint8_t sent = 0;
+        uint8_t failed = 0;
+        
+        if (targetIP == "all") {
+            uint8_t count = webhooks->getWebhookCount();
+            for (uint8_t i = 0; i < count; i++) {
+                if (webhooks->sendDirectJSON(webhooks->getWebhookIP(i), payload.c_str())) {
+                    sent++;
+                } else {
+                    failed++;
+                }
+            }
+        } else {
+            if (webhooks->sendDirectJSON(targetIP.c_str(), payload.c_str())) {
+                sent = 1;
+            } else {
+                failed = 1;
+            }
+        }
+        
+        char buf[128];
+        snprintf(buf, sizeof(buf), "{\"status\": \"OK\", \"sent\": %d, \"failed\": %d}", sent, failed);
+        request->send(200, "application/json", buf);
+        led->on(200);
+    });
+    server.addHandler(webhookSendHandler);
 
     // Manual webhook triggers (for testing)
     server.on("/webhooks/trigger/flash", HTTP_POST, [this](AsyncWebServerRequest *request) {

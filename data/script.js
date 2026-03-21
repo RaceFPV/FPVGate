@@ -468,12 +468,14 @@ function handleRaceStateEvent(state) {
     lapTimerStartMs = Date.now();
     startRaceTimer();
     updateRaceButtons();
+    clearRaceLeader();
     console.log("[Sync] Race started via SSE");
   } else if (state === "stopped") {
     // Race stopped
     raceRunning = false;
     stopRaceTimer();
     updateRaceButtons();
+    clearRaceLeader();
     console.log("[Sync] Race stopped via SSE");
   } else if (state === "cleared") {
     // Laps cleared - reset UI
@@ -556,6 +558,10 @@ function handleSlaveLapEvent(data) {
     updateRaceAnalysisView();
   }
   
+  // Update race leader color on gate LEDs
+  const remotePilotHex = "#" + ("000000" + pilotColor.toString(16)).slice(-6);
+  updateRaceLeader(remotePilotHex);
+
   // Announce via TTS
   announceRemotePilotLap(remotePilots[slaveHostname], lapTime);
 }
@@ -2384,6 +2390,10 @@ function addLap(lapStr) {
   // Update lap analysis (mode-dependent)
   updateAnalysisSectionVisibility();
 
+  // Update race leader color on gate LEDs
+  const localPilotColor = document.getElementById("pilotColor")?.value || "#0080FF";
+  updateRaceLeader(localPilotColor);
+
   // Auto-stop race if max laps reached (excluding hole shot, and if maxLaps > 0)
   if (maxLaps > 0 && lapNo > 0 && lapNo >= maxLaps) {
     setTimeout(function () {
@@ -2745,6 +2755,9 @@ function toggleGateLEDs(enabled) {
   if (optionsDiv) {
     optionsDiv.style.display = enabled ? "block" : "none";
   }
+
+  // Load gate devices list when enabling
+  if (enabled) loadGateDevices();
 
   // Send the config update
   fetch("/config", {
@@ -7569,6 +7582,252 @@ function removeWebhook(ip) {
     });
 }
 
+// ===== RACE LEADER COLOR =====
+
+var currentLeaderColor = null; // Track last sent color to avoid redundant sends
+
+function getLeaderColorMode() {
+  return parseInt(localStorage.getItem("leaderColorMode") || "0");
+}
+
+function saveLeaderColorMode() {
+  const mode = document.getElementById("leaderColorMode").value;
+  localStorage.setItem("leaderColorMode", mode);
+  console.log("Leader color mode set to:", mode);
+}
+
+// Restore dropdown on page load
+document.addEventListener("DOMContentLoaded", function () {
+  const sel = document.getElementById("leaderColorMode");
+  if (sel) sel.value = localStorage.getItem("leaderColorMode") || "0";
+});
+
+function fastest3Consecutive(times) {
+  if (times.length < 3) return Infinity;
+  let best = Infinity;
+  for (let i = 0; i <= times.length - 3; i++) {
+    const sum = times[i] + times[i + 1] + times[i + 2];
+    if (sum < best) best = sum;
+  }
+  return best;
+}
+
+function collectAllPilots() {
+  const pilots = [];
+
+  // Local pilot
+  const localColor = document.getElementById("pilotColor")?.value || "#0080FF";
+  if (lapTimes.length > 0) {
+    pilots.push({
+      name: pilotNameInput?.value || "Local",
+      color: localColor,
+      lapTimes: lapTimes,
+      lapCount: lapTimes.length,
+    });
+  }
+
+  // Remote pilots
+  for (const [hostname, pilot] of Object.entries(remotePilots)) {
+    if (pilot.lapTimes.length > 0) {
+      const hex = "#" + ("000000" + pilot.pilotColor.toString(16)).slice(-6);
+      pilots.push({
+        name: pilot.pilotName,
+        color: hex,
+        lapTimes: pilot.lapTimes,
+        lapCount: pilot.lapTimes.length,
+      });
+    }
+  }
+
+  return pilots;
+}
+
+function updateRaceLeader(mostRecentColor) {
+  const mode = getLeaderColorMode();
+  if (mode === 0 || !raceRunning) return;
+
+  let leaderColor = null;
+
+  if (mode === 4) {
+    // Most recent lap - use the color passed in
+    leaderColor = mostRecentColor || null;
+  } else {
+    const pilots = collectAllPilots();
+    if (pilots.length === 0) return;
+
+    let leader = null;
+
+    if (mode === 1) {
+      // Highest lap count
+      leader = pilots.reduce((a, b) => (b.lapCount > a.lapCount ? b : a));
+    } else if (mode === 2) {
+      // Fastest single lap
+      leader = pilots.reduce((a, b) => {
+        const af = Math.min(...a.lapTimes);
+        const bf = Math.min(...b.lapTimes);
+        return bf < af ? b : a;
+      });
+    } else if (mode === 3) {
+      // Fastest 3 consecutive
+      leader = pilots.reduce((a, b) => {
+        const af = fastest3Consecutive(a.lapTimes);
+        const bf = fastest3Consecutive(b.lapTimes);
+        return bf < af ? b : a;
+      });
+    } else if (mode === 5) {
+      // Fastest average lap time
+      leader = pilots.reduce((a, b) => {
+        const aAvg = a.lapTimes.reduce((s, t) => s + t, 0) / a.lapTimes.length;
+        const bAvg = b.lapTimes.reduce((s, t) => s + t, 0) / b.lapTimes.length;
+        return bAvg < aAvg ? b : a;
+      });
+    }
+
+    if (leader) leaderColor = leader.color;
+  }
+
+  if (!leaderColor || leaderColor === currentLeaderColor) return;
+
+  currentLeaderColor = leaderColor;
+  const hex = leaderColor.replace("#", "");
+  console.log("[Leader] Race leader color:", hex);
+
+  fetch("/led/racecolor", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "color=" + hex,
+  }).catch((e) => console.error("[Leader] Failed to send race color:", e));
+}
+
+function clearRaceLeader() {
+  currentLeaderColor = null;
+}
+
+// ===== GATE LED CONTROL =====
+
+function loadGateDevices() {
+  fetch("/webhooks")
+    .then((r) => r.json())
+    .then((data) => renderGateDevices(data.webhooks || []))
+    .catch((e) => console.error("Error loading gate devices:", e));
+}
+
+function renderGateDevices(webhooks) {
+  const container = document.getElementById("gateDevicesList");
+  if (!container) return;
+
+  if (webhooks.length === 0) {
+    container.innerHTML = '<p style="color: var(--secondary-color); text-align: center; padding: 12px; font-size: 13px">No gate devices configured. Add webhook IPs in the Webhooks tab.</p>';
+    return;
+  }
+
+  const esc = (ip) => ip.replace(/\./g, "_");
+  let html = '';
+
+  webhooks.forEach((ip, idx) => {
+    const eid = esc(ip);
+    html += `
+      <div style="padding: 14px; background-color: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px; border-left: 4px solid var(--accent-color)">
+        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer" onclick="toggleGateDetail('${eid}')">
+          <div>
+            <span style="font-weight: bold; font-size: 14px">Gate ${idx + 1}</span>
+            <span style="font-size: 12px; color: var(--secondary-color); margin-left: 8px">${ip}</span>
+          </div>
+          <span id="gateArrow_${eid}" style="font-size: 12px; color: var(--secondary-color); transition: transform 0.2s">&#9660;</span>
+        </div>
+        <div id="gateDetail_${eid}" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color)">
+          <div class="config-item" style="margin-bottom: 8px">
+            <label style="min-width: 80px">Effect:</label>
+            <select id="gateEffect_${eid}" style="flex: 1">
+              <option value="off">Off</option>
+              <option value="solid" selected>Solid</option>
+              <option value="rainbow">Rainbow</option>
+              <option value="fade">Color Fade</option>
+              <option value="pulse">Pulse</option>
+              <option value="sparkle">Sparkle</option>
+            </select>
+          </div>
+          <div class="config-item" style="margin-bottom: 8px">
+            <label style="min-width: 80px">Color:</label>
+            <input type="color" id="gateColor_${eid}" value="#FF0000" style="height: 36px; flex: 1; max-width: 80px; border: 2px solid var(--border-color); border-radius: 4px" />
+          </div>
+          <div class="config-item" style="margin-bottom: 8px">
+            <label style="min-width: 80px">Brightness:</label>
+            <div style="flex: 1; display: flex; align-items: center; gap: 8px">
+              <input type="range" id="gateBri_${eid}" min="0" max="255" value="200" style="flex: 1" oninput="document.getElementById('gateBriV_${eid}').textContent=this.value" />
+              <span id="gateBriV_${eid}" style="font-size: 13px; min-width: 28px">200</span>
+            </div>
+          </div>
+          <div class="config-item" style="margin-bottom: 12px">
+            <label style="min-width: 80px">Speed:</label>
+            <div style="flex: 1; display: flex; align-items: center; gap: 8px">
+              <input type="range" id="gateSpd_${eid}" min="1" max="100" value="50" style="flex: 1" oninput="document.getElementById('gateSpdV_${eid}').textContent=this.value" />
+              <span id="gateSpdV_${eid}" style="font-size: 13px; min-width: 28px">50</span>
+            </div>
+          </div>
+          <button onclick="sendToGate('${ip}')" style="width: 100%; background-color: var(--accent-color)">Apply to Gate ${idx + 1}</button>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function toggleGateDetail(eid) {
+  const detail = document.getElementById("gateDetail_" + eid);
+  const arrow = document.getElementById("gateArrow_" + eid);
+  if (!detail) return;
+  const visible = detail.style.display !== "none";
+  detail.style.display = visible ? "none" : "block";
+  if (arrow) arrow.style.transform = visible ? "" : "rotate(180deg)";
+}
+
+function sendToGate(ip) {
+  const eid = ip.replace(/\./g, "_");
+  const colorHex = document.getElementById("gateColor_" + eid).value;
+  const r = parseInt(colorHex.substring(1, 3), 16);
+  const g = parseInt(colorHex.substring(3, 5), 16);
+  const b = parseInt(colorHex.substring(5, 7), 16);
+  const payload = {
+    ip: ip,
+    effect: document.getElementById("gateEffect_" + eid).value,
+    brightness: parseInt(document.getElementById("gateBri_" + eid).value),
+    speed: parseInt(document.getElementById("gateSpd_" + eid).value),
+    color: [r, g, b],
+  };
+  fetch("/webhooks/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((r) => r.json())
+    .then((d) => console.log("Gate " + ip + ":", d))
+    .catch((e) => console.error("Gate send error:", e));
+}
+
+function sendToAllGates() {
+  const colorHex = document.getElementById("gateColorAll").value;
+  const r = parseInt(colorHex.substring(1, 3), 16);
+  const g = parseInt(colorHex.substring(3, 5), 16);
+  const b = parseInt(colorHex.substring(5, 7), 16);
+  const payload = {
+    ip: "all",
+    effect: document.getElementById("gateEffectAll").value,
+    brightness: parseInt(document.getElementById("gateBrightnessAll").value),
+    speed: parseInt(document.getElementById("gateSpeedAll").value),
+    color: [r, g, b],
+  };
+  fetch("/webhooks/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((r) => r.json())
+    .then((d) => console.log("All gates:", d))
+    .catch((e) => console.error("Gate send error:", e));
+}
+
 function testWebhook() {
   fetch("/webhooks/trigger/flash", {
     method: "POST",
@@ -7684,6 +7943,7 @@ function openSettingsModal() {
           if (gateLEDOptions) {
             gateLEDOptions.style.display = config.gateLEDsEnabled === 1 ? "block" : "none";
           }
+          if (config.gateLEDsEnabled === 1) loadGateDevices();
         }
 
         if (webhookRaceStartToggle && config.webhookRaceStart !== undefined) {
