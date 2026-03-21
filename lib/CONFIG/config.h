@@ -82,7 +82,7 @@
 #define PIN_RX5808_CLOCK 6    // CH3 on GPIO6 (Clk)
 #define PIN_BUZZER 15           // Buzzer on GPIO15 (on header)
 #define BUZZER_INVERTED false
-#define PIN_POWER_SWITCH 13     // Power toggle switch (optional: GPIO13 to GND = deep sleep)
+#define PIN_POWER_SWITCH 16     // Board: 4.7k to 3.3V on schematic; switch other pole to GND. Hold ~2s = off / wake
 // SD Card SPI pins (built-in TF card slot, shared SPI bus with LCD)
 #define PIN_SD_CS 41
 #define PIN_SD_SCK 39

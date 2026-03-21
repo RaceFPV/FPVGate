@@ -147,6 +147,20 @@ bool Storage::initSD() {
 }
 #endif
 
+void Storage::shutdownForPowerOff() {
+#ifdef HAS_SD_CARD_SUPPORT
+    if (!sdAvailable) {
+        return;
+    }
+    if (!spiMutexTake(pdMS_TO_TICKS(3000))) {
+        return;
+    }
+    SD.end();
+    sdAvailable = false;
+    spiMutexGive();
+#endif
+}
+
 bool Storage::writeFile(const String& path, const String& data) {
     DEBUG("Storage: Writing to %s (%d bytes)\n", path.c_str(), data.length());
     

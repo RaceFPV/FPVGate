@@ -176,19 +176,9 @@ static void initParallelTask() {
 }
 
 void setup() {
-    // ====================================================================
-    // POWER MANAGEMENT - CHECK SWITCH STATE FIRST (if enabled)
-    // If power switch is OFF at boot, enter deep sleep immediately
-    // ====================================================================
 #ifdef ENABLE_POWER_SWITCH
 #if defined(WAVESHARE_ESP32S3_LCD2) && defined(LCD_BACKLIGHT)
-    // Initialize power manager BEFORE anything else
-    // If switch is OFF, this will enter deep sleep immediately
-    if (!powerManager.init(PIN_POWER_SWITCH, LCD_BACKLIGHT)) {
-        // Switch is OFF - enter deep sleep (does not return)
-        powerManager.enterDeepSleep();
-    }
-    // If we get here, switch is ON - continue with normal boot
+    powerManager.init(PIN_POWER_SWITCH, LCD_BACKLIGHT);
 #endif
 #endif
     
@@ -240,6 +230,10 @@ void setup() {
     
     // Always enable debug output (WiFi mode only)
     DEBUG_INIT;
+
+#ifdef ENABLE_POWER_SWITCH
+    powerManager.logBootReason();
+#endif
     
 #ifdef USE_ADC_DMA
     DEBUG("Build flag: USE_ADC_DMA=ON\n");
@@ -436,6 +430,22 @@ void setup() {
     */
 }
 
+#ifdef ENABLE_POWER_SWITCH
+#if defined(WAVESHARE_ESP32S3_LCD2) && defined(LCD_BACKLIGHT)
+static void shutdownForDeepSleep() {
+#if ENABLE_LCD_UI
+    if (s_pendingLcdRaceSaveFlag) {
+        s_pendingLcdRaceSaveFlag = false;
+        raceHistory.saveRace(s_pendingLcdRaceSave);
+    }
+#endif
+    timer.handleLapTimerUpdate(millis());
+    config.write();
+    storage.shutdownForPowerOff();
+}
+#endif
+#endif
+
 void loop() {
     uint32_t nowMs = millis();
     uint32_t currentTimeMs = nowMs;
@@ -459,23 +469,10 @@ void loop() {
         }
     }
 
-    // ====================================================================
-    // POWER MANAGEMENT - Monitor switch for OFF transition (if enabled)
-    // ====================================================================
 #ifdef ENABLE_POWER_SWITCH
 #if defined(WAVESHARE_ESP32S3_LCD2) && defined(LCD_BACKLIGHT)
     if (!powerManager.monitorSwitch()) {
-        // Switch flipped to OFF - graceful shutdown
-        DEBUG("\n=== Power switch turned OFF - shutting down ===\n");
-        
-        // Stop any active timing/recording
-        timer.handleLapTimerUpdate(currentTimeMs);
-        
-        // Save config if modified
-        config.handleEeprom(currentTimeMs);
-        delay(100);
-        
-        // Enter deep sleep (does not return)
+        shutdownForDeepSleep();
         powerManager.enterDeepSleep();
     }
 #endif
