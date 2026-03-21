@@ -1,6 +1,9 @@
 #include "fpv_lcd_ui.h"
 #include "config.h"
 #include "spi_mutex.h"
+#if defined(WAVESHARE_ESP32S3_LCD2)
+#include "qmi8658.h"
+#endif
 #include <math.h>
 #ifdef HAS_I2S_AUDIO
 #include "audio.h"
@@ -246,6 +249,85 @@ void FpvLcdUI::prepareHardwareForDeepSleep() {
 }
 #endif
 
+#if defined(WAVESHARE_ESP32S3_LCD2)
+void FpvLcdUI::setImu(Qmi8658* imu) {
+    _imu = imu;
+}
+
+void FpvLcdUI::applyPortraitRotation(bool upsideDown) {
+    if (upsideDown == _portraitUpsideDown) {
+        return;
+    }
+    _portraitUpsideDown = upsideDown;
+    lv_disp_t* disp = lv_disp_get_default();
+    if (!gfx || !disp) {
+        return;
+    }
+
+    lv_disp_rot_t rot = upsideDown ? LV_DISP_ROT_180 : LV_DISP_ROT_NONE;
+    uint8_t gfxRot = upsideDown ? 2 : 0;
+
+    if (spiMutexTake(pdMS_TO_TICKS(200))) {
+        gfx->setRotation(gfxRot);
+        spiMutexGive();
+    }
+    lv_disp_set_rotation(disp, rot);
+    lv_obj_invalidate(lv_scr_act());
+}
+
+void FpvLcdUI::pollPortraitAutoRotate() {
+    if (!_imu || !_imu->isReady() || _bootOverlayActive) {
+        return;
+    }
+
+    uint32_t now = millis();
+    if (now - _lastOrientPollMs < 50) {
+        return;
+    }
+    _lastOrientPollMs = now;
+
+    float ax, ay, az, gx, gy, gz;
+    if (!_imu->readAccelGyro(ax, ay, az, gx, gy, gz)) {
+        return;
+    }
+
+    float mag2 = ax * ax + ay * ay + az * az;
+    if (mag2 < 0.42f || mag2 > 1.96f) {
+        return;
+    }
+
+    // On Waveshare LCD-2, sensor Y aligns with screen left–right; X aligns with screen top–bottom.
+    // Use |ax|>|ay| so we react to upside-down (sign of ax), not roll (which moves ay).
+    if (fabsf(ay) >= fabsf(ax)) {
+        return;
+    }
+
+    const float thr = 0.35f;
+#if QMI8658_PORTRAIT_INVERT
+    const bool wantUpsideDown = (ax > thr);
+    const bool wantNormal = (ax < -thr);
+#else
+    const bool wantUpsideDown = (ax < -thr);
+    const bool wantNormal = (ax > thr);
+#endif
+    if (!wantUpsideDown && !wantNormal) {
+        return;
+    }
+
+    uint8_t cand = wantUpsideDown ? 1u : 0u;
+    if (cand != _orientCandidate) {
+        _orientCandidate = cand;
+        _orientStableSince = now;
+        return;
+    }
+    if (now - _orientStableSince < 400) {
+        return;
+    }
+
+    applyPortraitRotation(cand == 1u);
+}
+#endif
+
 void FpvLcdUI::uiTask(void* parameter) {
     FpvLcdUI* ui = static_cast<FpvLcdUI*>(parameter);
     if (!ui) {
@@ -282,6 +364,10 @@ void FpvLcdUI::uiTask(void* parameter) {
         }
         
         lv_timer_handler();
+
+#if defined(WAVESHARE_ESP32S3_LCD2)
+        ui->pollPortraitAutoRotate();
+#endif
 
 #if defined(BOARD_ESP32_S3_TOUCH)
         // ESP32-S3: Manual full screen blit (direct mode). LCD and SD share SPI.

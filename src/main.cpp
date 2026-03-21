@@ -273,6 +273,7 @@ void setup() {
             if (!g_qmi8658.begin()) {
                 DEBUG("QMI8658 IMU not found — continuing without it\n");
             }
+            g_lcdUi->setImu(&g_qmi8658);
             BaseType_t result = xTaskCreatePinnedToCore(
                 FpvLcdUI::uiTask, 
                 "LcdUI", 

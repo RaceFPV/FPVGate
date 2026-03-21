@@ -97,6 +97,10 @@
 #define LCD_TOUCH_INT 46   // TP_INT (touch IRQ, open-drain); MCU must use INPUT_PULLUP, not drive as output
 // QMI8658 IMU (same I2C bus as touch: SDA 48 / SCL 47)
 #define PIN_QMI8658_INT1 3   // IMU INT1 (input); optional for future motion wake
+// If portrait auto-rotate (0°/180°) feels inverted vs physical, set to 1
+#ifndef QMI8658_PORTRAIT_INVERT
+#define QMI8658_PORTRAIT_INVERT 0
+#endif
 // LCD backlight (for power management)
 #define LCD_BACKLIGHT 1
 

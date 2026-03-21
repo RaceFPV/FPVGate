@@ -56,6 +56,11 @@ public:
     /** Call from main (core 1) when SD init and bootstrap are done; dismisses "Booting" overlay. */
     void setBootComplete();
 
+#if defined(WAVESHARE_ESP32S3_LCD2)
+    /** QMI8658 for portrait 0°/180° auto-rotate; call after IMU begin() and LCD begin(). */
+    void setImu(class Qmi8658* imu);
+#endif
+
 #if defined(BOARD_ESP32_S3_TOUCH)
     /** ST7789 DISPOFF+SLPIN; CST816D touch sleep. Call before ESP deep sleep (after SD unmount). */
     void prepareHardwareForDeepSleep();
@@ -83,6 +88,16 @@ private:
 #endif
     static lv_disp_drv_t s_dispDrv;
     static lv_indev_drv_t s_indevDrv;
+
+#if defined(WAVESHARE_ESP32S3_LCD2)
+    class Qmi8658* _imu = nullptr;
+    bool _portraitUpsideDown = false;
+    uint8_t _orientCandidate = 0xFF;
+    uint32_t _orientStableSince = 0;
+    uint32_t _lastOrientPollMs = 0;
+    void pollPortraitAutoRotate();
+    void applyPortraitRotation(bool upsideDown);
+#endif
 
     // Tabview and tabs
     lv_obj_t* tabview;
