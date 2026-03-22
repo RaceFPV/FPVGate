@@ -119,7 +119,7 @@ void LapTimer::start() {
     totalDistanceTravelled = 0.0f;
     distanceRemaining = 0.0f;
 
-    buz->beep(500);
+    buz->playCue(BUZZER_CUE_RACE_START);
     led->on(500);
 
 #ifdef ESP32S3
@@ -151,7 +151,7 @@ void LapTimer::stop() {
     distanceRemaining = 0.0f;
 
     memset(lapTimes, 0, sizeof(lapTimes));
-    buz->beep(500);
+    buz->playCue(BUZZER_CUE_RACE_STOP);
     led->on(500);
 
 #ifdef ESP32S3
@@ -498,7 +498,7 @@ void LapTimer::startLap() {
     enterHoldSamples = 0;
     enterHoldStartMs = 0;
 
-    buz->beep(200);
+    buz->playCue(BUZZER_CUE_LAP);
     led->on(200);
 }
 
@@ -691,7 +691,7 @@ void LapTimer::startCalibrationWizard() {
     lastCalibrationSampleMs = 0;  // Reset sample timing
     memset(calibrationRssi, 0, sizeof(calibrationRssi));
     memset(calibrationTimestamps, 0, sizeof(calibrationTimestamps));
-    buz->beep(300);
+    buz->playCue(BUZZER_CUE_CALIB_START);
     led->on(300);
 #ifdef ESP32S3
     if (g_rgbLed) g_rgbLed->flashGreen();
@@ -701,7 +701,7 @@ void LapTimer::startCalibrationWizard() {
 void LapTimer::stopCalibrationWizard() {
     DEBUG("Calibration wizard stopped, recorded %u samples\n", calibrationRssiCount);
     state = STOPPED;
-    buz->beep(300);
+    buz->playCue(BUZZER_CUE_CALIB_STOP);
     led->on(300);
 #ifdef ESP32S3
     if (g_rgbLed) g_rgbLed->flashReset();

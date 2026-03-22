@@ -336,7 +336,7 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 changeTimeMs = currentTimeMs;
                 break;
             case WL_CONNECTED:
-                buz->beep(200);
+                buz->playCue(BUZZER_CUE_WEB_CHIRP);
                 led->off();
                 wifiConnected = true;
                 DEBUG("WiFi connected successfully!\n");
@@ -365,7 +365,7 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
             DEBUG("WiFi Connection failed, reconnecting\n");
             WiFi.reconnect();
             startServices();
-            buz->beep(100);
+            buz->playCue(BUZZER_CUE_WEB_CHIRP);
             led->blink(200);
         }
     }

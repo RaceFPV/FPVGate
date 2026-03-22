@@ -82,6 +82,14 @@
 #define PIN_RX5808_CLOCK 6    // CH3 on GPIO6 (Clk)
 #define PIN_BUZZER 15           // Buzzer on GPIO15 (on header)
 #define BUZZER_INVERTED false
+// 1 = passive piezo (PWM tone on PIN_BUZZER). 0 = active buzzer (steady GPIO while beeping).
+#ifndef BUZZER_PASSIVE
+#define BUZZER_PASSIVE 1
+#endif
+// MLT-8530 passive: resonant ~2.7 kHz (loudest / spec SPL usually at square wave ~2700 Hz). Override if you use another part.
+#ifndef BUZZER_PWM_FREQ_HZ
+#define BUZZER_PWM_FREQ_HZ 2700
+#endif
 #define PIN_POWER_SWITCH 16     // Board: 4.7k to 3.3V on schematic; switch other pole to GND. Hold ~2s = off / wake
 // SD Card SPI pins (built-in TF card slot, shared SPI bus with LCD)
 #define PIN_SD_CS 41

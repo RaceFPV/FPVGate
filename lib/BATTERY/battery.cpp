@@ -93,7 +93,7 @@ void BatteryMonitor::checkBatteryState(uint32_t currentTimeMs, uint8_t alarmThre
                 lastCheckTimeMs = currentTimeMs;
                 if (getBatteryVoltage() <= alarmThreshold) {
                     state = ALARM_BEEPING;
-                    buz->beep(MONITOR_BEEP_TIME_MS);
+                    buz->playCue(BUZZER_CUE_LOW_BATTERY);
                     led->blink(MONITOR_BEEP_TIME_MS);
                 }
             }
@@ -109,7 +109,7 @@ void BatteryMonitor::checkBatteryState(uint32_t currentTimeMs, uint8_t alarmThre
                 lastCheckTimeMs = currentTimeMs;
                 if (getBatteryVoltage() <= alarmThreshold + 1) {  // add 0.1V of histeresis
                     state = ALARM_BEEPING;
-                    buz->beep(MONITOR_BEEP_TIME_MS);
+                    buz->playCue(BUZZER_CUE_LOW_BATTERY);
                 } else {
                     led->off();
                     state = ALARM_OFF;

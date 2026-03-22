@@ -3,6 +3,7 @@
 #include <lvgl.h>
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
+#include "buzzer.h"
 #include "CST820.h"
 
 // LCD UI class matching StarForge display implementation
@@ -34,8 +35,8 @@ public:
     int8_t consumeEnterDelta();    // Returns +5, -5, or 0
     int8_t consumeExitDelta();     // Returns +5, -5, or 0
     
-    // Buzzer beep request (read from main loop on core 1)
-    uint16_t consumeBuzzerBeep();  // Returns beep duration in ms, or 0
+    // Buzzer cue request (read from main loop on core 1)
+    BuzzerCue consumeBuzzerCue();  // BUZZER_CUE_NONE if none pending
     
     // Thread-safe display update (called from main loop on core 1)
     void setBandChannelDisplay(uint8_t systemIdx, uint8_t bandIdx, uint8_t channelIdx, uint16_t freqMhz);
@@ -59,6 +60,8 @@ public:
 #if defined(WAVESHARE_ESP32S3_LCD2)
     /** QMI8658 for portrait 0°/180° auto-rotate; call after IMU begin() and LCD begin(). */
     void setImu(class Qmi8658* imu);
+    /** Core 1: true once when user tapped Sleep in System Settings (same deep sleep as power button). */
+    bool consumeDeepSleepRequest();
 #endif
 
 #if defined(BOARD_ESP32_S3_TOUCH)
@@ -91,6 +94,7 @@ private:
 
 #if defined(WAVESHARE_ESP32S3_LCD2)
     class Qmi8658* _imu = nullptr;
+    volatile bool _deepSleepRequested = false;
     bool _portraitUpsideDown = false;
     uint8_t _orientCandidate = 0xFF;
     uint32_t _orientStableSince = 0;
@@ -235,7 +239,7 @@ private:
     volatile bool _raceTimingDirty;
     
     // Cross-core buzzer request (written from UI task core 0, read by loop core 1)
-    volatile uint16_t _pendingBuzzerMs;
+    volatile uint8_t _pendingBuzzerCue;  // BuzzerCue as uint8_t; 0 = BUZZER_CUE_NONE
     
     // Cross-core lap feed (written from loop() on core 1, read by UI task on core 0)
     static const uint8_t MAX_DISPLAY_LAPS = 10;  // Full list for current race (matches timer max)
@@ -287,4 +291,7 @@ private:
     static void exitIncEvent(lv_event_t* e);
     static void brightnessSliderEvent(lv_event_t* e);
     static void racingScrollBeginEvent(lv_event_t* e);
+#if defined(WAVESHARE_ESP32S3_LCD2)
+    static void deepSleepBtnEvent(lv_event_t* e);
+#endif
 };

@@ -501,7 +501,10 @@ void loop() {
 
 #ifdef ENABLE_POWER_SWITCH
 #if defined(WAVESHARE_ESP32S3_LCD2) && defined(LCD_BACKLIGHT)
-    if (!powerManager.monitorSwitch()) {
+    if (g_lcdUi && g_lcdUi->consumeDeepSleepRequest()) {
+        shutdownForDeepSleep();
+        powerManager.enterDeepSleep();
+    } else if (!powerManager.monitorSwitch()) {
         shutdownForDeepSleep();
         powerManager.enterDeepSleep();
     }
@@ -708,10 +711,10 @@ void loop() {
             DEBUG("[LCD] Web config sync: sys=%d band=%d ch=%d freq=%d\n", g_currentSystem, bandIdx, channelIdx, currentFreq);
         }
         
-        // Handle LCD countdown buzzer beep requests
-        uint16_t beepMs = g_lcdUi->consumeBuzzerBeep();
-        if (beepMs > 0) {
-            buzzer.beep(beepMs);
+        // Handle LCD countdown / overlay buzzer cues
+        BuzzerCue lcdCue = g_lcdUi->consumeBuzzerCue();
+        if (lcdCue != BUZZER_CUE_NONE) {
+            buzzer.playCue(lcdCue);
         }
         
         // Detect web-originated threshold changes and sync to LCD

@@ -60,7 +60,7 @@ FpvLcdUI::FpvLcdUI()
       _pendingEnterRssi(120), _pendingExitRssi(100), _thresholdDirty(false),
       _pendingBatteryVoltage(0), _batteryDirty(false),
       _pendingRaceTimeMs(0), _pendingCurrentLapTimeMs(0), _pendingFastestLapMs(0), _pendingFastest3LapsMs(0), _raceTimingDirty(false),
-      _pendingBuzzerMs(0),
+      _pendingBuzzerCue(BUZZER_CUE_NONE),
       _lapCount(0), _lapsDirty(false),
       _lastGraphUpdate(0) {
     for (int i = 0; i < LAP_TIMES_LABELS; ++i) {
@@ -297,18 +297,23 @@ void FpvLcdUI::pollPortraitAutoRotate() {
     }
 
     // On Waveshare LCD-2, sensor Y aligns with screen left–right; X aligns with screen top–bottom.
-    // Use |ax|>|ay| so we react to upside-down (sign of ax), not roll (which moves ay).
-    if (fabsf(ay) >= fabsf(ax)) {
+    // Require |ax| clearly larger than |ay| so small roll doesn't look like "flip".
+    if (fabsf(ay) * 1.5f >= fabsf(ax)) {
         return;
     }
 
-    const float thr = 0.35f;
+    // Ignore near-flat / ambiguous pitch (avoids flipping on slight tilt)
+    const float thrNear = 0.45f;
+    const float thrCommit = 0.58f;
+    if (fabsf(ax) < thrNear) {
+        return;
+    }
 #if QMI8658_PORTRAIT_INVERT
-    const bool wantUpsideDown = (ax > thr);
-    const bool wantNormal = (ax < -thr);
+    const bool wantUpsideDown = (ax > thrCommit);
+    const bool wantNormal = (ax < -thrCommit);
 #else
-    const bool wantUpsideDown = (ax < -thr);
-    const bool wantNormal = (ax > thr);
+    const bool wantUpsideDown = (ax < -thrCommit);
+    const bool wantNormal = (ax > thrCommit);
 #endif
     if (!wantUpsideDown && !wantNormal) {
         return;
@@ -320,7 +325,7 @@ void FpvLcdUI::pollPortraitAutoRotate() {
         _orientStableSince = now;
         return;
     }
-    if (now - _orientStableSince < 400) {
+    if (now - _orientStableSince < 600) {
         return;
     }
 
@@ -1325,6 +1330,35 @@ void FpvLcdUI::createSystemTab() {
     lv_obj_set_style_text_font(battery_voltage_label, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(battery_voltage_label, lv_color_hex(0x00ff00), 0);
     lv_obj_set_pos(battery_voltage_label, 70, 28);
+
+#if defined(WAVESHARE_ESP32S3_LCD2)
+    // Deep sleep (same path as hold power button; main loop runs shutdown + enterDeepSleep)
+    // Box height must fit: pad + title + button (was 52px; btn y22+h34=56 clipped the button)
+    lv_obj_t *sleep_box = lv_obj_create(scr);
+    lv_obj_set_size(sleep_box, 220, 76);
+    lv_obj_set_pos(sleep_box, 10, 190);
+    lv_obj_set_style_bg_color(sleep_box, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(sleep_box, 1, 0);
+    lv_obj_set_style_border_color(sleep_box, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_pad_all(sleep_box, 8, 0);
+    lv_obj_clear_flag(sleep_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *sleep_title = lv_label_create(sleep_box);
+    lv_label_set_text(sleep_title, "Power");
+    lv_obj_set_style_text_color(sleep_title, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(sleep_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(sleep_title, 5, 5);
+
+    lv_obj_t *sleep_btn = lv_btn_create(sleep_box);
+    lv_obj_set_size(sleep_btn, 200, 38);
+    lv_obj_set_pos(sleep_btn, 5, 24);
+    lv_obj_set_style_bg_color(sleep_btn, lv_color_hex(0x553333), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *sleep_lbl = lv_label_create(sleep_btn);
+    lv_label_set_text(sleep_lbl, "Sleep");
+    lv_obj_set_style_text_font(sleep_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_center(sleep_lbl);
+    lv_obj_add_event_cb(sleep_btn, deepSleepBtnEvent, LV_EVENT_CLICKED, this);
+#endif
 }
 
 // Shorten scroll throw animation so it finishes in fewer frames (feels snappier with slow blit)
@@ -1374,6 +1408,23 @@ void FpvLcdUI::systemNextEvent(lv_event_t* e) {
     FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
     if (ui) ui->_systemDelta = 1;
 }
+
+#if defined(WAVESHARE_ESP32S3_LCD2)
+void FpvLcdUI::deepSleepBtnEvent(lv_event_t* e) {
+    FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
+    if (ui) {
+        ui->_deepSleepRequested = true;
+    }
+}
+
+bool FpvLcdUI::consumeDeepSleepRequest() {
+    if (_deepSleepRequested) {
+        _deepSleepRequested = false;
+        return true;
+    }
+    return false;
+}
+#endif
 
 void FpvLcdUI::bandPrevEvent(lv_event_t* e) {
     FpvLcdUI* ui = static_cast<FpvLcdUI*>(lv_event_get_user_data(e));
@@ -1976,11 +2027,11 @@ void FpvLcdUI::updateScreenBrightness() {
     analogWrite(LCD_BL, pwm_value);
 }
 
-// Consume buzzer beep request (called from loop() on core 1)
-uint16_t FpvLcdUI::consumeBuzzerBeep() {
-    uint16_t ms = _pendingBuzzerMs;
-    if (ms != 0) _pendingBuzzerMs = 0;
-    return ms;
+// Consume buzzer cue request (called from loop() on core 1)
+BuzzerCue FpvLcdUI::consumeBuzzerCue() {
+    uint8_t raw = _pendingBuzzerCue;
+    if (raw != BUZZER_CUE_NONE) _pendingBuzzerCue = BUZZER_CUE_NONE;
+    return static_cast<BuzzerCue>(raw);
 }
 
 // === Countdown overlay methods ===
@@ -2025,8 +2076,7 @@ void FpvLcdUI::startCountdown(bool triggerStartWhenComplete) {
     lv_obj_set_style_bg_opa(countdown_label, LV_OPA_TRANSP, 0);
     lv_obj_align(countdown_label, LV_ALIGN_CENTER, 0, 0);
     
-    // Request first beep (150ms short beep)
-    _pendingBuzzerMs = 150;
+    _pendingBuzzerCue = BUZZER_CUE_COUNTDOWN_TICK;
 }
 
 void FpvLcdUI::updateCountdown() {
@@ -2072,7 +2122,7 @@ void FpvLcdUI::updateCountdown() {
                 lv_obj_set_style_text_color(countdown_label, lv_color_hex(0x00ff88), 0);  // Green
                 lv_obj_align(countdown_label, LV_ALIGN_CENTER, 0, 0);
                 if (_lastBeepValue != 0) {
-                    _pendingBuzzerMs = 400;  // Longer beep for GO!
+                    _pendingBuzzerCue = BUZZER_CUE_COUNTDOWN_GO;
                     _lastBeepValue = 0;
                 }
             } else {
@@ -2089,7 +2139,7 @@ void FpvLcdUI::updateCountdown() {
 #endif
                 }
                 if (_lastBeepValue != expectedValue) {
-                    _pendingBuzzerMs = 150;  // Short beep per count
+                    _pendingBuzzerCue = BUZZER_CUE_COUNTDOWN_TICK;
                     _lastBeepValue = expectedValue;
                 }
             }
