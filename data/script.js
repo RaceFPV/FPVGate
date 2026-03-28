@@ -122,6 +122,8 @@ var syncedTimers = []; // Array of synced timer hostnames (for master mode)
 var masterHostname = ""; // Master hostname for slave mode
 var configLoaded = false; // Flag to prevent saving before initial config load
 var _refreshingFromDevice = false; // Flag to suppress auto-save during device-initiated refresh
+/** Set from device GET /config elrsBackpackEspnowBuild; only POST elrsBackpackEspnow when 1. */
+var elrsBackpackEspnowBuild = 0;
 
 // Unified sync devices list (new UI)
 // Each device: { address: string, role: 'disabled'|'master'|'slave', isThisDevice: boolean }
@@ -1197,6 +1199,56 @@ onload = async function (e) {
       if (speakerNote) speakerNote.style.display = "none";
     }
 
+    const elrsNav = document.getElementById("settingsNavElrs");
+    const elrsPanel = document.getElementById("elrsBackpackWebPanel");
+    const elrsUnsupported = document.getElementById("elrsBackpackWebUnsupported");
+    const elrsToggle = document.getElementById("elrsBackpackEspnow");
+    elrsBackpackEspnowBuild = configData.elrsBackpackEspnowBuild === 1 ? 1 : 0;
+    const elrsBindInput = document.getElementById("elrsBackpackBindPhrase");
+    if (elrsBackpackEspnowBuild === 1) {
+      if (elrsNav) elrsNav.style.display = "";
+      if (elrsPanel) elrsPanel.style.display = "";
+      if (elrsUnsupported) elrsUnsupported.style.display = "none";
+      if (elrsToggle && configData.elrsBackpackEspnow !== undefined) {
+        elrsToggle.checked = configData.elrsBackpackEspnow === 1;
+      }
+      if (elrsBindInput && configData.elrsBackpackBindPhrase !== undefined) {
+        elrsBindInput.value = configData.elrsBackpackBindPhrase || "";
+      }
+      const rowIn = document.getElementById("elrsOsdLapRow");
+      if (rowIn && configData.elrsOsdLapRow !== undefined) {
+        rowIn.value = String(Math.min(18, Math.max(0, configData.elrsOsdLapRow)));
+      }
+      const autoCol = document.getElementById("elrsOsdLapColAuto");
+      const colFixed = document.getElementById("elrsOsdLapColFixed");
+      const colVal = configData.elrsOsdLapCol;
+      if (colVal === 255) {
+        if (autoCol) autoCol.checked = true;
+        if (colFixed) {
+          colFixed.disabled = true;
+          colFixed.value = "0";
+        }
+      } else {
+        if (autoCol) autoCol.checked = false;
+        if (colFixed) {
+          colFixed.disabled = false;
+          colFixed.value = String(Math.min(49, Math.max(0, colVal)));
+        }
+      }
+      const clrStop = document.getElementById("elrsOsdClearOnStop");
+      if (clrStop && configData.elrsOsdClearOnStop !== undefined) {
+        clrStop.checked = configData.elrsOsdClearOnStop === 1;
+      }
+      const pb = document.getElementById("elrsOsdPlaybackLaps");
+      if (pb && configData.elrsOsdPlaybackLaps !== undefined) {
+        pb.checked = configData.elrsOsdPlaybackLaps === 1;
+      }
+    } else {
+      if (elrsNav) elrsNav.style.display = "none";
+      if (elrsPanel) elrsPanel.style.display = "none";
+      if (elrsUnsupported) elrsUnsupported.style.display = "";
+    }
+
     // Load and apply theme from device config
     if (configData.theme) {
       const savedTheme = configData.theme;
@@ -1957,6 +2009,40 @@ async function saveConfig() {
     rhNodeIndex: document.getElementById("rhNodeIndex") ? parseInt(document.getElementById("rhNodeIndex").value) : 0,
   };
 
+  if (elrsBackpackEspnowBuild === 1) {
+    const elrsT = document.getElementById("elrsBackpackEspnow");
+    if (elrsT) {
+      configData.elrsBackpackEspnow = elrsT.checked ? 1 : 0;
+    }
+    const elrsBind = document.getElementById("elrsBackpackBindPhrase");
+    if (elrsBind) {
+      configData.elrsBackpackBindPhrase = elrsBind.value || "";
+    }
+    const rowIn = document.getElementById("elrsOsdLapRow");
+    if (rowIn) {
+      let r = parseInt(rowIn.value, 10);
+      if (Number.isNaN(r)) r = 5;
+      configData.elrsOsdLapRow = Math.min(18, Math.max(0, r));
+    }
+    const autoCol = document.getElementById("elrsOsdLapColAuto");
+    const colFixed = document.getElementById("elrsOsdLapColFixed");
+    if (autoCol && autoCol.checked) {
+      configData.elrsOsdLapCol = 255;
+    } else if (colFixed) {
+      let c = parseInt(colFixed.value, 10);
+      if (Number.isNaN(c)) c = 0;
+      configData.elrsOsdLapCol = Math.min(49, Math.max(0, c));
+    }
+    const clrStop = document.getElementById("elrsOsdClearOnStop");
+    if (clrStop) {
+      configData.elrsOsdClearOnStop = clrStop.checked ? 1 : 0;
+    }
+    const pb = document.getElementById("elrsOsdPlaybackLaps");
+    if (pb) {
+      configData.elrsOsdPlaybackLaps = pb.checked ? 1 : 0;
+    }
+  }
+
   if (usbConnected && transportManager) {
     const response = await transportManager.sendCommand("config", "POST", configData);
     console.log("/config:", response);
@@ -2573,6 +2659,11 @@ function queueSpeak(obj) {
 
 function toggleSpeaker(enabled) {
   console.log("Speaker output:", enabled ? "enabled" : "disabled");
+  autoSaveConfig();
+}
+
+function toggleElrsBackpackEspnow(enabled) {
+  console.log("ELRS backpack ESP-NOW:", enabled ? "enabled" : "disabled");
   autoSaveConfig();
 }
 
@@ -6962,7 +7053,7 @@ document.addEventListener("click", function (event) {
   }
 });
 
-function switchSettingsSection(sectionName) {
+function switchSettingsSection(ev, sectionName) {
   // Hide all sections
   const sections = document.querySelectorAll(".settings-section");
   sections.forEach((section) => section.classList.remove("active"));
@@ -6979,8 +7070,25 @@ function switchSettingsSection(sectionName) {
     item.classList.remove("active");
   });
 
-  // Add active class to clicked nav item
-  event?.target?.closest(".settings-nav-item")?.classList.add("active");
+  const clicked = ev && ev.target ? ev.target.closest(".settings-nav-item") : null;
+  if (clicked) {
+    clicked.classList.add("active");
+  } else {
+    navItems.forEach((item) => {
+      if (item.dataset.settingsSection === sectionName) {
+        item.classList.add("active");
+      }
+    });
+  }
+}
+
+function onElrsOsdColAutoChange() {
+  const autoCb = document.getElementById("elrsOsdLapColAuto");
+  const fixed = document.getElementById("elrsOsdLapColFixed");
+  if (fixed) {
+    fixed.disabled = !!(autoCb && autoCb.checked);
+  }
+  autoSaveConfig();
 }
 
 // Keyboard shortcut for closing modal (ESC key)
@@ -8003,6 +8111,6 @@ function openSettingsModal() {
       });
 
     // Switch to general section by default
-    switchSettingsSection("general");
+    switchSettingsSection(null, "general");
   }
 }

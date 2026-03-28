@@ -21,6 +21,8 @@ class Webserver : public TransportInterface {
     void init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMonitor, Buzzer *buzzer, Led *l, RaceHistory *raceHist, Storage *stor, SelfTest *test, RX5808 *rx5808, TrackManager *trackMgr, WebhookManager *webhookMgr, RHManager *rhMgr = nullptr);
     void setTransportManager(TransportManager *tm);
     void recheckWifiMode();  // Re-evaluate WiFi mode after config changes
+    /** Disconnect and re-apply AP/STA (+ ESP-NOW) after ELRS backpack setting changes. */
+    void requestWifiStackReinit();
     void handleWebUpdate(uint32_t currentTimeMs);
     
     // TransportInterface implementation
@@ -51,6 +53,11 @@ class Webserver : public TransportInterface {
 
     /** True once WiFi (AP or STA) and web/DNS services are up. Used for boot overlay. */
     bool isServicesStarted() const { return servicesStarted; }
+
+    /** LCD status bar: Wi-Fi icon "active" when services are up or the radio is out of OFF (internal + API). */
+    bool isLcdWifiIndicatorOn() const {
+        return servicesStarted || wifiMode != WIFI_OFF || WiFi.getMode() != WIFI_OFF;
+    }
 
    private:
     void startServices();
