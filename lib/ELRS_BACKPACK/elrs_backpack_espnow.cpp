@@ -21,9 +21,10 @@ static elrs_msp::Decoder s_msp_decoder;
 static uint8_t s_link_ping_rounds_left = 0;
 static uint32_t s_link_ping_next_ms = 0;
 
-/** From esp_now send callback: SUCCESS means link-layer ack from peer (unicast); broadcast often reports FAIL. */
+/** From esp_now send callback: SUCCESS = link-layer ack from peer (ExpressLRS Timer uses unicast only). */
 static uint32_t s_espnow_deliver_ok = 0;
 static uint32_t s_espnow_deliver_fail = 0;
+static uint32_t s_espnow_last_fail_log_ms = 0;
 
 static void handle_msp_packet(const elrs_msp::Packet& p) {
     DEBUG("[ELRS MSP] type=%c fn=0x%04X len=%u\n", static_cast<char>(p.type), p.function,
@@ -50,9 +51,15 @@ static void on_espnow_sent_count(const uint8_t* mac_addr, esp_now_send_status_t 
         return;
     }
     s_espnow_deliver_fail++;
+    /* Throttle: rapid FAIL lines + SPI/LCD on same bus can contribute to SPI mutex timeouts. */
+    const uint32_t now = millis();
+    if (now - s_espnow_last_fail_log_ms < 5000u) {
+        return;
+    }
+    s_espnow_last_fail_log_ms = now;
     if (mac_addr) {
-        DEBUG("ELRS: esp_now delivery FAIL -> %02X:%02X:%02X:%02X:%02X:%02X\n", mac_addr[0], mac_addr[1],
-              mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        DEBUG("ELRS: esp_now delivery FAIL -> %02X:%02X:%02X:%02X:%02X:%02X (no ACK; throttled 5s)\n", mac_addr[0],
+              mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     } else {
         DEBUG("ELRS: esp_now delivery FAIL (no dest in tx_info)\n");
     }
@@ -68,8 +75,6 @@ static void on_espnow_sent(const uint8_t* mac_addr, esp_now_send_status_t status
     on_espnow_sent_count(mac_addr, status);
 }
 #endif
-
-static const uint8_t kEspnowBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 /** Same as ExpressLRS Backpack Timer_main / Vrx_main SetSoftMACAddress() — LR is required for reliable ESP-NOW to VRx. */
 static void apply_elrs_backpack_wifi_protocol(wifi_interface_t ifx) {
@@ -90,33 +95,15 @@ static void apply_elrs_backpack_wifi_protocol_for_mode() {
     }
 }
 
-static void espnow_send_uid_and_broadcast(const uint8_t uid[6], const uint8_t* frame, size_t len) {
-    if (elrs_backpack_uid_valid(uid)) {
-        esp_err_t e = esp_now_send(uid, frame, len);
-        if (e != ESP_OK) {
-            DEBUG("ELRS: esp_now_send (uid peer) err=%d\n", (int)e);
-        }
-    }
-    esp_err_t eb = esp_now_send(kEspnowBroadcast, frame, len);
-    if (eb != ESP_OK) {
-        DEBUG("ELRS: esp_now_send (bcast) err=%d\n", (int)eb);
-    }
-}
-
-/** MSP_ELRS_SET_SEND_UID payload 0x01 + 6-byte UID (vrxc_elrs elrs_backpack.set_send_uid). */
-static void send_msp_set_send_uid(const uint8_t uid[6]) {
-    uint8_t payload[7];
-    payload[0] = 0x01;
-    memcpy(&payload[1], uid, 6);
-    uint8_t out[256];
-    size_t olen = elrs_msp::buildPacketV2(elrs_msp::PacketType::Command, 0,
-                                          static_cast<uint16_t>(elrs_msp::MspElrsSetSendUid), payload, 7, out,
-                                          sizeof(out));
-    if (olen == 0) {
-        DEBUG("ELRS: MSP SET_SEND_UID build failed\n");
+/** ExpressLRS Backpack Timer_main sendMSPViaEspnow(): unicast to peer MAC only (no broadcast). */
+static void espnow_send_to_uid_unicast(const uint8_t uid[6], const uint8_t* frame, size_t len) {
+    if (!elrs_backpack_uid_valid(uid)) {
         return;
     }
-    espnow_send_uid_and_broadcast(uid, out, olen);
+    esp_err_t e = esp_now_send(uid, frame, len);
+    if (e != ESP_OK) {
+        DEBUG("ELRS: esp_now_send err=%d\n", (int)e);
+    }
 }
 
 /** MSP_ELRS_SET_OSD sub 0x03 — same layout as vrxc_elrs send_osd_text. Returns payload length (4 + text). */
@@ -145,7 +132,7 @@ static void send_msp_set_osd_payload(const uint8_t uid[6], const uint8_t* osd_pa
         DEBUG("ELRS: MSP SET_OSD build failed (len=%u)\n", static_cast<unsigned>(osd_len));
         return;
     }
-    espnow_send_uid_and_broadcast(uid, out, olen);
+    espnow_send_to_uid_unicast(uid, out, olen);
 }
 
 static constexpr unsigned kHdzeroOsdCols = 50;
@@ -156,7 +143,6 @@ static void elrs_send_text_row_then_display(Config* conf, uint8_t row, const cha
     }
     uint8_t uid[6]{};
     elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
-    send_msp_set_send_uid(uid);
 
     const uint8_t cfgCol = conf->getElrsOsdLapCol();
     const size_t text_len = strnlen(text, 56);
@@ -225,7 +211,6 @@ void elrsBackpackEspnowOnRaceStop(Config* conf) {
     }
     uint8_t uid[6]{};
     elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
-    send_msp_set_send_uid(uid);
     const uint8_t clear_sub[1] = {0x02};
     send_msp_set_osd_payload(uid, clear_sub, 1);
     const uint8_t display_sub[1] = {0x04};
@@ -236,7 +221,12 @@ static void add_or_update_peer(const uint8_t mac[6], wifi_interface_t ifidx) {
     esp_now_del_peer(mac);
     esp_now_peer_info_t peer{};
     memcpy(peer.peer_addr, mac, 6);
-    peer.channel = 0;
+    uint8_t ch = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+    if (esp_wifi_get_channel(&ch, &second) != ESP_OK || ch == 0) {
+        ch = kElrsBackpackEspnowWifiChannel;
+    }
+    peer.channel = ch;
     peer.encrypt = false;
     peer.ifidx = ifidx;
     esp_err_t err = esp_now_add_peer(&peer);
@@ -245,7 +235,7 @@ static void add_or_update_peer(const uint8_t mac[6], wifi_interface_t ifidx) {
     }
 }
 
-void elrsBackpackEspnowPrepareApMacAsUid(Config* conf) {
+void elrsBackpackEspnowPrepareWifiMacForElrs(Config* conf) {
     if (!conf || !conf->getElrsBackpackEspnow()) {
         return;
     }
@@ -254,12 +244,84 @@ void elrsBackpackEspnowPrepareApMacAsUid(Config* conf) {
     if (!elrs_backpack_uid_valid(uid)) {
         return;
     }
-    esp_err_t e = esp_wifi_set_mac(WIFI_IF_AP, uid);
-    if (e != ESP_OK) {
-        DEBUG("ELRS: esp_wifi_set_mac(WIFI_IF_AP, UID) err=%d (VRx requires sender MAC == UID)\n", (int)e);
-    } else {
-        DEBUG("ELRS: softAP MAC set to bind UID (VRx ESP-NOW sender check)\n");
+
+    /* Same sequence as ExpressLRS Backpack Tx_main.cpp / Timer_main SetSoftMACAddress() */
+    uid[0] = static_cast<uint8_t>(uid[0] & ~0x01u); /* unicast MAC */
+
+    const uint8_t lr_proto =
+        static_cast<uint8_t>(WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
+
+    WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    esp_err_t pr = esp_wifi_set_protocol(WIFI_IF_STA, lr_proto);
+    if (pr != ESP_OK) {
+        DEBUG("ELRS: esp_wifi_set_protocol(STA) err=%d\n", (int)pr);
     }
+    WiFi.begin("network-name", "pass-to-network", 1);
+    /* Must be disconnect() with default wifioff=false — disconnect(true) calls STA.end() and in STA-only
+     * mode can drop the stack to WIFI_OFF / esp_wifi_deinit(), then esp_wifi_set_mac → 12289 NOT_INIT. */
+    WiFi.disconnect();
+
+    esp_err_t es = esp_wifi_set_mac(WIFI_IF_STA, uid);
+    if (es != ESP_OK) {
+        DEBUG("ELRS: esp_wifi_set_mac(STA, UID) err=%d (12289=NOT_INIT, 12293=MAC/state)\n", (int)es);
+    }
+
+    uint8_t ap_mac[6];
+    memcpy(ap_mac, uid, 6);
+    ap_mac[0] = static_cast<uint8_t>(ap_mac[0] ^ 0x02u);
+
+    /* AP MAC before softAP() (webserver starts AP after this). Do not disconnect(true)/softAPdisconnect(true)
+     * here — that can fully deinit Wi-Fi and break esp_wifi_set_mac(AP). */
+    WiFi.mode(WIFI_AP_STA);
+    esp_err_t ea = esp_wifi_set_mac(WIFI_IF_AP, ap_mac);
+    if (ea == ESP_OK) {
+        esp_err_t pra = esp_wifi_set_protocol(WIFI_IF_AP, lr_proto);
+        if (pra != ESP_OK) {
+            DEBUG("ELRS: esp_wifi_set_protocol(AP) err=%d\n", (int)pra);
+        }
+    } else {
+        DEBUG("ELRS: esp_wifi_set_mac(AP, derived) err=%d\n", (int)ea);
+    }
+
+    if (es == ESP_OK && ea == ESP_OK) {
+        DEBUG("ELRS: STA=bind UID, softAP=distinct (Tx_main SetSoftMACAddress + AP_STA)\n");
+    }
+}
+
+void elrsBackpackEspnowReassertCustomMacsForElrs(Config* conf) {
+    if (!conf || !conf->getElrsBackpackEspnow()) {
+        return;
+    }
+    uint8_t uid[6]{};
+    elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
+    if (!elrs_backpack_uid_valid(uid)) {
+        return;
+    }
+    uid[0] = static_cast<uint8_t>(uid[0] & ~0x01u);
+
+    uint8_t cur_sta[6]{};
+    if (esp_wifi_get_mac(WIFI_IF_STA, cur_sta) == ESP_OK && memcmp(cur_sta, uid, 6) != 0) {
+        DEBUG("ELRS: STA MAC != bind UID after Wi-Fi bring-up — re-applying (VRx filters on source MAC)\n");
+    }
+
+    esp_err_t es = esp_wifi_set_mac(WIFI_IF_STA, uid);
+    if (es != ESP_OK) {
+        DEBUG("ELRS: reassert esp_wifi_set_mac(STA, UID) err=%d\n", (int)es);
+    }
+
+    wifi_mode_t wm = WIFI_MODE_NULL;
+    if (esp_wifi_get_mode(&wm) == ESP_OK && (wm & WIFI_MODE_AP) != 0) {
+        uint8_t ap_mac[6];
+        memcpy(ap_mac, uid, 6);
+        ap_mac[0] = static_cast<uint8_t>(ap_mac[0] ^ 0x02u);
+        esp_err_t ea = esp_wifi_set_mac(WIFI_IF_AP, ap_mac);
+        if (ea != ESP_OK) {
+            DEBUG("ELRS: reassert esp_wifi_set_mac(AP) err=%d\n", (int)ea);
+        }
+    }
+
+    apply_elrs_backpack_wifi_protocol_for_mode();
 }
 
 void elrsBackpackEspnowStopIfRunning() {
@@ -312,13 +374,18 @@ void elrsBackpackEspnowStartIfEnabled(Config* conf) {
 
     apply_elrs_backpack_wifi_protocol_for_mode();
 
-    /* Default STA caused ESP-NOW to attach to STA while AP-only (no home WiFi): packets never left the AP path. */
+    /*
+     * Timer backpack uses STA + UID MAC for ESP-NOW. With AP_STA, use STA (see prepareWifiMacForElrs).
+     * Pure AP mode: only AP exists, UID was set on AP in prepare.
+     */
     wifi_interface_t ifidx = WIFI_IF_AP;
+    const wifi_mode_t wm = WiFi.getMode();
+    if (wm == WIFI_MODE_APSTA || wm == WIFI_MODE_STA) {
+        ifidx = WIFI_IF_STA;
+    }
     if (WiFi.status() == WL_CONNECTED) {
         ifidx = WIFI_IF_STA;
     }
-
-    add_or_update_peer(kEspnowBroadcast, ifidx);
 
     uint8_t uid[6]{};
     elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
@@ -326,9 +393,13 @@ void elrsBackpackEspnowStartIfEnabled(Config* conf) {
         add_or_update_peer(uid, ifidx);
         DEBUG("ELRS: backpack UID %02X:%02X:%02X:%02X:%02X:%02X (bind phrase or callsign hash)\n", uid[0], uid[1],
               uid[2], uid[3], uid[4], uid[5]);
-        send_msp_set_send_uid(uid);
+        uint8_t hw[6]{};
+        if (esp_wifi_get_mac(WIFI_IF_STA, hw) == ESP_OK) {
+            DEBUG("ELRS: STA hw MAC %02X:%02X:%02X:%02X:%02X:%02X (must match UID above for goggle)\n", hw[0], hw[1],
+                  hw[2], hw[3], hw[4], hw[5]);
+        }
     } else {
-        DEBUG("ELRS: no bind phrase or callsign — broadcast peer only; set phrase to match goggles\n");
+        DEBUG("ELRS: no bind phrase or callsign — set phrase to match goggles\n");
     }
 
     s_espnow_ready = true;
@@ -336,8 +407,8 @@ void elrsBackpackEspnowStartIfEnabled(Config* conf) {
         uint8_t ch = 0;
         wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
         if (esp_wifi_get_channel(&ch, &second) == ESP_OK) {
-            DEBUG("ELRS: Wi-Fi channel %u (peer channel 0 = follow this; match goggle RX band)\n",
-                  static_cast<unsigned>(ch));
+            DEBUG("ELRS: Wi-Fi channel %u (must match VRx backpack; ELRS SetSoftMACAddress uses ch %u)\n",
+                  static_cast<unsigned>(ch), static_cast<unsigned>(kElrsBackpackEspnowWifiChannel));
         }
     }
     DEBUG("ELRS backpack ESP-NOW started (esp_now if=%d)\n", static_cast<int>(ifidx));
@@ -345,7 +416,7 @@ void elrsBackpackEspnowStartIfEnabled(Config* conf) {
     /* Deferred + repeated: first attempt after Wi-Fi/ESP-NOW often needs a few hundred ms; HDZero may show row 0 vs lap row differently. */
     s_link_ping_rounds_left = 14;
     s_link_ping_next_ms = millis() + 250;
-    DEBUG("ELRS: link test: %u OSD bursts (~450ms); serial shows cb ok/fail (bcast FAIL is normal)\n",
+    DEBUG("ELRS: link test: %u OSD bursts (~450ms); cb ok should climb if goggle ACKs unicast\n",
           static_cast<unsigned>(s_link_ping_rounds_left));
 }
 
@@ -360,14 +431,16 @@ void elrsBackpackEspnowPoll(Config* conf, uint32_t nowMs) {
     elrs_send_link_ping(conf);
     s_link_ping_rounds_left--;
     s_link_ping_next_ms = nowMs + 450;
-    DEBUG("ELRS: link OSD burst #%u left=%u | esp_now_cb ok=%lu fail=%lu (want ok>0 to UID for backpack)\n",
+    DEBUG("ELRS: link OSD burst #%u left=%u | esp_now_cb ok=%lu fail=%lu (fail>0 = no ACK from goggle)\n",
           static_cast<unsigned>(round), static_cast<unsigned>(s_link_ping_rounds_left),
           static_cast<unsigned long>(s_espnow_deliver_ok), static_cast<unsigned long>(s_espnow_deliver_fail));
 }
 
 #else
 
-void elrsBackpackEspnowPrepareApMacAsUid(Config*) {}
+void elrsBackpackEspnowPrepareWifiMacForElrs(Config*) {}
+
+void elrsBackpackEspnowReassertCustomMacsForElrs(Config*) {}
 
 void elrsBackpackEspnowStopIfRunning() {}
 

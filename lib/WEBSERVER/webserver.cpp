@@ -411,15 +411,20 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 DEBUG("Changing to WiFi AP mode\n");
 
                 elrsBackpackEspnowStopIfRunning();
-                WiFi.disconnect();
+                WiFi.softAPdisconnect(true);
+                WiFi.disconnect(true);
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                /* Sets MACs inside: WiFi.mode(WIFI_AP_STA) + disconnect — not after WIFI_OFF (0x3001 NOT_INIT). */
+                elrsBackpackEspnowPrepareWifiMacForElrs(conf);
+#else
+                WiFi.mode(WIFI_OFF);
+                delay(30);
+#endif
+
                 wifiMode = WIFI_AP;
                 WiFi.setHostname(wifi_hostname);  // hostname must be set before the mode is set to STA
                 WiFi.mode(effectiveWifiModeForRole(true, conf));
                 changeTimeMs = currentTimeMs;
-
-#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
-                elrsBackpackEspnowPrepareApMacAsUid(conf);
-#endif
 
                 // Power-saving settings for AP mode to prevent boot-looping
                 // Reduce TX power specifically for AP mode (already set globally but ensure it's applied)
@@ -428,10 +433,23 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 WiFi.softAPConfig(ipAddress, ipAddress, netMsk);
                 DEBUG("Starting WiFi AP: %s with password: %s\n", wifi_ap_ssid.c_str(), wifi_ap_password);
                 
-                // Start AP with max 4 connections to limit power draw
-                // Channel 6 is typically less crowded, beacon interval 200ms (higher = less power)
-                WiFi.softAP(wifi_ap_ssid.c_str(), wifi_ap_password, 6, 0, 4);
-                
+                // Start AP with max 4 connections to limit power draw.
+                // When ELRS backpack ESP-NOW is on, use ch 1 — same as ExpressLRS SetSoftMACAddress() so
+                // goggles ACK; otherwise ch 6 is a reasonable default for AP-only.
+                {
+                    uint8_t ap_ch = 6;
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                    if (conf && conf->getElrsBackpackEspnow()) {
+                        ap_ch = kElrsBackpackEspnowWifiChannel;
+                    }
+#endif
+                    WiFi.softAP(wifi_ap_ssid.c_str(), wifi_ap_password, ap_ch, 0, 4);
+                }
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                /* softAP() / driver can revert custom MACs set in prepare; VRx accepts only source MAC == bind UID. */
+                elrsBackpackEspnowReassertCustomMacsForElrs(conf);
+#endif
+
 #ifdef SEEED_XIAO_ESP32S3
                 // Disable WiFi power saving for faster responsiveness on XIAO
                 // The XIAO's chip antenna and power delivery can cause connection delays with PS enabled
@@ -452,15 +470,22 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
             case WIFI_STA:
                 DEBUG("Connecting to WiFi network\n");
                 elrsBackpackEspnowStopIfRunning();
+                WiFi.softAPdisconnect(true);
+                WiFi.disconnect(true);
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                elrsBackpackEspnowPrepareWifiMacForElrs(conf);
+#else
+                WiFi.mode(WIFI_OFF);
+                delay(30);
+#endif
                 wifiMode = WIFI_STA;
                 WiFi.setHostname(wifi_hostname);  // hostname must be set before the mode is set to STA
                 WiFi.mode(effectiveWifiModeForRole(false, conf));
                 changeTimeMs = currentTimeMs;
-#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
-                /* Until STA is connected, ESP-NOW uses AP interface; MAC must match bind UID for VRx. */
-                elrsBackpackEspnowPrepareApMacAsUid(conf);
-#endif
                 WiFi.begin(conf->getSsid(), conf->getPassword());
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                elrsBackpackEspnowReassertCustomMacsForElrs(conf);
+#endif
                 elrsBackpackEspnowStartIfEnabled(conf);
                 startServices();
                 led->blink(200);
