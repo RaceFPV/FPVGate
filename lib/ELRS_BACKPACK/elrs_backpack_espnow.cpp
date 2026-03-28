@@ -8,6 +8,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <esp_idf_version.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 
@@ -15,6 +16,14 @@
 
 static bool s_espnow_ready = false;
 static elrs_msp::Decoder s_msp_decoder;
+
+/** After ESP-NOW start, send a few link-test OSD bursts (radio/interface may not be ready on first ms). */
+static uint8_t s_link_ping_rounds_left = 0;
+static uint32_t s_link_ping_next_ms = 0;
+
+/** From esp_now send callback: SUCCESS means link-layer ack from peer (unicast); broadcast often reports FAIL. */
+static uint32_t s_espnow_deliver_ok = 0;
+static uint32_t s_espnow_deliver_fail = 0;
 
 static void handle_msp_packet(const elrs_msp::Packet& p) {
     DEBUG("[ELRS MSP] type=%c fn=0x%04X len=%u\n", static_cast<char>(p.type), p.function,
@@ -35,7 +44,51 @@ static void on_recv(const esp_now_recv_info_t* info, const uint8_t* data, int le
     }
 }
 
+static void on_espnow_sent_count(const uint8_t* mac_addr, esp_now_send_status_t status) {
+    if (status == ESP_NOW_SEND_SUCCESS) {
+        s_espnow_deliver_ok++;
+        return;
+    }
+    s_espnow_deliver_fail++;
+    if (mac_addr) {
+        DEBUG("ELRS: esp_now delivery FAIL -> %02X:%02X:%02X:%02X:%02X:%02X\n", mac_addr[0], mac_addr[1],
+              mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+    } else {
+        DEBUG("ELRS: esp_now delivery FAIL (no dest in tx_info)\n");
+    }
+}
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+static void on_espnow_sent(const esp_now_send_info_t* tx_info, esp_now_send_status_t status) {
+    const uint8_t* mac = (tx_info && tx_info->des_addr) ? tx_info->des_addr : nullptr;
+    on_espnow_sent_count(mac, status);
+}
+#else
+static void on_espnow_sent(const uint8_t* mac_addr, esp_now_send_status_t status) {
+    on_espnow_sent_count(mac_addr, status);
+}
+#endif
+
 static const uint8_t kEspnowBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+/** Same as ExpressLRS Backpack Timer_main / Vrx_main SetSoftMACAddress() — LR is required for reliable ESP-NOW to VRx. */
+static void apply_elrs_backpack_wifi_protocol(wifi_interface_t ifx) {
+    const uint8_t mask =
+        WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR;
+    esp_err_t e = esp_wifi_set_protocol(ifx, mask);
+    if (e != ESP_OK) {
+        DEBUG("ELRS: esp_wifi_set_protocol(if=%d) err=%d\n", static_cast<int>(ifx), static_cast<int>(e));
+    }
+}
+
+/** Apply LR-capable PHY on every interface we might use (AP_STA builds have both). */
+static void apply_elrs_backpack_wifi_protocol_for_mode() {
+    apply_elrs_backpack_wifi_protocol(WIFI_IF_AP);
+    const wifi_mode_t wm = WiFi.getMode();
+    if (wm == WIFI_MODE_APSTA || wm == WIFI_MODE_STA) {
+        apply_elrs_backpack_wifi_protocol(WIFI_IF_STA);
+    }
+}
 
 static void espnow_send_uid_and_broadcast(const uint8_t uid[6], const uint8_t* frame, size_t len) {
     if (elrs_backpack_uid_valid(uid)) {
@@ -97,7 +150,7 @@ static void send_msp_set_osd_payload(const uint8_t uid[6], const uint8_t* osd_pa
 
 static constexpr unsigned kHdzeroOsdCols = 50;
 
-static void elrs_send_text_then_display(Config* conf, const char* text) {
+static void elrs_send_text_row_then_display(Config* conf, uint8_t row, const char* text) {
     if (!conf || !text) {
         return;
     }
@@ -105,7 +158,6 @@ static void elrs_send_text_then_display(Config* conf, const char* text) {
     elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
     send_msp_set_send_uid(uid);
 
-    const uint8_t row = conf->getElrsOsdLapRow();
     const uint8_t cfgCol = conf->getElrsOsdLapCol();
     const size_t text_len = strnlen(text, 56);
     uint8_t col = 0;
@@ -125,6 +177,16 @@ static void elrs_send_text_then_display(Config* conf, const char* text) {
     send_msp_set_osd_payload(uid, pl, static_cast<uint16_t>(plen));
     const uint8_t display_sub[1] = {0x04};
     send_msp_set_osd_payload(uid, display_sub, 1);
+}
+
+static void elrs_send_text_then_display(Config* conf, const char* text) {
+    elrs_send_text_row_then_display(conf, conf->getElrsOsdLapRow(), text);
+}
+
+/** Two lines: row 0 (often visible for backpack OSD) + configured lap row. */
+static void elrs_send_link_ping(Config* conf) {
+    elrs_send_text_row_then_display(conf, 0, "FPVGate");
+    elrs_send_text_row_then_display(conf, conf->getElrsOsdLapRow(), "Timer link OK");
 }
 
 void elrsBackpackEspnowOnLap(Config* conf, uint32_t lapTimeMs, uint16_t lapNumberCompleted) {
@@ -183,12 +245,31 @@ static void add_or_update_peer(const uint8_t mac[6], wifi_interface_t ifidx) {
     }
 }
 
+void elrsBackpackEspnowPrepareApMacAsUid(Config* conf) {
+    if (!conf || !conf->getElrsBackpackEspnow()) {
+        return;
+    }
+    uint8_t uid[6]{};
+    elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
+    if (!elrs_backpack_uid_valid(uid)) {
+        return;
+    }
+    esp_err_t e = esp_wifi_set_mac(WIFI_IF_AP, uid);
+    if (e != ESP_OK) {
+        DEBUG("ELRS: esp_wifi_set_mac(WIFI_IF_AP, UID) err=%d (VRx requires sender MAC == UID)\n", (int)e);
+    } else {
+        DEBUG("ELRS: softAP MAC set to bind UID (VRx ESP-NOW sender check)\n");
+    }
+}
+
 void elrsBackpackEspnowStopIfRunning() {
+    s_link_ping_rounds_left = 0;
     if (!s_espnow_ready) {
         return;
     }
     s_msp_decoder.reset();
     esp_now_unregister_recv_cb();
+    esp_now_unregister_send_cb();
     esp_now_deinit();
     s_espnow_ready = false;
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
@@ -216,13 +297,25 @@ void elrsBackpackEspnowStartIfEnabled(Config* conf) {
         return;
     }
 
+    err = esp_now_register_send_cb(on_espnow_sent);
+    if (err != ESP_OK) {
+        DEBUG("esp_now_register_send_cb failed: %d\n", (int)err);
+        esp_now_unregister_recv_cb();
+        esp_now_deinit();
+        return;
+    }
+
+    s_espnow_deliver_ok = 0;
+    s_espnow_deliver_fail = 0;
+
     esp_wifi_set_ps(WIFI_PS_NONE);
 
-    wifi_interface_t ifidx = WIFI_IF_STA;
+    apply_elrs_backpack_wifi_protocol_for_mode();
+
+    /* Default STA caused ESP-NOW to attach to STA while AP-only (no home WiFi): packets never left the AP path. */
+    wifi_interface_t ifidx = WIFI_IF_AP;
     if (WiFi.status() == WL_CONNECTED) {
         ifidx = WIFI_IF_STA;
-    } else if (WiFi.softAPIP()) {
-        ifidx = WIFI_IF_AP;
     }
 
     add_or_update_peer(kEspnowBroadcast, ifidx);
@@ -239,10 +332,42 @@ void elrsBackpackEspnowStartIfEnabled(Config* conf) {
     }
 
     s_espnow_ready = true;
-    DEBUG("ELRS backpack ESP-NOW started\n");
+    {
+        uint8_t ch = 0;
+        wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+        if (esp_wifi_get_channel(&ch, &second) == ESP_OK) {
+            DEBUG("ELRS: Wi-Fi channel %u (peer channel 0 = follow this; match goggle RX band)\n",
+                  static_cast<unsigned>(ch));
+        }
+    }
+    DEBUG("ELRS backpack ESP-NOW started (esp_now if=%d)\n", static_cast<int>(ifidx));
+
+    /* Deferred + repeated: first attempt after Wi-Fi/ESP-NOW often needs a few hundred ms; HDZero may show row 0 vs lap row differently. */
+    s_link_ping_rounds_left = 14;
+    s_link_ping_next_ms = millis() + 250;
+    DEBUG("ELRS: link test: %u OSD bursts (~450ms); serial shows cb ok/fail (bcast FAIL is normal)\n",
+          static_cast<unsigned>(s_link_ping_rounds_left));
+}
+
+void elrsBackpackEspnowPoll(Config* conf, uint32_t nowMs) {
+    if (!s_espnow_ready || !conf || !conf->getElrsBackpackEspnow() || s_link_ping_rounds_left == 0) {
+        return;
+    }
+    if (static_cast<int32_t>(nowMs - s_link_ping_next_ms) < 0) {
+        return;
+    }
+    const uint8_t round = static_cast<uint8_t>(s_link_ping_rounds_left);
+    elrs_send_link_ping(conf);
+    s_link_ping_rounds_left--;
+    s_link_ping_next_ms = nowMs + 450;
+    DEBUG("ELRS: link OSD burst #%u left=%u | esp_now_cb ok=%lu fail=%lu (want ok>0 to UID for backpack)\n",
+          static_cast<unsigned>(round), static_cast<unsigned>(s_link_ping_rounds_left),
+          static_cast<unsigned long>(s_espnow_deliver_ok), static_cast<unsigned long>(s_espnow_deliver_fail));
 }
 
 #else
+
+void elrsBackpackEspnowPrepareApMacAsUid(Config*) {}
 
 void elrsBackpackEspnowStopIfRunning() {}
 
@@ -253,5 +378,7 @@ void elrsBackpackEspnowOnLap(Config*, uint32_t, uint16_t) {}
 void elrsBackpackEspnowOnPlaybackLap(Config*, uint32_t) {}
 
 void elrsBackpackEspnowOnRaceStop(Config*) {}
+
+void elrsBackpackEspnowPoll(Config*, uint32_t) {}
 
 #endif

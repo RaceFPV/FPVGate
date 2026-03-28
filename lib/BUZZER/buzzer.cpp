@@ -119,7 +119,8 @@ void Buzzer::applyPwmFrequency(uint32_t hz) {
 #if BUZZER_PASSIVE
     if (!usePWM) return;
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcAttach(buzzerPin, hz, BUZZER_LEDC_RESOLUTION);
+    /* ledcAttach() once in init(); re-attaching each segment exhausts timers (multi-freq cues e.g. 3100 Hz tick). */
+    ledcChangeFrequency(buzzerPin, hz, BUZZER_LEDC_RESOLUTION);
 #else
     ledcSetup(BUZZER_LEDC_CHANNEL, hz, BUZZER_LEDC_RESOLUTION);
     ledcAttachPin(buzzerPin, BUZZER_LEDC_CHANNEL);

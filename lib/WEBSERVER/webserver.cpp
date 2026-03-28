@@ -149,7 +149,10 @@ void Webserver::sendRaceStateEvent(const char* state) {
         DEBUG("[SSE] sendRaceStateEvent SKIPPED (services not started)\n");
         return;
     }
-    DEBUG("[SSE] sendRaceStateEvent: '%s' to %d client(s)\n", state, events.count());
+    const int n = events.count();
+    if (n > 0) {
+        DEBUG("[SSE] sendRaceStateEvent: '%s' to %d client(s)\n", state, n);
+    }
     events.send(state, "raceState");
 }
 
@@ -321,6 +324,9 @@ void Webserver::update(uint32_t currentTimeMs) {
 }
 
 void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+    elrsBackpackEspnowPoll(conf, currentTimeMs);
+#endif
     // Process deferred race state events from LCD triggers (must run on core 0)
     if (pendingRaceState) {
         const char* state = (const char*)pendingRaceState;
@@ -410,7 +416,11 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 WiFi.setHostname(wifi_hostname);  // hostname must be set before the mode is set to STA
                 WiFi.mode(effectiveWifiModeForRole(true, conf));
                 changeTimeMs = currentTimeMs;
-                
+
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                elrsBackpackEspnowPrepareApMacAsUid(conf);
+#endif
+
                 // Power-saving settings for AP mode to prevent boot-looping
                 // Reduce TX power specifically for AP mode (already set globally but ensure it's applied)
                 WiFi.setTxPower(WIFI_POWER_11dBm);
@@ -446,6 +456,10 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 WiFi.setHostname(wifi_hostname);  // hostname must be set before the mode is set to STA
                 WiFi.mode(effectiveWifiModeForRole(false, conf));
                 changeTimeMs = currentTimeMs;
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                /* Until STA is connected, ESP-NOW uses AP interface; MAC must match bind UID for VRx. */
+                elrsBackpackEspnowPrepareApMacAsUid(conf);
+#endif
                 WiFi.begin(conf->getSsid(), conf->getPassword());
                 elrsBackpackEspnowStartIfEnabled(conf);
                 startServices();

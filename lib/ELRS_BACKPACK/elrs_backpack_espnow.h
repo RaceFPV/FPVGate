@@ -9,10 +9,21 @@ class Config;
 void elrsBackpackEspnowStopIfRunning();
 
 /**
+ * Call after WiFi.mode() and before WiFi.softAP() or WiFi.begin().
+ * ExpressLRS VRx only accepts ESP-NOW frames whose *sender* MAC equals the bind UID
+ * (see ExpressLRS/Backpack Vrx_main OnDataRecv); the race timer sets STA MAC to UID.
+ * We use WIFI_IF_AP when ESP-NOW tx uses the softAP interface (AP-only / not yet STA-connected).
+ */
+void elrsBackpackEspnowPrepareApMacAsUid(Config* conf);
+
+/**
  * If ELRS backpack ESP-NOW is enabled in config and the build supports it,
  * initialize ESP-NOW after Wi-Fi is started. Otherwise ensures ESP-NOW is off.
  */
 void elrsBackpackEspnowStartIfEnabled(Config* conf);
+
+/** Call from main WiFi loop (e.g. Webserver::handleWebUpdate): retries link-test OSD while armed. */
+void elrsBackpackEspnowPoll(Config* conf, uint32_t nowMs);
 
 /**
  * On each completed lap, send MSP_ELRS_SET_SEND_UID (refresh), then SET_OSD text + display
