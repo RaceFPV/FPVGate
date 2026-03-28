@@ -106,7 +106,10 @@ static void espnow_send_to_uid_unicast(const uint8_t uid[6], const uint8_t* fram
     }
 }
 
-/** MSP_ELRS_SET_OSD sub 0x03 — same layout as vrxc_elrs send_osd_text. Returns payload length (4 + text). */
+/**
+ * MSP_ELRS_SET_OSD sub 0x03 — same layout as vrxc_elrs send_osd_text. Returns payload length (4 + text).
+ * HDZero goggle OSD font uses 0x61–0x7A (a–z) for symbol glyphs (arrows, etc.), not letters — map to A–Z.
+ */
 static size_t build_osd_text_subpayload(uint8_t row, uint8_t col, const char* text, uint8_t* payload,
                                         size_t cap) {
     if (cap < 4 + 50) {
@@ -118,7 +121,11 @@ static size_t build_osd_text_subpayload(uint8_t row, uint8_t col, const char* te
     payload[3] = 0;
     size_t n = 0;
     for (; text[n] && n < 50; ++n) {
-        payload[4 + n] = static_cast<uint8_t>(text[n]);
+        unsigned char uc = static_cast<unsigned char>(text[n]);
+        if (uc >= 'a' && uc <= 'z') {
+            uc = static_cast<unsigned char>(uc - static_cast<unsigned char>('a' - 'A'));
+        }
+        payload[4 + n] = uc;
     }
     return 4 + n;
 }
@@ -137,22 +144,29 @@ static void send_msp_set_osd_payload(const uint8_t uid[6], const uint8_t* osd_pa
 
 static constexpr unsigned kHdzeroOsdCols = 50;
 
-static void elrs_send_text_row_then_display(Config* conf, uint8_t row, const char* text) {
+/**
+ * Queue MSP_ELRS_SET_OSD text for row; optional immediate display flush (vrxc_elrs sends 0x04 once after all text).
+ * @param col_override if 0–49, use that column; if -1, use config (AUTO centers in a 50-col grid — on HDZero that
+ *                    lands on the crosshair/stick symbol band and eats the middle of the string).
+ */
+static void elrs_send_text_row_with_uid(const uint8_t uid[6], Config* conf, uint8_t row, const char* text,
+                                        bool with_display, int16_t col_override = -1) {
     if (!conf || !text) {
         return;
     }
-    uint8_t uid[6]{};
-    elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
-
-    const uint8_t cfgCol = conf->getElrsOsdLapCol();
-    const size_t text_len = strnlen(text, 56);
     uint8_t col = 0;
-    if (cfgCol == ELRS_OSD_LAP_COL_AUTO) {
-        if (text_len < kHdzeroOsdCols) {
-            col = static_cast<uint8_t>((kHdzeroOsdCols - text_len) / 2U);
-        }
+    if (col_override >= 0 && col_override <= 49) {
+        col = static_cast<uint8_t>(col_override);
     } else {
-        col = cfgCol;
+        const uint8_t cfgCol = conf->getElrsOsdLapCol();
+        const size_t text_len = strnlen(text, 56);
+        if (cfgCol == ELRS_OSD_LAP_COL_AUTO) {
+            if (text_len < kHdzeroOsdCols) {
+                col = static_cast<uint8_t>((kHdzeroOsdCols - text_len) / 2U);
+            }
+        } else {
+            col = cfgCol;
+        }
     }
 
     uint8_t pl[4 + 50]{};
@@ -161,18 +175,48 @@ static void elrs_send_text_row_then_display(Config* conf, uint8_t row, const cha
         return;
     }
     send_msp_set_osd_payload(uid, pl, static_cast<uint16_t>(plen));
-    const uint8_t display_sub[1] = {0x04};
-    send_msp_set_osd_payload(uid, display_sub, 1);
+    if (with_display) {
+        const uint8_t display_sub[1] = {0x04};
+        send_msp_set_osd_payload(uid, display_sub, 1);
+    }
+}
+
+static void elrs_send_text_row_then_display(Config* conf, uint8_t row, const char* text) {
+    uint8_t uid[6]{};
+    elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
+    if (!elrs_backpack_uid_valid(uid)) {
+        return;
+    }
+    elrs_send_text_row_with_uid(uid, conf, row, text, true);
 }
 
 static void elrs_send_text_then_display(Config* conf, const char* text) {
     elrs_send_text_row_then_display(conf, conf->getElrsOsdLapRow(), text);
 }
 
-/** Two lines: row 0 (often visible for backpack OSD) + configured lap row. */
+/**
+ * Link test: avoid row 0 (flight band) and avoid AUTO horizontal center (HDZero stick/crosshair glyphs there).
+ * Left margin col keeps full strings visible; buffer text then one 0x04 (vrxc_elrs style).
+ */
 static void elrs_send_link_ping(Config* conf) {
-    elrs_send_text_row_then_display(conf, 0, "FPVGate");
-    elrs_send_text_row_then_display(conf, conf->getElrsOsdLapRow(), "Timer link OK");
+    uint8_t uid[6]{};
+    elrs_backpack_compute_uid6(conf->getElrsBackpackBindPhrase(), conf->getPilotCallsign(), uid);
+    if (!elrs_backpack_uid_valid(uid)) {
+        return;
+    }
+    constexpr int16_t kSafeLeftCol = 3;
+    const uint8_t r = conf->getElrsOsdLapRow();
+    if (r + 1 <= 18) {
+        elrs_send_text_row_with_uid(uid, conf, r, "FPVGate", false, kSafeLeftCol);
+        elrs_send_text_row_with_uid(uid, conf, static_cast<uint8_t>(r + 1), "Timer link OK", false, kSafeLeftCol);
+    } else if (r >= 1) {
+        elrs_send_text_row_with_uid(uid, conf, static_cast<uint8_t>(r - 1), "FPVGate", false, kSafeLeftCol);
+        elrs_send_text_row_with_uid(uid, conf, r, "Timer link OK", false, kSafeLeftCol);
+    } else {
+        elrs_send_text_row_with_uid(uid, conf, r, "FPVGate | link OK", false, kSafeLeftCol);
+    }
+    const uint8_t display_sub[1] = {0x04};
+    send_msp_set_osd_payload(uid, display_sub, 1);
 }
 
 void elrsBackpackEspnowOnLap(Config* conf, uint32_t lapTimeMs, uint16_t lapNumberCompleted) {
