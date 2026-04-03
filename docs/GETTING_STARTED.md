@@ -18,7 +18,19 @@ Complete guide to building, flashing, and configuring your FPVGate lap timer.
 
 ---
 
-## Hardware Requirements
+## Option 1: Buy Pre-Built (FPVGate AIO)
+
+If you'd rather skip the soldering, wiring, and flashing, the **FPVGate AIO** is a pre-built, plug-and-play device that's ready to use out of the box.
+
+**[Buy FPVGate AIO](https://fpvgate.xyz/shop.html)**
+
+The AIO is designed for pilots who want to start timing laps without the hassle of sourcing components and assembling hardware. Just power it on, connect, and fly.
+
+If you have an AIO, you can skip straight to [Initial Configuration](#initial-configuration).
+
+---
+
+## Option 2: Build Your Own (DIY)
 
 ### Required Components
 
