@@ -21,11 +21,15 @@ FPVGate measures lap times by detecting your drone's video transmitter signal st
 
 | Race Screen | Configuration Menu |
 |:-----------:|:------------------:|
-| ![Race Screen](screenshots/12-12-2025/Race%20-%2012-12-2025.png) | ![Config Menu](screenshots/12-12-2025/Config%20Screen%20-%20Pilot%20Info%2012-12-2025.png) |
+| ![Race Screen](screenshots/02-04-2026/Race%20Screen%20Solo.png) | ![Config Menu](screenshots/02-04-2026/Settings%20Menu.png) |
 
-| Calibration Wizard | Race History |
-|:------------------:|:------------:|
-| ![Calibration Wizard](screenshots/12-12-2025/Calibration%20Wizard%20Recording%20-%2012-12-2025.png) | ![Race History](screenshots/12-12-2025/Race%20History%20-%2012-12-2025.png) |
+| Calibration | Race History |
+|:-----------:|:------------:|
+| ![Calibration](screenshots/02-04-2026/RSSI%20Calibration.png) | ![Race History](screenshots/02-04-2026/Race%20History.png) |
+
+| Multi Pilot | FPVGate AIO |
+|:-----------:|:-----------:|
+| ![Multi Pilot](screenshots/02-04-2026/Multi%20Pilot.png) | ![FPVGate AIO](screenshots/02-04-2026/FPVGate%20AIO%20Shop.png) |
 
 ### Key Features
 
