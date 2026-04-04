@@ -25,6 +25,11 @@ RX5808::RX5808(uint8_t _rssiInputPin, uint8_t _rx5808DataPin, uint8_t _rx5808Sel
 }
 
 void RX5808::init() {
+#if defined(PIN_RX5808_POWER_CTRL)
+    pinMode(PIN_RX5808_POWER_CTRL, OUTPUT);
+    digitalWrite(PIN_RX5808_POWER_CTRL, LOW);
+    delay(10);  // Let module supply stabilize before SPI / reset
+#endif
     pinMode(rssiInputPin, INPUT);
 #ifndef USE_ADC_DMA
     analogReadResolution(12);

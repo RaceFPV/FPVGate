@@ -77,6 +77,8 @@
 #define VBAT_SCALE 3.3f        // Waveshare demo uses ~3x factor; calibrated closer for 1S full-scale
 #define VBAT_ADD 0             // Calibration offset
 #define PIN_RX5808_RSSI 8       // RSSI on GPIO8 (ADC1, breakout)
+// PNP high-side (E=3V3, C=RX VCC, B=GPIO): LOW = on / RX powered; driven LOW at boot.
+#define PIN_RX5808_POWER_CTRL 21
 #define PIN_RX5808_DATA 2     // CH1 on GPIO2 (Data)
 #define PIN_RX5808_SELECT 4   // CH2 on GPIO4 (LE)
 #define PIN_RX5808_CLOCK 6    // CH3 on GPIO6 (Clk)

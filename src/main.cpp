@@ -186,7 +186,12 @@ void setup() {
     powerManager.init(PIN_POWER_SWITCH, LCD_BACKLIGHT);
 #endif
 #endif
-    
+#if defined(WAVESHARE_ESP32S3_LCD2) && defined(PIN_RX5808_POWER_CTRL)
+    // PNP high-side: LOW powers RX5808; assert before LCD/storage init (rx.init() repeats for safety).
+    pinMode(PIN_RX5808_POWER_CTRL, OUTPUT);
+    digitalWrite(PIN_RX5808_POWER_CTRL, LOW);
+#endif
+
     // ====================================================================
     // ROTORHAZARD MODE DETECTION - CURRENTLY DISABLED
     // Mode switching has been disabled - system now runs in WiFi mode only
