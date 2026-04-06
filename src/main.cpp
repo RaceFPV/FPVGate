@@ -477,13 +477,17 @@ static void shutdownForDeepSleep() {
     g_qmi8658.powerDown();
 #endif
 
-    // RX5808 analog module stays on the 3.3 V rail and draws ~100–200 mA in receive; deep sleep only
-    // powers down the ESP32. Stop the core-0 task from calling handleFrequencyChange, then power it down.
+    // Stop the core-0 task from calling handleFrequencyChange, then software power-down via SPI.
     if (xTimerTask) {
         vTaskSuspend(xTimerTask);
         delay(10);
     }
     rx.setFrequency(POWER_DOWN_FREQ_MHZ);
+#if defined(PIN_RX5808_POWER_CTRL)
+    // PNP high-side: HIGH turns transistor off — remove VCC from RX5808 (lower deep-sleep drain).
+    pinMode(PIN_RX5808_POWER_CTRL, OUTPUT);
+    digitalWrite(PIN_RX5808_POWER_CTRL, HIGH);
+#endif
 
 #if ENABLE_LCD_UI && defined(WAVESHARE_ESP32S3_LCD2)
     if (g_lcdUi) {
