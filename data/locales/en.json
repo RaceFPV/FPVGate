@@ -312,7 +312,8 @@
             "select_port": "Select a port...",
             "placeholder_ssid": "Enter WiFi network name",
             "placeholder_pwd": "Enter WiFi password",
-            "auto_detect": "Auto mode detects USB connection, falls back to WiFi"
+            "auto_detect": "Auto mode detects USB connection, falls back to WiFi",
+            "port_option": "Select a port..."
         },
         "sync": {
             "timer_address": "Timer Address:",
