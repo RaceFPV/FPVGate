@@ -1954,13 +1954,23 @@ async function saveConfig() {
   // Save band and channel indices along with frequency for accurate restoration
   // Get the actual band index from the dataset
   let selectedBandIndex = 0;
+  let selectedChannelIndex = 0;
   if (bandSelect && bandSelect.selectedIndex !== -1) {
     const selectedOption = bandSelect.options[bandSelect.selectedIndex];
     if (selectedOption && selectedOption.dataset.bandIndex) {
       selectedBandIndex = parseInt(selectedOption.dataset.bandIndex);
     }
+    selectedChannelIndex = channelSelect.selectedIndex;
+  } else if (calibBandSelect && calibBandSelect.selectedIndex !== -1) {
+    // Fallback: bandSelect is in an invalid state (e.g. was corrupted by a stale
+    // openSettingsModal fetch). Use calibBandSelect which is always reliable.
+    const calibOption = calibBandSelect.options[calibBandSelect.selectedIndex];
+    if (calibOption && calibOption.dataset.bandIndex) {
+      selectedBandIndex = parseInt(calibOption.dataset.bandIndex);
+    }
+    selectedChannelIndex = calibChannelSelect ? calibChannelSelect.selectedIndex : 0;
+    console.warn('[Config] bandSelect was empty during save - used calibBandSelect as fallback');
   }
-  const selectedChannelIndex = channelSelect.selectedIndex;
   
   // Get battery settings
   const batteryTypeSelect = document.getElementById("batteryType");
@@ -3823,8 +3833,23 @@ function setBandChannelIndex(freq) {
   for (var i = 0; i < freqLookup.length; i++) {
     for (var j = 0; j < freqLookup[i].length; j++) {
       if (freqLookup[i][j] == freq) {
-        bandSelect.selectedIndex = i;
-        channelSelect.selectedIndex = j;
+        const bandDef = bandDefinitions[i];
+        if (bandDef) {
+          // Switch system if this band belongs to a different one
+          if (currentSystem !== bandDef.system) {
+            currentSystem = bandDef.system;
+            if (systemSelect) systemSelect.value = currentSystem;
+            if (calibSystemSelect) calibSystemSelect.value = currentSystem;
+            populateBandsBySystem(currentSystem, bandSelect);
+            populateBandsBySystem(currentSystem, calibBandSelect);
+          }
+          // Find the option by value in the filtered dropdown (not by raw freqLookup index)
+          const bandOption = Array.from(bandSelect.options).find(opt => opt.value === bandDef.value);
+          if (bandOption) bandSelect.value = bandDef.value;
+          channelSelect.selectedIndex = j;
+          updateChannelAvailability(bandSelect);
+        }
+        return; // Stop at first match - prevents overwriting with digital band duplicates
       }
     }
   }
@@ -7963,7 +7988,10 @@ function openSettingsModal() {
       .then((response) => response.json())
       .then((config) => {
         // Populate all device config fields
-        if (config.freq !== undefined) setBandChannelIndex(config.freq);
+        // Band/channel is NOT restored here - the DOM already has the correct
+        // state from onload or from calib/settings UI changes. Re-fetching from
+        // device would overwrite a pending change that hasn't been saved yet
+        // (autoSaveConfig has a 1-second debounce).
         if (config.minLap !== undefined) {
           minLapInput.value = (parseFloat(config.minLap) / 10).toFixed(1);
           updateMinLap(minLapInput, minLapInput.value);
