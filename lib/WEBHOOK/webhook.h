@@ -31,6 +31,10 @@ class WebhookManager {
     void triggerRaceStop();
     void triggerOff();
     void triggerFlash();
+    void triggerRaceColor(uint32_t colorHex);
+    
+    // Send JSON payload directly to a specific IP's /webhook endpoint (immediate, not queued)
+    bool sendDirectJSON(const char* ip, const char* json);
     
     // Process queued webhooks (call from main loop)
     void process();

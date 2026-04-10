@@ -85,6 +85,11 @@ class RgbLed {
     rgb_mode_e getCurrentMode() const { return currentMode; }
     CRGB getCurrentColor() const { return targetColor; }
     
+    // Race color control
+    void setRaceColor(uint32_t colorHex);   // Set solid color for race duration
+    void clearRaceColor();                  // Manually clear race color (auto-clears on race stop)
+    bool isRaceColorActive() const { return raceColorActive; }
+    
     // Preset system
     void setPreset(led_preset_e preset);
     void enableManualOverride(bool enable) { manualOverride = enable; }
@@ -131,6 +136,13 @@ class RgbLed {
     led_preset_e currentPreset = PRESET_RAINBOW;
     CRGB fadeColor = CRGB::Blue;      // Color for COLOR_FADE preset
     CRGB strobeColor = CRGB::White;   // Color for STROBE preset
+    
+    // Race color state (auto-clears on race stop)
+    bool raceColorActive = false;
+    rgb_mode_e preRaceMode = RGB_OFF;
+    CRGB preRaceColor = CRGB::Black;
+    led_preset_e preRacePreset = PRESET_RAINBOW;
+    bool preRaceManualOverride = false;
     
     // Error code state
     uint8_t errorBlinkCount = 0;

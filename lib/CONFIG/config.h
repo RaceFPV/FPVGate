@@ -156,8 +156,8 @@
 #define PIN_SD_MOSI 9          // D10
 #define PIN_SD_MISO 8          // D9
 
-// FPVGate AIO V3 (XIAO ESP32S3-based, custom pinout)
-#elif defined(FPVGATE_AIO_V3)
+// FPVGate AIO V4 (XIAO ESP32S3-based, custom pinout)
+#elif defined(FPVGATE_AIO_V4)
 
 #define PIN_LED 21             // Onboard user LED
 #define PIN_RGB_LED 44         // NeoPixel chain on D7 (GPIO44)
@@ -212,7 +212,7 @@
 #define PIN_RX5808_DATA 5      // D4
 #define PIN_RX5808_SELECT 6    // D5
 #define PIN_RX5808_CLOCK 4     // D3
-#define PIN_BUZZER 5           // D4
+#define PIN_BUZZER 43          // D6 (GPIO43)
 #define BUZZER_INVERTED false
 #define PIN_MODE_SWITCH 1      // D0
 // SD Card SPI pins (XIAO S3 per user wiring)
@@ -255,18 +255,18 @@
 // ====================================================================
 
 // ESP32-S3 family boards (SD card support, SPI, USB CDC)
-#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(FPVGATE_AIO_V3) || defined(XIAO_ESP32S3_PLUS)
+#if defined(ESP32S3) || defined(ESP32C3) || defined(ESP32S3_SUPERMINI) || defined(LILYGO_TENERGY_S3) || defined(SEEED_XIAO_ESP32S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(FPVGATE_AIO_V4) || defined(XIAO_ESP32S3_PLUS)
     #define HAS_SD_CARD_SUPPORT 1
     #define HAS_SPI_CLASS 1
 #endif
 
-// Boards with RGB LED support
+// Boards with RGB LED support (capability-based: boards with no physical NeoPixel use PIN_RGB_LED=-1 / NUM_LEDS=0)
 #if defined(PIN_RGB_LED) && defined(NUM_LEDS) && (PIN_RGB_LED >= 0) && (NUM_LEDS > 0)
     #define HAS_RGB_LED 1
 #endif
 
 // Boards with built-in battery monitoring
-#if defined(LILYGO_TENERGY_S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(SEEED_XIAO_ESP32S3) || defined(ENABLE_BATTERY_TEST)
+#if defined(LILYGO_TENERGY_S3) || defined(WAVESHARE_ESP32S3_LCD2) || defined(SEEED_XIAO_ESP32S3) || defined(XIAO_ESP32S3_PLUS) || defined(ENABLE_BATTERY_TEST)
     #define HAS_BATTERY_MONITOR 1
 #endif
 

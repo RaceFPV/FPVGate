@@ -109,6 +109,43 @@ void WebhookManager::triggerFlash() {
     queueRequest("/flash");
 }
 
+void WebhookManager::triggerRaceColor(uint32_t colorHex) {
+    if (!enabled) return;
+    char endpoint[32];
+    snprintf(endpoint, sizeof(endpoint), "/RaceColor?color=%06X", colorHex);
+    queueRequest(endpoint);
+}
+
+bool WebhookManager::sendDirectJSON(const char* ip, const char* json) {
+    if (WiFi.status() != WL_CONNECTED) {
+        DEBUG("Direct webhook skipped - WiFi not connected\n");
+        return false;
+    }
+    
+    HTTPClient http;
+    char url[64];
+    snprintf(url, sizeof(url), "http://%s/webhook", ip);
+    
+    http.setTimeout(WEBHOOK_TIMEOUT_MS);
+    
+    if (!http.begin(url)) {
+        DEBUG("Direct webhook failed to begin: %s\n", url);
+        return false;
+    }
+    
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.POST(json);
+    http.end();
+    
+    if (httpCode > 0 && (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_ACCEPTED)) {
+        DEBUG("Direct webhook OK: %s (code: %d)\n", url, httpCode);
+        return true;
+    }
+    
+    DEBUG("Direct webhook failed: %s (code: %d)\n", url, httpCode);
+    return false;
+}
+
 void WebhookManager::queueRequest(const char* endpoint) {
     // Don't queue webhooks if WiFi isn't ready yet
     if (WiFi.status() != WL_CONNECTED) {

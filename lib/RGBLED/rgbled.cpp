@@ -428,6 +428,58 @@ void RgbLed::setStrobeColor(uint32_t colorHex) {
     DEBUG("RGB LED: Strobe color set to #%06X\n", colorHex);
 }
 
+void RgbLed::setRaceColor(uint32_t colorHex) {
+    // Save pre-race LED state so we can restore after race ends
+    if (!raceColorActive) {
+        preRaceMode = manualOverride ? currentMode : savedMode;
+        preRaceColor = manualOverride ? targetColor : savedColor;
+        preRacePreset = currentPreset;
+        preRaceManualOverride = manualOverride;
+    }
+    raceColorActive = true;
+    
+    // Set solid race color
+    uint8_t r = (colorHex >> 16) & 0xFF;
+    uint8_t g = (colorHex >> 8) & 0xFF;
+    uint8_t b = colorHex & 0xFF;
+    targetColor = CRGB(r, g, b);
+    currentMode = RGB_SOLID;
+    savedMode = RGB_SOLID;
+    savedColor = targetColor;
+    
+    for (int i = 0; i < NUM_LEDS; i++) {
+        leds[i] = targetColor;
+    }
+    FastLED.show();
+    DEBUG("RGB LED: Race color set to #%06X\n", colorHex);
+}
+
+void RgbLed::clearRaceColor() {
+    if (!raceColorActive) return;
+    raceColorActive = false;
+    
+    // Restore pre-race LED state
+    savedMode = preRaceMode;
+    savedColor = preRaceColor;
+    currentPreset = preRacePreset;
+    manualOverride = preRaceManualOverride;
+    
+    // Apply the restored state
+    if (manualOverride) {
+        applyPreset(currentPreset);
+    } else {
+        currentMode = savedMode;
+        targetColor = savedColor;
+        if (currentMode == RGB_SOLID) {
+            for (int i = 0; i < NUM_LEDS; i++) {
+                leds[i] = targetColor;
+            }
+            FastLED.show();
+        }
+    }
+    DEBUG("RGB LED: Race color cleared, pre-race state restored\n");
+}
+
 void RgbLed::setManualMode(rgb_mode_e mode) {
     currentMode = mode;
     currentStatus = STATUS_OFF;
@@ -466,6 +518,16 @@ void RgbLed::saveCurrentState() {
 }
 
 void RgbLed::restoreSavedState() {
+    // If race ended and we had a race color, restore pre-race state
+    if (!inRace && raceColorActive) {
+        raceColorActive = false;
+        savedMode = preRaceMode;
+        savedColor = preRaceColor;
+        currentPreset = preRacePreset;
+        manualOverride = preRaceManualOverride;
+        DEBUG("RGB LED: Race ended, restoring pre-race LED state\n");
+    }
+    
     // Restore brightness based on race state
     if (inRace) {
         // During race: use 50% brightness

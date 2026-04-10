@@ -481,6 +481,7 @@ function handleRaceStateEvent(state) {
     lapTimerStartMs = Date.now();
     startRaceTimer();
     updateRaceButtons();
+    clearRaceLeader();
     console.log("[Sync] Race started via SSE");
   } else if (state === "stopped") {
     // Race stopped (e.g. from LCD) – stop timer and reset displays like stopRace()
@@ -492,6 +493,7 @@ function handleRaceStateEvent(state) {
     if (currentLapTimerEl) currentLapTimerEl.textContent = "00:00:00s";
     stopDistancePolling();
     updateRaceButtons();
+    clearRaceLeader();
     console.log("[Sync] Race stopped via SSE");
   } else if (state === "cleared") {
     // Laps cleared - reset UI
@@ -574,6 +576,10 @@ function handleSlaveLapEvent(data) {
     updateRaceAnalysisView();
   }
   
+  // Update race leader color on gate LEDs
+  const remotePilotHex = "#" + ("000000" + pilotColor.toString(16)).slice(-6);
+  updateRaceLeader(remotePilotHex);
+
   // Announce via TTS
   announceRemotePilotLap(remotePilots[slaveHostname], lapTime);
 }
@@ -1784,6 +1790,17 @@ function updateDebugOverlay() {
   var raceVisible = race.style.display != "none";
   if (debugMode && raceVisible) {
     overlay.style.display = "block";
+    // Restore saved position
+    var saved = localStorage.getItem('debugRssiPos');
+    if (saved) {
+      try {
+        var pos = JSON.parse(saved);
+        overlay.style.top = pos.top + 'px';
+        overlay.style.left = pos.left + 'px';
+        overlay.style.bottom = 'auto';
+        overlay.style.right = 'auto';
+      } catch(e) {}
+    }
     if (debugRssiChart) debugRssiChart.start();
     // Ensure RSSI streaming is active
     if (!rssiSending) startRssiStreaming();
@@ -1792,6 +1809,94 @@ function updateDebugOverlay() {
     if (debugRssiChart) debugRssiChart.stop();
   }
 }
+
+// --- Debug RSSI Overlay Drag ---
+(function() {
+  var dragHandle, overlay, offsetX, offsetY, dragging = false;
+
+  function onMouseDown(e) {
+    if (e.button !== 0) return;
+    overlay = document.getElementById('debugRssiOverlay');
+    if (!overlay) return;
+    dragging = true;
+    var rect = overlay.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    dragHandle.style.cursor = 'grabbing';
+    e.preventDefault();
+  }
+
+  function onMouseMove(e) {
+    if (!dragging) return;
+    var newLeft = e.clientX - offsetX;
+    var newTop = e.clientY - offsetY;
+    // Clamp to viewport
+    var w = overlay.offsetWidth, h = overlay.offsetHeight;
+    newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - w));
+    newTop = Math.max(0, Math.min(newTop, window.innerHeight - h));
+    overlay.style.left = newLeft + 'px';
+    overlay.style.top = newTop + 'px';
+    overlay.style.bottom = 'auto';
+    overlay.style.right = 'auto';
+  }
+
+  function onMouseUp() {
+    if (!dragging) return;
+    dragging = false;
+    dragHandle.style.cursor = 'grab';
+    // Persist position
+    localStorage.setItem('debugRssiPos', JSON.stringify({
+      top: parseInt(overlay.style.top),
+      left: parseInt(overlay.style.left)
+    }));
+  }
+
+  // Touch support
+  function onTouchStart(e) {
+    var t = e.touches[0];
+    overlay = document.getElementById('debugRssiOverlay');
+    if (!overlay) return;
+    dragging = true;
+    var rect = overlay.getBoundingClientRect();
+    offsetX = t.clientX - rect.left;
+    offsetY = t.clientY - rect.top;
+    e.preventDefault();
+  }
+
+  function onTouchMove(e) {
+    if (!dragging) return;
+    var t = e.touches[0];
+    var newLeft = t.clientX - offsetX;
+    var newTop = t.clientY - offsetY;
+    var w = overlay.offsetWidth, h = overlay.offsetHeight;
+    newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - w));
+    newTop = Math.max(0, Math.min(newTop, window.innerHeight - h));
+    overlay.style.left = newLeft + 'px';
+    overlay.style.top = newTop + 'px';
+    overlay.style.bottom = 'auto';
+    overlay.style.right = 'auto';
+    e.preventDefault();
+  }
+
+  function onTouchEnd() {
+    if (!dragging) return;
+    dragging = false;
+    localStorage.setItem('debugRssiPos', JSON.stringify({
+      top: parseInt(overlay.style.top),
+      left: parseInt(overlay.style.left)
+    }));
+  }
+
+  dragHandle = document.getElementById('debugRssiDragHandle');
+  if (dragHandle) {
+    dragHandle.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    dragHandle.addEventListener('touchstart', onTouchStart, { passive: false });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+  }
+})();
 
 function startRssiStreaming() {
   if (rssiSending) return;
@@ -1924,15 +2029,24 @@ async function saveConfig() {
   // Save band and channel indices along with frequency for accurate restoration
   // Get the actual band index from the dataset
   let selectedBandIndex = 0;
-  let selectedChannelIndex = channelSelect.selectedIndex;
+  let selectedChannelIndex = 0;
   if (bandSelect && bandSelect.selectedIndex !== -1) {
     const selectedOption = bandSelect.options[bandSelect.selectedIndex];
     if (selectedOption && selectedOption.dataset.bandIndex) {
       selectedBandIndex = parseInt(selectedOption.dataset.bandIndex);
     }
+    selectedChannelIndex = channelSelect ? channelSelect.selectedIndex : 0;
+  } else if (calibBandSelect && calibBandSelect.selectedIndex !== -1) {
+    // Fallback: bandSelect is in an invalid state (e.g. was corrupted by a stale
+    // openSettingsModal fetch). Use calibBandSelect which is always reliable.
+    const calibOption = calibBandSelect.options[calibBandSelect.selectedIndex];
+    if (calibOption && calibOption.dataset.bandIndex) {
+      selectedBandIndex = parseInt(calibOption.dataset.bandIndex);
+    }
+    selectedChannelIndex = calibChannelSelect ? calibChannelSelect.selectedIndex : 0;
+    console.warn('[Config] bandSelect was empty during save - used calibBandSelect as fallback');
   } else {
-    // Band selector is in a bad state - fetch current values from device
-    // to avoid overwriting with stale data
+    // Last resort: fetch current values from device (e.g. touch UI / empty selectors)
     console.log("[Config] Band selector blank, fetching current freq from device");
     try {
       const resp = await fetch("/config");
@@ -2588,6 +2702,10 @@ function addLap(lapStr) {
   // Update lap analysis (mode-dependent)
   updateAnalysisSectionVisibility();
 
+  // Update race leader color on gate LEDs
+  const localPilotColor = document.getElementById("pilotColor")?.value || "#0080FF";
+  updateRaceLeader(localPilotColor);
+
   // Auto-stop race if max laps reached (excluding hole shot, and if maxLaps > 0)
   if (maxLaps > 0 && lapNo > 0 && lapNo >= maxLaps) {
     setTimeout(function () {
@@ -2954,6 +3072,9 @@ function toggleGateLEDs(enabled) {
   if (optionsDiv) {
     optionsDiv.style.display = enabled ? "block" : "none";
   }
+
+  // Load gate devices list when enabling
+  if (enabled) loadGateDevices();
 
   // Send the config update
   fetch("/config", {
@@ -3921,8 +4042,23 @@ function setBandChannelIndex(freq) {
   for (var i = 0; i < freqLookup.length; i++) {
     for (var j = 0; j < freqLookup[i].length; j++) {
       if (freqLookup[i][j] == freq) {
-        bandSelect.selectedIndex = i;
-        channelSelect.selectedIndex = j;
+        const bandDef = bandDefinitions[i];
+        if (bandDef) {
+          // Switch system if this band belongs to a different one
+          if (currentSystem !== bandDef.system) {
+            currentSystem = bandDef.system;
+            if (systemSelect) systemSelect.value = currentSystem;
+            if (calibSystemSelect) calibSystemSelect.value = currentSystem;
+            populateBandsBySystem(currentSystem, bandSelect);
+            populateBandsBySystem(currentSystem, calibBandSelect);
+          }
+          // Find the option by value in the filtered dropdown (not by raw freqLookup index)
+          const bandOption = Array.from(bandSelect.options).find(opt => opt.value === bandDef.value);
+          if (bandOption) bandSelect.value = bandDef.value;
+          channelSelect.selectedIndex = j;
+          updateChannelAvailability(bandSelect);
+        }
+        return; // Stop at first match - prevents overwriting with digital band duplicates
       }
     }
   }
@@ -7874,6 +8010,252 @@ function removeWebhook(ip) {
     });
 }
 
+// ===== RACE LEADER COLOR =====
+
+var currentLeaderColor = null; // Track last sent color to avoid redundant sends
+
+function getLeaderColorMode() {
+  return parseInt(localStorage.getItem("leaderColorMode") || "0");
+}
+
+function saveLeaderColorMode() {
+  const mode = document.getElementById("leaderColorMode").value;
+  localStorage.setItem("leaderColorMode", mode);
+  console.log("Leader color mode set to:", mode);
+}
+
+// Restore dropdown on page load
+document.addEventListener("DOMContentLoaded", function () {
+  const sel = document.getElementById("leaderColorMode");
+  if (sel) sel.value = localStorage.getItem("leaderColorMode") || "0";
+});
+
+function fastest3Consecutive(times) {
+  if (times.length < 3) return Infinity;
+  let best = Infinity;
+  for (let i = 0; i <= times.length - 3; i++) {
+    const sum = times[i] + times[i + 1] + times[i + 2];
+    if (sum < best) best = sum;
+  }
+  return best;
+}
+
+function collectAllPilots() {
+  const pilots = [];
+
+  // Local pilot
+  const localColor = document.getElementById("pilotColor")?.value || "#0080FF";
+  if (lapTimes.length > 0) {
+    pilots.push({
+      name: pilotNameInput?.value || "Local",
+      color: localColor,
+      lapTimes: lapTimes,
+      lapCount: lapTimes.length,
+    });
+  }
+
+  // Remote pilots
+  for (const [hostname, pilot] of Object.entries(remotePilots)) {
+    if (pilot.lapTimes.length > 0) {
+      const hex = "#" + ("000000" + pilot.pilotColor.toString(16)).slice(-6);
+      pilots.push({
+        name: pilot.pilotName,
+        color: hex,
+        lapTimes: pilot.lapTimes,
+        lapCount: pilot.lapTimes.length,
+      });
+    }
+  }
+
+  return pilots;
+}
+
+function updateRaceLeader(mostRecentColor) {
+  const mode = getLeaderColorMode();
+  if (mode === 0 || !raceRunning) return;
+
+  let leaderColor = null;
+
+  if (mode === 4) {
+    // Most recent lap - use the color passed in
+    leaderColor = mostRecentColor || null;
+  } else {
+    const pilots = collectAllPilots();
+    if (pilots.length === 0) return;
+
+    let leader = null;
+
+    if (mode === 1) {
+      // Highest lap count
+      leader = pilots.reduce((a, b) => (b.lapCount > a.lapCount ? b : a));
+    } else if (mode === 2) {
+      // Fastest single lap
+      leader = pilots.reduce((a, b) => {
+        const af = Math.min(...a.lapTimes);
+        const bf = Math.min(...b.lapTimes);
+        return bf < af ? b : a;
+      });
+    } else if (mode === 3) {
+      // Fastest 3 consecutive
+      leader = pilots.reduce((a, b) => {
+        const af = fastest3Consecutive(a.lapTimes);
+        const bf = fastest3Consecutive(b.lapTimes);
+        return bf < af ? b : a;
+      });
+    } else if (mode === 5) {
+      // Fastest average lap time
+      leader = pilots.reduce((a, b) => {
+        const aAvg = a.lapTimes.reduce((s, t) => s + t, 0) / a.lapTimes.length;
+        const bAvg = b.lapTimes.reduce((s, t) => s + t, 0) / b.lapTimes.length;
+        return bAvg < aAvg ? b : a;
+      });
+    }
+
+    if (leader) leaderColor = leader.color;
+  }
+
+  if (!leaderColor || leaderColor === currentLeaderColor) return;
+
+  currentLeaderColor = leaderColor;
+  const hex = leaderColor.replace("#", "");
+  console.log("[Leader] Race leader color:", hex);
+
+  fetch("/led/racecolor", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "color=" + hex,
+  }).catch((e) => console.error("[Leader] Failed to send race color:", e));
+}
+
+function clearRaceLeader() {
+  currentLeaderColor = null;
+}
+
+// ===== GATE LED CONTROL =====
+
+function loadGateDevices() {
+  fetch("/webhooks")
+    .then((r) => r.json())
+    .then((data) => renderGateDevices(data.webhooks || []))
+    .catch((e) => console.error("Error loading gate devices:", e));
+}
+
+function renderGateDevices(webhooks) {
+  const container = document.getElementById("gateDevicesList");
+  if (!container) return;
+
+  if (webhooks.length === 0) {
+    container.innerHTML = '<p style="color: var(--secondary-color); text-align: center; padding: 12px; font-size: 13px">No gate devices configured. Add webhook IPs in the Webhooks tab.</p>';
+    return;
+  }
+
+  const esc = (ip) => ip.replace(/\./g, "_");
+  let html = '';
+
+  webhooks.forEach((ip, idx) => {
+    const eid = esc(ip);
+    html += `
+      <div style="padding: 14px; background-color: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px; border-left: 4px solid var(--accent-color)">
+        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer" onclick="toggleGateDetail('${eid}')">
+          <div>
+            <span style="font-weight: bold; font-size: 14px">Gate ${idx + 1}</span>
+            <span style="font-size: 12px; color: var(--secondary-color); margin-left: 8px">${ip}</span>
+          </div>
+          <span id="gateArrow_${eid}" style="font-size: 12px; color: var(--secondary-color); transition: transform 0.2s">&#9660;</span>
+        </div>
+        <div id="gateDetail_${eid}" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color)">
+          <div class="config-item" style="margin-bottom: 8px">
+            <label style="min-width: 80px">Effect:</label>
+            <select id="gateEffect_${eid}" style="flex: 1">
+              <option value="off">Off</option>
+              <option value="solid" selected>Solid</option>
+              <option value="rainbow">Rainbow</option>
+              <option value="fade">Color Fade</option>
+              <option value="pulse">Pulse</option>
+              <option value="sparkle">Sparkle</option>
+            </select>
+          </div>
+          <div class="config-item" style="margin-bottom: 8px">
+            <label style="min-width: 80px">Color:</label>
+            <input type="color" id="gateColor_${eid}" value="#FF0000" style="height: 36px; flex: 1; max-width: 80px; border: 2px solid var(--border-color); border-radius: 4px" />
+          </div>
+          <div class="config-item" style="margin-bottom: 8px">
+            <label style="min-width: 80px">Brightness:</label>
+            <div style="flex: 1; display: flex; align-items: center; gap: 8px">
+              <input type="range" id="gateBri_${eid}" min="0" max="255" value="200" style="flex: 1" oninput="document.getElementById('gateBriV_${eid}').textContent=this.value" />
+              <span id="gateBriV_${eid}" style="font-size: 13px; min-width: 28px">200</span>
+            </div>
+          </div>
+          <div class="config-item" style="margin-bottom: 12px">
+            <label style="min-width: 80px">Speed:</label>
+            <div style="flex: 1; display: flex; align-items: center; gap: 8px">
+              <input type="range" id="gateSpd_${eid}" min="1" max="100" value="50" style="flex: 1" oninput="document.getElementById('gateSpdV_${eid}').textContent=this.value" />
+              <span id="gateSpdV_${eid}" style="font-size: 13px; min-width: 28px">50</span>
+            </div>
+          </div>
+          <button onclick="sendToGate('${ip}')" style="width: 100%; background-color: var(--accent-color)">Apply to Gate ${idx + 1}</button>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function toggleGateDetail(eid) {
+  const detail = document.getElementById("gateDetail_" + eid);
+  const arrow = document.getElementById("gateArrow_" + eid);
+  if (!detail) return;
+  const visible = detail.style.display !== "none";
+  detail.style.display = visible ? "none" : "block";
+  if (arrow) arrow.style.transform = visible ? "" : "rotate(180deg)";
+}
+
+function sendToGate(ip) {
+  const eid = ip.replace(/\./g, "_");
+  const colorHex = document.getElementById("gateColor_" + eid).value;
+  const r = parseInt(colorHex.substring(1, 3), 16);
+  const g = parseInt(colorHex.substring(3, 5), 16);
+  const b = parseInt(colorHex.substring(5, 7), 16);
+  const payload = {
+    ip: ip,
+    effect: document.getElementById("gateEffect_" + eid).value,
+    brightness: parseInt(document.getElementById("gateBri_" + eid).value),
+    speed: parseInt(document.getElementById("gateSpd_" + eid).value),
+    color: [r, g, b],
+  };
+  fetch("/webhooks/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((r) => r.json())
+    .then((d) => console.log("Gate " + ip + ":", d))
+    .catch((e) => console.error("Gate send error:", e));
+}
+
+function sendToAllGates() {
+  const colorHex = document.getElementById("gateColorAll").value;
+  const r = parseInt(colorHex.substring(1, 3), 16);
+  const g = parseInt(colorHex.substring(3, 5), 16);
+  const b = parseInt(colorHex.substring(5, 7), 16);
+  const payload = {
+    ip: "all",
+    effect: document.getElementById("gateEffectAll").value,
+    brightness: parseInt(document.getElementById("gateBrightnessAll").value),
+    speed: parseInt(document.getElementById("gateSpeedAll").value),
+    color: [r, g, b],
+  };
+  fetch("/webhooks/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((r) => r.json())
+    .then((d) => console.log("All gates:", d))
+    .catch((e) => console.error("Gate send error:", e));
+}
+
 function testWebhook() {
   fetch("/webhooks/trigger/flash", {
     method: "POST",
@@ -7911,8 +8293,18 @@ function openSettingsModal() {
     fetch("/config")
       .then((response) => response.json())
       .then((config) => {
-        // Populate band/channel/system using bandIndex (reliable) with freq fallback
-        if (config.bandIndex !== undefined && config.channelIndex !== undefined) {
+        // When band selectors look invalid, sync band/channel from device (touch / stale DOM).
+        // If band DOM looks healthy, keep current selection so an unsaved local change is not
+        // overwritten after clearTimeout(saveTimeout) (main debounce behavior).
+        const bandOpt =
+          bandSelect && bandSelect.selectedIndex >= 0
+            ? bandSelect.options[bandSelect.selectedIndex]
+            : null;
+        const needBandFromDevice =
+          !bandSelect ||
+          bandSelect.selectedIndex < 0 ||
+          !(bandOpt && bandOpt.dataset && bandOpt.dataset.bandIndex);
+        if (needBandFromDevice && config.bandIndex !== undefined && config.channelIndex !== undefined) {
           const bandDef = bandDefinitions[config.bandIndex];
           if (bandDef) {
             currentSystem = bandDef.system;
@@ -7940,7 +8332,7 @@ function openSettingsModal() {
               }
             }
           }
-        } else if (config.freq !== undefined) {
+        } else if (needBandFromDevice && config.freq !== undefined) {
           setBandChannelIndex(config.freq);
         }
         if (config.minLap !== undefined) {
@@ -8021,6 +8413,7 @@ function openSettingsModal() {
           if (gateLEDOptions) {
             gateLEDOptions.style.display = config.gateLEDsEnabled === 1 ? "block" : "none";
           }
+          if (config.gateLEDsEnabled === 1) loadGateDevices();
         }
 
         if (webhookRaceStartToggle && config.webhookRaceStart !== undefined) {
