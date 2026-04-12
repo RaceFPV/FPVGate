@@ -468,7 +468,14 @@
             "some_failed": "部分测试失败",
             "error_running": "运行测试出错",
             "run_all": "运行所有测试",
-            "run_again": "重新运行所有测试"
+            "run_again": "重新运行所有测试",
+            "spi_title": "SPI 改装测试",
+            "spi_description": "扫描 RaceBand 频率以验证 RX5808 SPI 改装是否正常工作。已改装的模块将显示不同的 RSSI 值；未改装的模块将保持平坦。",
+            "spi_run": "运行 SPI 改装测试",
+            "spi_running": "正在扫描频率...",
+            "spi_pass": "SPI 改装已验证",
+            "spi_fail": "未检测到 SPI 改装",
+            "spi_run_again": "重新运行 SPI 测试"
         }
     },
     "modals": {

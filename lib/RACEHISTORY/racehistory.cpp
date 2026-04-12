@@ -15,8 +15,7 @@ bool RaceHistory::init(Storage* storageBackend) {
     
     // Create races directory if it doesn't exist
     storage->mkdir("/races");
-    
-    return loadRaces();
+    return true;
 }
 
 bool RaceHistory::saveRace(const RaceSession& race) {
@@ -79,6 +78,7 @@ bool RaceHistory::saveRace(const RaceSession& race) {
     bool success = storage->writeFile(filepath, json);
     if (success) {
         DEBUG("Saved race to %s (%d bytes)\n", filepath.c_str(), json.length());
+        Serial.printf("[Race] Saved to SD: %s (%u laps)\n", filepath.c_str(), (unsigned)race.lapTimes.size());
         
         // Add to in-memory list
         races.insert(races.begin(), race);
@@ -87,10 +87,12 @@ bool RaceHistory::saveRace(const RaceSession& race) {
         }
     } else {
         DEBUG("Failed to save race to %s\n", filepath.c_str());
+        Serial.printf("[Race] Failed to save to %s\n", filepath.c_str());
     }
     
     return success;
 }
+
 
 bool RaceHistory::loadRaces() {
     if (!storage) {
@@ -108,6 +110,7 @@ bool RaceHistory::loadRaces() {
     }
     
     // Load each race file
+    int fileCount = 0;
     for (const String& filename : files) {
         if (!filename.endsWith(".json")) {
             continue;
@@ -168,15 +171,13 @@ bool RaceHistory::loadRaces() {
         }
         
         races.push_back(race);
-    }
-    
-    // Sort by timestamp (newest first)
-    std::sort(races.begin(), races.end(), 
-        [](const RaceSession& a, const RaceSession& b) { return a.timestamp > b.timestamp; });
-    
-    // Keep only MAX_RACES
-    if (races.size() > MAX_RACES) {
-        races.resize(MAX_RACES);
+        fileCount++;
+        
+        // Yield to other tasks every 10 files to prevent watchdog timeout
+        // and reduce SPI mutex contention with LCD
+        if (fileCount % 10 == 0) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
     }
     
     DEBUG("Loaded %d races from individual files\n", races.size());
@@ -370,11 +371,18 @@ bool RaceHistory::clearAll() {
     return true;
 }
 
+const std::vector<RaceSession>& RaceHistory::getRaces() {
+    return races;
+}
+
 String RaceHistory::toJsonString() {
-    DynamicJsonDocument doc(65536);  // Increased for multi-pilot data
+    DynamicJsonDocument doc(131072);  // 128KB - enough for ~50 races with multi-pilot data
     JsonArray racesArray = doc.createNestedArray("races");
     
-    for (const auto& race : races) {
+    // Limit output to MAX_RACES to avoid memory issues
+    size_t racesToOutput = std::min(races.size(), (size_t)MAX_RACES);
+    for (size_t i = 0; i < racesToOutput; i++) {
+        const auto& race = races[i];
         JsonObject raceObj = racesArray.createNestedObject();
         raceObj["timestamp"] = race.timestamp;
         raceObj["fastestLap"] = race.fastestLap;

@@ -9,6 +9,7 @@
 #include <HTTPClient.h>
 
 #include "debug.h"
+#include "elrs_backpack_espnow.h"
 
 #ifdef HAS_RGB_LED
 #include "rgbled.h"
@@ -40,6 +41,32 @@ static const char *wifi_ap_ssid_prefix = "FPVGate";
 static const char *wifi_ap_password = "fpvgate1";
 static const char *wifi_ap_address = "192.168.4.1";
 String wifi_ap_ssid;
+
+/** When ELRS backpack ESP-NOW is enabled, use AP+STA so ESP-NOW can share the radio with Wi-Fi. */
+static wifi_mode_t effectiveWifiModeForRole(bool primaryAp, Config* cfg) {
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+    if (cfg && cfg->getElrsBackpackEspnow()) {
+        return WIFI_AP_STA;
+    }
+#else
+    (void)cfg;
+#endif
+    return primaryAp ? WIFI_AP : WIFI_STA;
+}
+
+void Webserver::requestWifiStackReinit() {
+    elrsBackpackEspnowStopIfRunning();
+    WiFi.softAPdisconnect(true);
+    WiFi.disconnect(true, true);
+    wifiMode = WIFI_OFF;
+    if (conf->getSsid()[0] == 0) {
+        changeMode = WIFI_AP;
+    } else {
+        changeMode = WIFI_STA;
+    }
+    changeTimeMs = millis() - WIFI_RECONNECT_TIMEOUT_MS - 1;
+    DEBUG("WiFi stack reinit requested (ELRS backpack / mode)\n");
+}
 
 void Webserver::init(Config *config, LapTimer *lapTimer, BatteryMonitor *batMonitor, Buzzer *buzzer, Led *l, RaceHistory *raceHist, Storage *stor, SelfTest *test, RX5808 *rx5808, TrackManager *trackMgr, WebhookManager *webhookMgr, RHManager *rhMgr) {
 
@@ -118,7 +145,14 @@ void Webserver::sendRssiEvent(uint8_t rssi) {
 }
 
 void Webserver::sendRaceStateEvent(const char* state) {
-    if (!servicesStarted) return;
+    if (!servicesStarted) {
+        DEBUG("[SSE] sendRaceStateEvent SKIPPED (services not started)\n");
+        return;
+    }
+    const int n = events.count();
+    if (n > 0) {
+        DEBUG("[SSE] sendRaceStateEvent: '%s' to %d client(s)\n", state, n);
+    }
     events.send(state, "raceState");
 }
 
@@ -225,6 +259,60 @@ static void sendSyncCommand(Config* config, const char* endpoint) {
     }
 }
 
+// Public triggers - called from main loop (core 1)
+// Timer actions happen immediately; SSE broadcast is deferred to core 0
+// via pendingRaceState, which handleWebUpdate() picks up.
+void Webserver::triggerStart() {
+    sendSyncCommand(conf, "/timer/start");
+    timer->start();
+    pendingRaceState = "started";
+}
+
+void Webserver::triggerStop() {
+    sendSyncCommand(conf, "/timer/stop");
+    timer->stop();
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+    elrsBackpackEspnowOnRaceStop(conf);
+#endif
+    pendingRaceState = "stopped";
+}
+
+void Webserver::triggerClearLaps() {
+    sendSyncCommand(conf, "/timer/clearLaps");
+    pendingRaceState = "cleared";
+}
+
+void Webserver::triggerConfigUpdated() {
+    pendingConfigUpdate = true;
+}
+
+bool Webserver::consumePendingLap(uint32_t& lapMs) {
+    if (_hasLcdLap) {
+        lapMs = _pendingLcdLap;
+        _hasLcdLap = false;
+        return true;
+    }
+    return false;
+}
+
+bool Webserver::consumePendingClear() {
+    if (_pendingLcdClear) {
+        _pendingLcdClear = false;
+        return true;
+    }
+    return false;
+}
+
+void Webserver::setPendingLcdEvent(PendingLcdEvent ev) {
+    _pendingLcdEvent = ev;
+}
+
+Webserver::PendingLcdEvent Webserver::consumePendingLcdEvent() {
+    PendingLcdEvent ev = _pendingLcdEvent;
+    _pendingLcdEvent = PendingLcdEvent::None;
+    return ev;
+}
+
 bool Webserver::isConnected() {
     // WiFi transport is always "connected" if services are started
     // Individual clients connect/disconnect via SSE but that's transparent
@@ -236,8 +324,27 @@ void Webserver::update(uint32_t currentTimeMs) {
 }
 
 void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
-    // Note: Lap events are now broadcast via TransportManager in main.cpp
-    // This method only handles WiFi-specific logic
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+    elrsBackpackEspnowPoll(conf, currentTimeMs);
+#endif
+    // Process deferred race state events from LCD triggers (must run on core 0)
+    if (pendingRaceState) {
+        const char* state = (const char*)pendingRaceState;
+        pendingRaceState = nullptr;
+        DEBUG("[LCD->SSE] Deferred race state: '%s'\n", state);
+        if (transportMgr) {
+            transportMgr->broadcastRaceStateEvent(state);
+        }
+    }
+    
+    // Process deferred config update notification from LCD (must run on core 0)
+    if (pendingConfigUpdate) {
+        pendingConfigUpdate = false;
+        if (servicesStarted) {
+            DEBUG("[LCD->SSE] Config updated, notifying web clients\n");
+            events.send("updated", "configUpdated");
+        }
+    }
 
     if (sendRssi && ((currentTimeMs - rssiSentMs) > WEB_RSSI_SEND_TIMEOUT_MS)) {
         sendRssiEvent(timer->getRssi());
@@ -265,7 +372,7 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 changeTimeMs = currentTimeMs;
                 break;
             case WL_CONNECTED:
-                buz->beep(200);
+                buz->playCue(BUZZER_CUE_WEB_CHIRP);
                 led->off();
                 wifiConnected = true;
                 DEBUG("WiFi connected successfully!\n");
@@ -294,7 +401,7 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
             DEBUG("WiFi Connection failed, reconnecting\n");
             WiFi.reconnect();
             startServices();
-            buz->beep(100);
+            buz->playCue(BUZZER_CUE_WEB_CHIRP);
             led->blink(200);
         }
     }
@@ -303,12 +410,22 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
             case WIFI_AP:
                 DEBUG("Changing to WiFi AP mode\n");
 
-                WiFi.disconnect();
+                elrsBackpackEspnowStopIfRunning();
+                WiFi.softAPdisconnect(true);
+                WiFi.disconnect(true);
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                /* Sets MACs inside: WiFi.mode(WIFI_AP_STA) + disconnect — not after WIFI_OFF (0x3001 NOT_INIT). */
+                elrsBackpackEspnowPrepareWifiMacForElrs(conf);
+#else
+                WiFi.mode(WIFI_OFF);
+                delay(30);
+#endif
+
                 wifiMode = WIFI_AP;
                 WiFi.setHostname(wifi_hostname);  // hostname must be set before the mode is set to STA
-                WiFi.mode(wifiMode);
+                WiFi.mode(effectiveWifiModeForRole(true, conf));
                 changeTimeMs = currentTimeMs;
-                
+
                 // Power-saving settings for AP mode to prevent boot-looping
                 // Reduce TX power specifically for AP mode (already set globally but ensure it's applied)
                 WiFi.setTxPower(WIFI_POWER_11dBm);
@@ -316,10 +433,23 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 WiFi.softAPConfig(ipAddress, ipAddress, netMsk);
                 DEBUG("Starting WiFi AP: %s with password: %s\n", wifi_ap_ssid.c_str(), wifi_ap_password);
                 
-                // Start AP with max 4 connections to limit power draw
-                // Channel 6 is typically less crowded, beacon interval 200ms (higher = less power)
-                WiFi.softAP(wifi_ap_ssid.c_str(), wifi_ap_password, 6, 0, 4);
-                
+                // Start AP with max 4 connections to limit power draw.
+                // When ELRS backpack ESP-NOW is on, use ch 1 — same as ExpressLRS SetSoftMACAddress() so
+                // goggles ACK; otherwise ch 6 is a reasonable default for AP-only.
+                {
+                    uint8_t ap_ch = 6;
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                    if (conf && conf->getElrsBackpackEspnow()) {
+                        ap_ch = kElrsBackpackEspnowWifiChannel;
+                    }
+#endif
+                    WiFi.softAP(wifi_ap_ssid.c_str(), wifi_ap_password, ap_ch, 0, 4);
+                }
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                /* softAP() / driver can revert custom MACs set in prepare; VRx accepts only source MAC == bind UID. */
+                elrsBackpackEspnowReassertCustomMacsForElrs(conf);
+#endif
+
 #ifdef SEEED_XIAO_ESP32S3
                 // Disable WiFi power saving for faster responsiveness on XIAO
                 // The XIAO's chip antenna and power delivery can cause connection delays with PS enabled
@@ -332,17 +462,31 @@ void Webserver::handleWebUpdate(uint32_t currentTimeMs) {
                 esp_wifi_set_max_tx_power(44); // 11dBm in 0.25dBm units (44 * 0.25 = 11dBm)
                 
                 DEBUG("WiFi AP started. SSID: %s, Power: 11dBm, Max clients: 4\n", WiFi.softAPSSID().c_str());
+                elrsBackpackEspnowStartIfEnabled(conf);
                 startServices();
                 buz->beep(1000);
                 led->on(1000);
                 break;
             case WIFI_STA:
                 DEBUG("Connecting to WiFi network\n");
+                elrsBackpackEspnowStopIfRunning();
+                WiFi.softAPdisconnect(true);
+                WiFi.disconnect(true);
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                elrsBackpackEspnowPrepareWifiMacForElrs(conf);
+#else
+                WiFi.mode(WIFI_OFF);
+                delay(30);
+#endif
                 wifiMode = WIFI_STA;
                 WiFi.setHostname(wifi_hostname);  // hostname must be set before the mode is set to STA
-                WiFi.mode(wifiMode);
+                WiFi.mode(effectiveWifiModeForRole(false, conf));
                 changeTimeMs = currentTimeMs;
                 WiFi.begin(conf->getSsid(), conf->getPassword());
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+                elrsBackpackEspnowReassertCustomMacsForElrs(conf);
+#endif
+                elrsBackpackEspnowStartIfEnabled(conf);
                 startServices();
                 led->blink(200);
             default:
@@ -542,11 +686,11 @@ void Webserver::startServices() {
 
     startLittleFS();
     
-    // Initialize storage (SD card or LittleFS fallback)
-    storage->init();
+    // Note: storage is already initialized in main.cpp before webserver starts
+    // Do NOT call storage->init() here as it would reset the sdAvailable flag!
     
-    // Initialize race history after storage is ready
-    history->init(storage);
+    // Note: race history is already initialized in main.cpp
+    // Do NOT re-initialize it here
 
     server.on("/", handleRoot);
     server.on("/generate_204", handleRoot);  // handle Andriod phones doing shit to detect if there is 'real' internet and possibly dropping conn.
@@ -557,6 +701,11 @@ void Webserver::startServices() {
     server.on("/check_network_status.txt", handleRoot);
     server.on("/ncsi.txt", handleRoot);
     server.on("/fwlink", handleRoot);
+    // Android captive portal probe paths – handle before serveStatic to avoid LittleFS open() errors
+    server.on("/connecttest.txt", handleRoot);
+    server.on("/connecttest.txt.gz", handleRoot);
+    server.on("/connecttest.txt/index.htm", handleRoot);
+    server.on("/connecttest.txt/index.htm.gz", handleRoot);
 
     server.on("/status", [this](AsyncWebServerRequest *request) {
         char buf[1536];
@@ -625,12 +774,9 @@ EEPROM:\n\
         request->send(response);
     });
     
+    // Countdown: only set pending LCD event; audio starts when LCD countdown actually starts (keeps them in sync)
     server.on("/timer/countdown", HTTP_POST, [this, sendCorsResponse](AsyncWebServerRequest *request) {
-#ifdef HAS_I2S_AUDIO
-        if (g_audioAnnouncer) {
-            g_audioAnnouncer->announceCountdown();
-        }
-#endif
+        setPendingLcdEvent(PendingLcdEvent::Countdown);
         sendCorsResponse(request, "{\"status\": \"OK\"}");
     });
     
@@ -675,6 +821,10 @@ EEPROM:\n\
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("stopped");
         }
+        setPendingLcdEvent(PendingLcdEvent::ShowFinish);
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+        elrsBackpackEspnowOnRaceStop(conf);
+#endif
 #ifdef HAS_I2S_AUDIO
         if (g_audioAnnouncer) {
             g_audioAnnouncer->announceRaceStop();
@@ -700,6 +850,9 @@ EEPROM:\n\
             if (transportMgr) {
                 transportMgr->broadcastLapEvent(lapTimeMs);
             }
+            // Forward to LCD
+            _pendingLcdLap = lapTimeMs;
+            _hasLcdLap = true;
 #ifdef HAS_RGB_LED
             if (g_rgbLed) {
                 g_rgbLed->flashLap();
@@ -748,6 +901,9 @@ EEPROM:\n\
             if (transportMgr) {
                 transportMgr->broadcastLapEvent(lapTimeMs);
             }
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+            elrsBackpackEspnowOnPlaybackLap(conf, lapTimeMs);
+#endif
 #ifdef HAS_RGB_LED
             if (g_rgbLed) {
                 g_rgbLed->flashLap();
@@ -789,6 +945,8 @@ EEPROM:\n\
         if (transportMgr) {
             transportMgr->broadcastRaceStateEvent("cleared");
         }
+        // Forward to LCD
+        _pendingLcdClear = true;
         sendCorsResponse(request, "{\"status\": \"OK\"}");
     });
 
@@ -905,14 +1063,43 @@ EEPROM:\n\
         serializeJsonPretty(jsonObj, DEBUG_OUT);
         DEBUG("\n");
 #endif
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+        uint8_t prev_elrs_backpack = conf->getElrsBackpackEspnow();
+        char prev_elrs_bind[33];
+        strlcpy(prev_elrs_bind, conf->getElrsBackpackBindPhrase(), sizeof(prev_elrs_bind));
+#endif
         conf->fromJson(jsonObj);
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+        bool reboot_to_enable_elrs_espnow = false;
+        if (jsonObj.containsKey("elrsBackpackEspnow") && prev_elrs_backpack != conf->getElrsBackpackEspnow()) {
+            if (conf->getElrsBackpackEspnow() == 1 && prev_elrs_backpack == 0) {
+                reboot_to_enable_elrs_espnow = true;
+            } else {
+                requestWifiStackReinit();
+            }
+        } else if (jsonObj.containsKey("elrsBackpackBindPhrase") &&
+                   strcmp(prev_elrs_bind, conf->getElrsBackpackBindPhrase()) != 0) {
+            requestWifiStackReinit();
+        }
+#endif
         
         // Update battery monitor voltage divider if it changed
 #ifdef HAS_BATTERY_MONITOR
         if (jsonObj.containsKey("batteryVoltageDivider") && monitor) {
-            float ratio = jsonObj["batteryVoltageDivider"].as<float>();
+            float ratio = conf->getBatteryVoltageDivider();
             monitor->setVoltageDivider(ratio);
             DEBUG("Battery voltage divider updated to %.1f\n", ratio);
+        }
+#endif
+
+#if defined(ENABLE_ELRS_BACKPACK_ESPNOW)
+        if (reboot_to_enable_elrs_espnow) {
+            conf->write();
+            request->send(200, "application/json", "{\"status\":\"OK\",\"reboot\":true}");
+            led->on(200);
+            delay(200);
+            ESP.restart();
+            return;
         }
 #endif
         
@@ -1865,6 +2052,63 @@ EEPROM:\n\
         
         json += "]}";
         
+        request->send(200, "application/json", json);
+        led->on(200);
+    });
+
+    // SPI mod test endpoint
+    server.on("/api/spitest", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        if (!rx) {
+            request->send(500, "application/json", "{\"error\":\"RX5808 not initialized\"}");
+            return;
+        }
+
+        static const uint16_t testFreqs[] = {5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917};
+        static const char* chanLabels[] = {"R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"};
+        static const uint8_t numFreqs = 8;
+        static const uint8_t samplesPerFreq = 10;
+        static const uint8_t settleMs = 50;
+
+        uint8_t rssiValues[numFreqs];
+        uint8_t maxRssi = 0;
+        uint8_t minRssi = 255;
+
+        for (uint8_t i = 0; i < numFreqs; i++) {
+            rx->setFrequency(testFreqs[i]);
+            delay(settleMs);
+            rx->handleFrequencyChange(millis(), testFreqs[i]);
+
+            uint16_t sum = 0;
+            for (uint8_t s = 0; s < samplesPerFreq; s++) {
+                sum += rx->readRssi();
+                delay(2);
+            }
+            rssiValues[i] = sum / samplesPerFreq;
+            if (rssiValues[i] > maxRssi) maxRssi = rssiValues[i];
+            if (rssiValues[i] < minRssi) minRssi = rssiValues[i];
+        }
+
+        // Restore configured frequency
+        rx->setFrequency(conf->getFrequency());
+        delay(settleMs);
+        rx->handleFrequencyChange(millis(), conf->getFrequency());
+
+        uint8_t spread = maxRssi - minRssi;
+        bool passed = (spread >= 10);
+
+        String json = "{\"passed\":" + String(passed ? "true" : "false") +
+                     ",\"spread\":" + String(spread) +
+                     ",\"min\":" + String(minRssi) +
+                     ",\"max\":" + String(maxRssi) +
+                     ",\"channels\":[";
+        for (uint8_t i = 0; i < numFreqs; i++) {
+            if (i > 0) json += ",";
+            json += "{\"label\":\"" + String(chanLabels[i]) +
+                   "\",\"freq\":" + String(testFreqs[i]) +
+                   ",\"rssi\":" + String(rssiValues[i]) + "}";
+        }
+        json += "]}";
+
         request->send(200, "application/json", json);
         led->on(200);
     });

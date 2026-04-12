@@ -468,7 +468,14 @@
             "some_failed": "Algunas Pruebas Fallaron",
             "error_running": "Error Ejecutando Pruebas",
             "run_all": "Ejecutar Todas Pruebas",
-            "run_again": "Ejecutar Todas Pruebas de Nuevo"
+            "run_again": "Ejecutar Todas Pruebas de Nuevo",
+            "spi_title": "Prueba Mod SPI",
+            "spi_description": "Barre las frecuencias RaceBand para verificar que el mod SPI del RX5808 funciona. Un modulo modificado mostrara RSSI variado; uno sin modificar sera plano.",
+            "spi_run": "Ejecutar Prueba Mod SPI",
+            "spi_running": "Barriendo frecuencias...",
+            "spi_pass": "Mod SPI Verificado",
+            "spi_fail": "Mod SPI No Detectado",
+            "spi_run_again": "Repetir Prueba SPI"
         }
     },
     "modals": {
